@@ -1,6 +1,7 @@
 import os
 import warnings
 from pathlib import Path
+import numpy as np
 
 from dm_control import mjcf
 
@@ -8,6 +9,7 @@ from dm_control import mjcf
 # from mushroom_rl.utils.mujoco import *
 
 import loco_mujoco
+from loco_mujoco.core import ObservationType
 from loco_mujoco.environments import LocoEnv
 
 
@@ -126,7 +128,7 @@ class BaseHumanoid(LocoEnv):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups
 
-    def _has_fallen(self, obs, return_err_msg=False):
+    def _has_fallen_compat(self, obs, info, data, backend):
         """
         Checks if a model has fallen.
 
@@ -140,44 +142,78 @@ class BaseHumanoid(LocoEnv):
 
         """
 
-        pelvis_euler = self._get_from_obs(obs, ["q_pelvis_tilt", "q_pelvis_list", "q_pelvis_rotation"])
+        q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
+        q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
+        q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
+        q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
 
-        pelvis_height_condition = (obs[0] < -0.46) or (obs[0] > 0.1)
-        pelvis_tilt_condition = (pelvis_euler[0] < (-np.pi / 4.5)) or (pelvis_euler[0] > (np.pi / 12))
-        pelvis_list_condition = (pelvis_euler[1] < -np.pi / 12) or (pelvis_euler[1] > np.pi / 8)
-        pelvis_rotation_condition = (pelvis_euler[2] < (-np.pi / 9)) or (pelvis_euler[2] > (np.pi / 9))
+        pelvis_height_cond = backend.logical_or(backend.less(q_pelvis_y, -0.46),
+                                                backend.greater(q_pelvis_y, 0.1))
+        pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
+                                              backend.greater(q_pelvis_tilt, backend.pi / 12.0))
+        pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12.0),
+                                              backend.greater(q_pelvis_list, backend.pi / 8.0))
+        pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 9.0),
+                                                  backend.greater(q_pelvis_rotation, backend.pi / 9.0))
 
-        pelvis_condition = (pelvis_height_condition or pelvis_tilt_condition
-                            or pelvis_list_condition or pelvis_rotation_condition)
+        pelvis_condition = backend.logical_or(backend.logical_or(pelvis_height_cond, pelvis_tilt_cond),
+                                              backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
 
-        lumbar_euler = self._get_from_obs(obs, ["q_lumbar_extension", "q_lumbar_bending", "q_lumbar_rotation"])
+        q_lumbar_extension = self._get_from_obs(obs, "q_lumbar_extension")
+        q_lumbar_bending = self._get_from_obs(obs, "q_lumbar_bending")
+        q_lumbar_rotation = self._get_from_obs(obs, "q_lumbar_rotation")
 
-        lumbar_extension_condition = (lumbar_euler[0] < (-np.pi / 4)) or (lumbar_euler[0] > (np.pi / 10))
-        lumbar_bending_condition = (lumbar_euler[1] < -np.pi / 10) or (lumbar_euler[1] > np.pi / 10)
-        lumbar_rotation_condition = (lumbar_euler[2] < (-np.pi / 4.5)) or (lumbar_euler[2] > (np.pi / 4.5))
+        lumbar_extension_cond = backend.logical_or(backend.less(q_lumbar_extension, -backend.pi / 4.0),
+                                                   backend.greater(q_lumbar_extension, backend.pi / 10.0))
+        lumbar_bending_cond = backend.logical_or(backend.less(q_lumbar_bending, -backend.pi / 10.0),
+                                                 backend.greater(q_lumbar_bending, backend.pi / 10.0))
+        lumbar_rotation_cond = backend.logical_or(backend.less(q_lumbar_rotation, -backend.pi / 4.5),
+                                                  backend.greater(q_lumbar_rotation, backend.pi / 4.5))
 
-        lumbar_condition = (lumbar_extension_condition or lumbar_bending_condition or lumbar_rotation_condition)
+        lumbar_condition = backend.logical_or(lumbar_extension_cond,
+                                              backend.logical_or(lumbar_bending_cond, lumbar_rotation_cond))
+
+        return (backend.logical_or(pelvis_condition, lumbar_condition), pelvis_height_cond, pelvis_tilt_cond,
+                pelvis_list_cond, pelvis_rotation_cond, lumbar_extension_cond, lumbar_bending_cond,
+                lumbar_rotation_cond)
+
+    def _has_fallen(self, obs, info, data, return_err_msg=False):
+        """
+        Checks if a model has fallen.
+
+        Args:
+            obs (np.array): Current observation.
+            return_err_msg (bool): If True, an error message with violations is returned.
+
+        Returns:
+            True, if the model has fallen for the current observation, False otherwise.
+            Optionally an error message is returned.
+
+        """
+        (fallen_cond, pelvis_height_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond,
+         lumbar_extension_cond, lumbar_bending_cond, lumbar_rotation_cond) =\
+            self._has_fallen_compat(obs, info, data, backend=np)
 
         if return_err_msg:
             error_msg = ""
-            if pelvis_height_condition:
+            if pelvis_height_cond:
                 error_msg += "pelvis_height_condition violated.\n"
-            if pelvis_tilt_condition:
+            if pelvis_tilt_cond:
                 error_msg += "pelvis_tilt_condition violated.\n"
-            if pelvis_list_condition:
+            if pelvis_list_cond:
                 error_msg += "pelvis_list_condition violated.\n"
-            if pelvis_rotation_condition:
+            if pelvis_rotation_cond:
                 error_msg += "pelvis_rotation_condition violated.\n"
-            if lumbar_extension_condition:
+            if lumbar_extension_cond:
                 error_msg += "lumbar_extension_condition violated.\n"
-            if lumbar_bending_condition:
+            if lumbar_bending_cond:
                 error_msg += "lumbar_bending_condition violated.\n"
-            if lumbar_rotation_condition:
+            if lumbar_rotation_cond:
                 error_msg += "lumbar_rotation_condition violated.\n"
 
-            return pelvis_condition or lumbar_condition, error_msg
+            return fallen_cond, error_msg
         else:
-            return (pelvis_condition or lumbar_condition)
+            return fallen_cond
 
     def _get_grf_size(self):
         """

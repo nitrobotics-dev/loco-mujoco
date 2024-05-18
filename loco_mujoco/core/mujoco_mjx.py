@@ -95,6 +95,7 @@ class Mjx(Mujoco):
 
         mujoco.mj_resetData(self._model, self._data)
         data = mjx.put_data(self._model, self._data)
+        data = mjx.forward(self.sys, data)
 
         obs = self._mjx_create_observation(data)
         reward = 0.0

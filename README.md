@@ -20,7 +20,7 @@ enabling evaluation across a spectrum of difficulty levels.
 ✅ Easy to use with [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) or [Mushroom-RL](https://github.com/MushroomRL/mushroom-rl) interface \
 ✅ Many environments including humanoids and quadrupeds \
 ✅ Diverse set of datasets --> e.g., noisy motion capture or ground truth datasets with actions \
-✅ Wide spectrum spectrum of difficulty levels \
+✅ Wide spectrum of difficulty levels \
 ✅ Built-in domain randomization \
 ✅ Many baseline algorithms for quick benchmarking \
 ✅ [Documentation](https://loco-mujoco.readthedocs.io/)
@@ -41,11 +41,6 @@ or you do an editable installation by cloning this repository and then running:
 cd loco-mujoco
 pip install -e . 
 ```
-
-> [!NOTE]
-> We fixed the version of MuJoCo to 2.3.7 during installation since we found that there are slight 
-> differences in the simulation, which made testing very difficult. However, in practice, you can 
-> use any newer version of MuJoCo! Just install it after installing LocoMuJoCo.
 
 ### Download the Datasets
 After installing LocoMuJoCo, new commands for downloading the datasets will be setup for you.

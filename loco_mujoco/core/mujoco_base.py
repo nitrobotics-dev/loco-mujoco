@@ -117,6 +117,7 @@ class Mujoco:
     def reset(self, key):
         key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_forward(self._model, self._data)
         self._obs = self._create_observation(self._data)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         self._info["key"] = key

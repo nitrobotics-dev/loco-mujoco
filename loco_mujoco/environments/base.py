@@ -34,6 +34,8 @@ class LocoEnv(Mjx):
 
     """
 
+    mjx_enabled = False
+
     def __init__(self, xml_handles, action_spec, observation_spec, collision_groups=None, enable_mjx=False,
                  n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type=None, reward_params=None,
                  traj_params=None, random_start=True, fixed_start_conf=None, timestep=0.001,
@@ -325,7 +327,7 @@ class LocoEnv(Mjx):
             return deepcopy(self._dataset)
 
     def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, render=True,
-                        record=False, recorder_params=None, key=None):
+                        record=False, recorder_params=None, callback_class=None, key=None):
         """
         Plays a demo of the loaded trajectory by forcing the model
         positions to the ones in the trajectories at every step.
@@ -375,11 +377,14 @@ class LocoEnv(Mjx):
         for i in range(n_episodes):
             for j in range(n_steps_per_episode):
 
-                self._set_sim_state(self._data, np.array(sample))
+                if callback_class is None:
+                    self._set_sim_state(self._data, np.array(sample))
 
-                self._simulation_pre_step(self._data)
-                mujoco.mj_forward(self._model, self._data)
-                self._simulation_post_step(self._data)
+                    self._simulation_pre_step(self._data)
+                    mujoco.mj_forward(self._model, self._data)
+                    self._simulation_post_step(self._data)
+                else:
+                    callback_class(self._model, self._data, sample)
 
                 sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self._jax_trajectory,
                                                                              traj_no, subtraj_step_no)
@@ -545,6 +550,11 @@ class LocoEnv(Mjx):
             trajectories["split_points"] = np.concatenate([[0], np.squeeze(np.argwhere(last == 1) + 1)])
 
         return trajectories
+
+    def reload_model(self):
+        """ Reload all models from the xml_handles. """
+        self._model = self.load_model(self.xml_handle)
+        self._data = mujoco.MjData(self._model)
 
     @property
     def xml_handle(self):
@@ -878,6 +888,12 @@ class LocoEnv(Mjx):
             entries.append(self.obs_helper.obs_idx_map[key])
 
         return np.concatenate(entries) - 2
+
+    def _process_collision_groups(self, collision_groups):
+        if self.mjx_enabled:
+            super(LocoEnv, self)._process_collision_groups(collision_groups)
+        else:
+            super(Mjx, self)._process_collision_groups(collision_groups)
 
     def _len_qpos_qvel(self):
         """
