@@ -2,6 +2,7 @@ __version__ = '0.3.0'
 
 try:
 
+    from .core import Mujoco, Mjx
     from .environments import LocoEnv
 
     def get_all_task_names():
