@@ -1,7 +1,7 @@
 import time
 import jax
-from loco_mujoco.core import Mujoco, Mjx, ObservationType
-
+import numpy as np
+from loco_mujoco.core import Mujoco, Mjx, ObservationType, TestMjx
 
 # just some randomly chosen observations
 observation_spec = [("b_pelvis", "pelvis", ObservationType.BODY_POS),
@@ -21,7 +21,7 @@ action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
                "hip_rotation_l_actuator", "knee_angle_l_actuator", "ankle_angle_l_actuator"]
 
 # create env
-env = Mjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
+env = TestMjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
           actuation_spec=action_spec,
           observation_spec=observation_spec,
           horizon=1000,
@@ -29,9 +29,21 @@ env = Mjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
           gamma=0.99)
 
 action_dim = env.info.action_space.shape[0]
+global_key = jax.random.PRNGKey(165416)  # Random seed is explicit in JAX
+global_key, new_key = jax.random.split(global_key)
+env.reset(new_key)
+env.render()
+
+while True:
+    for i in range(500):
+        env.step(np.random.randn(action_dim))
+        env.render()
+    global_key, new_key = jax.random.split(global_key)
+    env.reset(new_key)
+
+
 
 LOGGING_FREQUENCY = 100000
-global_key = jax.random.PRNGKey(165416)  # Random seed is explicit in JAX
 keys = jax.random.split(global_key, env.info.n_envs + 1)
 global_key, env_keys = keys[0], keys[1:]
 

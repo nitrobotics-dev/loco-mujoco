@@ -29,6 +29,7 @@ class Mjx(Mujoco):
         # call base mujoco env
         super().__init__(**kwargs)
 
+        assert n_envs > 0, "Setting the number of environments smaller than or equal to 0 is not allowed."
         self._n_envs = n_envs
         self.sys = mjx.put_model(self._model)
         self.mjx_reset = jax.jit(jax.vmap(self._mjx_reset))
@@ -36,12 +37,6 @@ class Mjx(Mujoco):
 
         # add information to mdp_info
         self._mdp_info.mjx_env, self._mdp_info.n_envs = True, n_envs
-
-    def reset(self):
-        return self._reset(backend=np)
-
-    def step(self, action):
-        return self._step(action, backend=np)
 
     def _mjx_step(self, state: MjxState, action: jax.Array):
 
@@ -51,10 +46,10 @@ class Mjx(Mujoco):
         state = state.replace(done=jnp.zeros_like(state.done, dtype=bool))
 
         # preprocess action
-        action = self._preprocess_action(action, data, self.backend)
+        action = self._preprocess_action(action, data)
 
         # modify data *before* step if needed
-        data = self._simulation_pre_step(data, self.backend)
+        data = self._simulation_pre_step(data)
 
         # step in the environment using the action
         # todo: what is xs?
@@ -62,19 +57,19 @@ class Mjx(Mujoco):
                                init=data, xs=(), length=self._n_substeps)
 
         # modify data *after* step if needed
-        data = self._simulation_post_step(data, self.backend)
+        data = self._simulation_post_step(data)
 
         # create the observation
-        next_obs = self._create_observation(data, self.backend)
+        next_obs = self._create_observation(data)
 
         # modify the observation and the data if needed
-        next_obs, data = self._step_finalize(next_obs, data, self.backend)
+        next_obs, data = self._step_finalize(next_obs, data)
 
         # check if the next obs is an absorbing state
-        absorbing = self._is_absorbing(next_obs, data, self.backend)
+        absorbing = self._is_absorbing(next_obs, data)
 
         # calculate the reward
-        reward = self._reward(state.observation, action, next_obs, absorbing, data, self.backend)
+        reward = self._reward(state.observation, action, next_obs, absorbing, data)
 
         # check if done
         done = jnp.greater_equal(state.info["cur_step_in_episode"], self.info.horizon)
@@ -102,7 +97,7 @@ class Mjx(Mujoco):
         data = data.replace(qpos=qpos, qvel=qvel, ctrl=jnp.zeros(self.sys.nu))
         data = mjx.forward(self.sys, data)
 
-        obs = self._create_observation(data, self.backend)
+        obs = self._create_observation(data)
         # todo: activate this and add traj resetting
         #obs = self._modify_observation(obs)
         #obs, data = self.setup(obs, data)
@@ -110,7 +105,7 @@ class Mjx(Mujoco):
         reward = 0.0
         absorbing = False
         done = False
-        info = self._mjx_reset_info_dictionary(obs, data, self.backend, subkey=subkey)
+        info = self._mjx_reset_info_dictionary(obs, data, subkey=subkey)
 
         return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
                         first_data=data, final_observation=jnp.zeros_like(obs), info=info)
@@ -124,11 +119,11 @@ class Mjx(Mujoco):
         data = jax.tree.map(where_done, state.first_data, state.data)
         final_obs = where_done(state.observation, jnp.zeros_like(state.observation))
         state.info["cur_step_in_episode"] = where_done(0, state.info["cur_step_in_episode"])
-        new_obs = self._create_observation(data, self.backend)
+        new_obs = self._create_observation(data)
 
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
 
-    def _mjx_reset_info_dictionary(self, obs, data, backend, **kwargs):
+    def _mjx_reset_info_dictionary(self, obs, data, **kwargs):
         info = {"cur_step_in_episode": 0,
                 "final_observation": jnp.zeros_like(obs),
                 "final_info": {"cur_step_in_episode": 0},
@@ -136,7 +131,7 @@ class Mjx(Mujoco):
                 }
         return info
 
-    def _mjx_modify_info_dictionary(self, info, obs, data, backend):
+    def _mjx_modify_info_dictionary(self, info, obs, data):
         return info
 
     def mjx_render_trajectory(self, trajectory, height: int = 480, width: int = 640, camera=None):
@@ -164,10 +159,6 @@ class Mjx(Mujoco):
     @property
     def n_envs(self):
         return self._n_envs
-
-    @property
-    def backend(self):
-        return jnp
 
     @property
     def mjx_env(self):
@@ -201,16 +192,16 @@ if __name__ == "__main__":
 
     action_dim = env.info.action_space.shape[0]
 
-    env.reset()
-    env.render()
-
-    while True:
-        for i in range(500):
-            env.step(np.random.randn(action_dim))
-            env.render()
-        env.reset()
-
-    exit()
+    # env.reset()
+    # env.render()
+    #
+    # while True:
+    #     for i in range(500):
+    #         env.step(np.random.randn(action_dim))
+    #         env.render()
+    #     env.reset()
+    #
+    # exit()
 
     LOGGING_FREQUENCY = 100000
 

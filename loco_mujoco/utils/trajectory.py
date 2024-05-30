@@ -232,44 +232,44 @@ class Trajectory:
            self.split_points.append(self.split_points[-1] + len(self.trajectories[0][k]))
         self.split_points = np.array(self.split_points)
 
-    def reset_trajectory(self, substep_no=None, traj_no=None):
-        """
-        Resets the trajectory to a certain trajectory and a substep within that trajectory. If one of them is None,
-        they are set randomly.
-
-        Args:
-            substep_no (int, None): Starting point of the trajectory.
-                If None, the trajectory starts from a random point.
-            traj_no (int, None): Number of the trajectory to start from.
-                If None, it starts from a random trajectory
-
-        Returns:
-            The chosen (or randomly sampled) sample from a trajectory.
-
-        """
-
-        if traj_no is None:
-            self.traj_no = np.random.randint(0, self.number_of_trajectories)
-        else:
-            assert 0 <= traj_no <= self.number_of_trajectories
-            self.traj_no = traj_no
-
-        if substep_no is None:
-            self.subtraj_step_no = np.random.randint(0, self.trajectory_length)
-        else:
-            assert 0 <= substep_no <= self.trajectory_length
-            self.subtraj_step_no = substep_no
-
-        # choose a sub trajectory
-        self.subtraj = self._get_subtraj(self.traj_no)
-
-        # reset x and y to middle position
-        self.subtraj[0] -= self.subtraj[0][self.subtraj_step_no]
-        self.subtraj[1] -= self.subtraj[1][self.subtraj_step_no]
-
-        sample = [obs[self.subtraj_step_no] for obs in self.subtraj]
-
-        return sample
+    # def reset_trajectory_OLD(self, substep_no=None, traj_no=None):
+    #     """
+    #     Resets the trajectory to a certain trajectory and a substep within that trajectory. If one of them is None,
+    #     they are set randomly.
+    #
+    #     Args:
+    #         substep_no (int, None): Starting point of the trajectory.
+    #             If None, the trajectory starts from a random point.
+    #         traj_no (int, None): Number of the trajectory to start from.
+    #             If None, it starts from a random trajectory
+    #
+    #     Returns:
+    #         The chosen (or randomly sampled) sample from a trajectory.
+    #
+    #     """
+    #
+    #     if traj_no is None:
+    #         self.traj_no = np.random.randint(0, self.number_of_trajectories)
+    #     else:
+    #         assert 0 <= traj_no <= self.number_of_trajectories
+    #         self.traj_no = traj_no
+    #
+    #     if substep_no is None:
+    #         self.subtraj_step_no = np.random.randint(0, self.trajectory_length)
+    #     else:
+    #         assert 0 <= substep_no <= self.trajectory_length
+    #         self.subtraj_step_no = substep_no
+    #
+    #     # choose a sub trajectory
+    #     self.subtraj = self._get_subtraj(self.traj_no)
+    #
+    #     # reset x and y to middle position
+    #     self.subtraj[0] -= self.subtraj[0][self.subtraj_step_no]
+    #     self.subtraj[1] -= self.subtraj[1][self.subtraj_step_no]
+    #
+    #     sample = [obs[self.subtraj_step_no] for obs in self.subtraj]
+    #
+    #     return sample
 
     def check_if_trajectory_is_in_range(self, low, high, keys, j_idx, warn, clip_trajectory_to_joint_ranges):
 
@@ -299,13 +299,14 @@ class Trajectory:
                     if clip_trajectory_to_joint_ranges:
                         self._trajectory_files[k] = np.clip(self._trajectory_files[k], lows[k], highs[k])
 
-    def get_current_sample(self):
-        """
-        Returns the current sample in the trajectory.
 
-        """
-
-        return self._get_ith_sample_from_subtraj(self.subtraj_step_no)
+    # def get_current_sample(self):
+    #     """
+    #     Returns the current sample in the trajectory.
+    #
+    #     """
+    #
+    #     return self._get_ith_sample_from_subtraj(self.subtraj_step_no)
 
     def get_next_sample(self):
         """

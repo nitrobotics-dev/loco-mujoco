@@ -109,29 +109,23 @@ class Mujoco:
     def seed(self, seed):
         np.random.seed(seed)
 
-    def reset(self):
-        return self._reset(self.backend)
-
-    def _reset(self, backend):
+    def reset(self, key):
         mujoco.mj_resetData(self._model, self._data)
-        self._data = self._setup(self._data, self.backend)
-        self._obs = self._create_observation(self._data, backend)
-        self._info = self._reset_info_dictionary(self._obs, self._data, backend)
+        self._data = self._setup(self._data, key)
+        self._obs = self._create_observation(self._data)
+        self._info = self._reset_info_dictionary(self._obs, self._data)
         self._cur_step_in_episode = 0
-        return self._obs
+        return np.asarray(self._obs)
 
     def step(self, action):
-        return self._step(action, self.backend)
-
-    def _step(self, action, backend):
         cur_obs = self._obs.copy()
         cur_info = self._info.copy()
 
         # preprocess action (does nothing by default)
-        action = self._preprocess_action(action, self._data, self.backend)
+        action = self._preprocess_action(action, self._data)
 
         # modify obs and data, before stepping in the env (does nothing by default)
-        cur_obs, self._data = self._step_init(cur_obs, self._data, self.backend)
+        cur_obs, self._data = self._step_init(cur_obs, self._data)
 
         ctrl_action = None
 
@@ -142,33 +136,33 @@ class Mujoco:
                 self._data.ctrl[self._action_indices] = ctrl_action
 
             # modify data during simulation, before main step (does nothing by default)
-            self._data = self._simulation_pre_step(self._data, self.backend)
+            self._data = self._simulation_pre_step(self._data)
 
             # main mujoco step, runs the sim for n_substeps
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
             # modify data during simulation, after main step (does nothing by default)
-            self._data = self._simulation_pre_step(self._data, self.backend)
+            self._data = self._simulation_pre_step(self._data)
 
             # recompute the action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
-                cur_obs = self._create_observation(self._data, backend)
+                cur_obs = self._create_observation(self._data)
 
         # create the final observation
         if not self._recompute_action_per_step:
-            cur_obs = self._create_observation(self._data, backend)
+            cur_obs = self._create_observation(self._data)
 
         # modify obs and data, before stepping in the env (does nothing by default)
-        cur_obs, self._data = self._step_finalize(cur_obs, self._data, self.backend)
+        cur_obs, self._data = self._step_finalize(cur_obs, self._data)
 
         # check if the current state is an absorbing state
-        absorbing = self._is_absorbing(cur_obs, self._data, self.backend)
+        absorbing = self._is_absorbing(cur_obs, self._data)
 
         # calculate the reward
-        reward = self._reward(self._obs, action, cur_obs, absorbing, self._data, backend)
+        reward = self._reward(self._obs, action, cur_obs, absorbing, self._data)
 
         # create info (does nothing by default)
-        info = self._modify_info_dictionary(cur_info, cur_obs, self._data, backend)
+        info = self._modify_info_dictionary(cur_info, cur_obs, self._data)
 
         # calculate flag indicating whether this is the last obs before resetting
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
@@ -176,7 +170,7 @@ class Mujoco:
         self._obs = cur_obs
         self._cur_step_in_episode += 1
 
-        return cur_obs, reward, absorbing, done, info
+        return np.asarray(cur_obs), reward, absorbing, done, info
 
     def render(self, record=False):
         if self._viewer is None:
@@ -190,13 +184,16 @@ class Mujoco:
             del self._viewer
             self._viewer = None
 
-    def _setup(self, data, backend):
+    def get_all_observation_keys(self):
+        return (self._obs_dict.keys())
+
+    def _setup(self, data, key):
         return data
 
-    def _step_init(self, obs, data, backend):
+    def _step_init(self, obs, data):
         return obs, data
 
-    def _is_absorbing(self, obs, data, backend):
+    def _is_absorbing(self, obs, data):
         """
         Check whether the given state is an absorbing state or not.
 
@@ -209,19 +206,19 @@ class Mujoco:
         """
         return False
 
-    def _step_finalize(self, obs, data, backend):
+    def _step_finalize(self, obs, data):
         """
         Allows information to be accesed at the end of a step.
         """
         return obs, data
 
-    def _reset_info_dictionary(self, obs, data, backend, **kwargs):
+    def _reset_info_dictionary(self, obs, data, **kwargs):
         return {}
 
-    def _modify_info_dictionary(self, info, obs, data, backend):
+    def _modify_info_dictionary(self, info, obs, data):
         return info
 
-    def _preprocess_action(self, action, data, backend):
+    def _preprocess_action(self, action, data):
         """
         Compute a transformation of the action provided to the
         environment.
@@ -250,7 +247,7 @@ class Mujoco:
         """
         return action
 
-    def _simulation_pre_step(self, data, backend):
+    def _simulation_pre_step(self, data):
         """
         Allows information to be accesed and changed at every intermediate step
         before taking a step in the mujoco simulation.
@@ -264,7 +261,7 @@ class Mujoco:
         """
         return data
 
-    def _simulation_post_step(self, data, backend):
+    def _simulation_post_step(self, data):
         """
         Allows information to be accesed at every intermediate step
         after taking a step in the mujoco simulation.
@@ -381,29 +378,54 @@ class Mujoco:
             self._obs_dict[observation_name] = ObservationEntry(obs_ind, xml_name, obs_type_ind,
                                                                 dim, obs_min, obs_max, obs_type, mj_type)
 
-        self._obs_body_xpos_ind = self.backend.array(self._obs_body_xpos_ind, dtype=int)
-        self._obs_body_xquat_ind = self.backend.array(self._obs_body_xquat_ind, dtype=int)
-        self._obs_body_cvel_ind = self.backend.array(self._obs_body_cvel_ind, dtype=int)
-        self._obs_joint_qpos_ind = self.backend.array(self._obs_joint_qpos_ind, dtype=int)
-        self._obs_joint_qvel_ind = self.backend.array(self._obs_joint_qvel_ind, dtype=int)
-        self._obs_site_xpos_ind = self.backend.array(self._obs_site_xpos_ind, dtype=int)
-        self._obs_site_xmat_ind = self.backend.array(self._obs_site_xmat_ind, dtype=int)
+        self._obs_body_xpos_ind = jnp.array(self._obs_body_xpos_ind, dtype=int)
+        self._obs_body_xquat_ind = jnp.array(self._obs_body_xquat_ind, dtype=int)
+        self._obs_body_cvel_ind = jnp.array(self._obs_body_cvel_ind, dtype=int)
+        self._obs_joint_qpos_ind = jnp.array(self._obs_joint_qpos_ind, dtype=int)
+        self._obs_joint_qvel_ind = jnp.array(self._obs_joint_qvel_ind, dtype=int)
+        self._obs_site_xpos_ind = jnp.array(self._obs_site_xpos_ind, dtype=int)
+        self._obs_site_xmat_ind = jnp.array(self._obs_site_xmat_ind, dtype=int)
 
-    def _reward(self, obs, action, next_obs, absorbing, data, backend):
+        self._body_xpos_range = jnp.arange(0, jnp.size(self._obs_body_xpos_ind))
+        self._body_xquat_range = jnp.arange(jnp.size(self._obs_body_xpos_ind), jnp.size(self._obs_body_xquat_ind))
+        self._body_cvel_range = jnp.arange(jnp.size(self._obs_body_xquat_ind), jnp.size(self._obs_body_cvel_ind))
+        self._joint_qpos_range = jnp.arange(jnp.size(self._obs_body_cvel_ind), jnp.size(self._obs_joint_qpos_ind))
+        self._joint_qvel_range = jnp.arange(jnp.size(self._obs_joint_qpos_ind), jnp.size(self._obs_joint_qvel_ind))
+        self._site_xpos_range = jnp.arange(jnp.size(self._obs_joint_qvel_ind), jnp.size(self._obs_site_xpos_ind))
+        self._site_xmat_range = jnp.arange(jnp.size(self._obs_site_xpos_ind), jnp.size(self._obs_site_xmat_ind))
+
+    def _reward(self, obs, action, next_obs, absorbing, data):
         return 0.0
 
-    def _create_observation(self, data, backend):
+    def _create_observation(self, data):
 
-        obs = backend.concatenate(
-            [backend.ravel(data.xpos[self._obs_body_xpos_ind]),
-             backend.ravel(data.xquat[self._obs_body_xquat_ind]),
-             backend.ravel(data.cvel[self._obs_body_cvel_ind]),
-             backend.ravel(data.qpos[self._obs_joint_qpos_ind]),
-             backend.ravel(data.qvel[self._obs_joint_qvel_ind]),
-             backend.ravel(data.site_xpos[self._obs_site_xpos_ind]),
-             backend.ravel(data.site_xmat[self._obs_site_xmat_ind])])
+        obs = jnp.concatenate(
+            [jnp.ravel(data.xpos[self._obs_body_xpos_ind]),
+             jnp.ravel(data.xquat[self._obs_body_xquat_ind]),
+             jnp.ravel(data.cvel[self._obs_body_cvel_ind]),
+             jnp.ravel(data.qpos[self._obs_joint_qpos_ind]),
+             jnp.ravel(data.qvel[self._obs_joint_qvel_ind]),
+             jnp.ravel(data.site_xpos[self._obs_site_xpos_ind]),
+             jnp.ravel(data.site_xmat[self._obs_site_xmat_ind])])
 
         return obs
+
+    def _set_sim_state(self, sample):
+
+        # set the body pos
+        data.xpos[self._obs_body_xpos_ind] = sample[self._body_xpos_range]
+        # set the body orientation
+        data.xquat[self._obs_body_xquat_ind] = sample[self._body_xquat_range]
+        # set the body velocity
+        data.cvel[self._obs_body_cvel_ind] = sample[self._body_cvel_range]
+        # set the joint positions
+        data.qpos[self._obs_joint_qpos_ind] = sample[self._joint_qpos_range]
+        # set the joint velocities
+        data.qvel[self._obs_joint_qvel_ind] = sample[self._joint_qvel_range]
+        # set the site positions
+        data.site_xpos[self._obs_site_xpos_ind] = sample[self._site_xpos_range]
+        # set the site rotation
+        data.site_xmat[self._obs_site_xmat_ind] = sample[self._site_xmat_range]
 
     def _process_collision_groups(self, collision_groups):
         processed_collision_groups = {}
@@ -491,10 +513,6 @@ class Mujoco:
     @property
     def cur_step_in_episode(self):
         return self._cur_step_in_episode
-
-    @property
-    def backend(self):
-        return np
 
     @property
     def mjx_env(self):

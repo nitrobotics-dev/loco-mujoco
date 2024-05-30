@@ -1,3 +1,3 @@
-from .utils import MDPInfo, Box
+from .utils import MDPInfo, Box, VideoRecorder
 from .mujoco_base import Mujoco, ObservationType, ObservationEntry
-from .mujoco_mjx import Mjx
+from .mujoco_mjx import Mjx, TestMjx
