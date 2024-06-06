@@ -4,6 +4,9 @@ from copy import deepcopy
 import numpy as np
 from scipy import interpolate
 
+import jax
+import jax.numpy as jnp
+
 
 class Trajectory:
     """
@@ -231,6 +234,9 @@ class Trajectory:
         for k in range(self.number_of_trajectories):
            self.split_points.append(self.split_points[-1] + len(self.trajectories[0][k]))
         self.split_points = np.array(self.split_points)
+
+    def get_jax_trajectory(self):
+        return jnp.array(deepcopy(self.trajectories))
 
     # def reset_trajectory_OLD(self, substep_no=None, traj_no=None):
     #     """

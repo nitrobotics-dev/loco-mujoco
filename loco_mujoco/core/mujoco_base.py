@@ -1,3 +1,4 @@
+import types
 from enum import Enum
 from typing import List, Optional, Any, Dict
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ class ObservationType(Enum):
 
 @dataclass
 class ObservationEntry:
-    obs_ind: Optional[List[int]]
+    obs_ind: jnp.array
     xml_name: str
     obs_type_ind: int
     dim: int
@@ -53,6 +54,8 @@ class Mujoco:
         This is the base class for all Mujoco environments, CPU and MjX.
 
     """
+
+    _registered_envs = dict()
 
     def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, n_environments=1,
                  timestep=None, n_substeps=1, n_intermediate_steps=1,  collision_groups=None,
@@ -110,10 +113,11 @@ class Mujoco:
         np.random.seed(seed)
 
     def reset(self, key):
+        key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
         self._data = self._setup(self._data, key)
         self._obs = self._create_observation(self._data)
-        self._info = self._reset_info_dictionary(self._obs, self._data)
+        self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         self._cur_step_in_episode = 0
         return np.asarray(self._obs)
 
@@ -155,14 +159,14 @@ class Mujoco:
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data = self._step_finalize(cur_obs, self._data)
 
+        # create info (does nothing by default)
+        cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
+
         # check if the current state is an absorbing state
-        absorbing = self._is_absorbing(cur_obs, self._data)
+        absorbing = self._is_absorbing(cur_obs, cur_info, self._data)
 
         # calculate the reward
-        reward = self._reward(self._obs, action, cur_obs, absorbing, self._data)
-
-        # create info (does nothing by default)
-        info = self._modify_info_dictionary(cur_info, cur_obs, self._data)
+        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._data)
 
         # calculate flag indicating whether this is the last obs before resetting
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
@@ -170,7 +174,7 @@ class Mujoco:
         self._obs = cur_obs
         self._cur_step_in_episode += 1
 
-        return np.asarray(cur_obs), reward, absorbing, done, info
+        return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
     def render(self, record=False):
         if self._viewer is None:
@@ -185,7 +189,7 @@ class Mujoco:
             self._viewer = None
 
     def get_all_observation_keys(self):
-        return (self._obs_dict.keys())
+        return list(self._obs_dict.keys())
 
     def _setup(self, data, key):
         return data
@@ -193,7 +197,7 @@ class Mujoco:
     def _step_init(self, obs, data):
         return obs, data
 
-    def _is_absorbing(self, obs, data):
+    def _is_absorbing(self, obs, info, data):
         """
         Check whether the given state is an absorbing state or not.
 
@@ -208,14 +212,15 @@ class Mujoco:
 
     def _step_finalize(self, obs, data):
         """
-        Allows information to be accesed at the end of a step.
+        Allows information to be accessed at the end of a step.
         """
         return obs, data
 
-    def _reset_info_dictionary(self, obs, data, **kwargs):
-        return {}
+    def _reset_info_dictionary(self, obs, data, key):
+        info = {"key": key}
+        return info
 
-    def _modify_info_dictionary(self, info, obs, data):
+    def _update_info_dictionary(self, info, obs, data):
         return info
 
     def _preprocess_action(self, action, data):
@@ -249,9 +254,9 @@ class Mujoco:
 
     def _simulation_pre_step(self, data):
         """
-        Allows information to be accesed and changed at every intermediate step
+        Allows information to be accessed and changed at every intermediate step
         before taking a step in the mujoco simulation.
-        Can be usefull to apply an external force/torque to the specified bodies.
+        Can be useful to apply an external force/torque to the specified bodies.
 
         ex: apply a force over X to the torso:
         force = [200, 0, 0]
@@ -263,9 +268,9 @@ class Mujoco:
 
     def _simulation_post_step(self, data):
         """
-        Allows information to be accesed at every intermediate step
+        Allows information to be accessed at every intermediate step
         after taking a step in the mujoco simulation.
-        Can be usefull to average forces over all intermediate steps.
+        Can be useful to average forces over all intermediate steps.
 
         """
         return data
@@ -299,14 +304,14 @@ class Mujoco:
 
     def _build_obs_dict(self, observation_spec, model, data):
 
-        self._obs_dict = dict()
-        self._obs_body_xpos_ind = []
-        self._obs_body_xquat_ind = []
-        self._obs_body_cvel_ind = []
-        self._obs_joint_qpos_ind = []
-        self._obs_joint_qvel_ind = []
-        self._obs_site_xpos_ind = []
-        self._obs_site_xmat_ind = []
+        obs_dict = dict()
+        self._data_body_xpos_ind = []
+        self._data_body_xquat_ind = []
+        self._data_body_cvel_ind = []
+        self._data_joint_qpos_ind = []
+        self._data_joint_qvel_ind = []
+        self._data_site_xpos_ind = []
+        self._data_site_xmat_ind = []
 
         jnt_name2id = dict()
         jnt_name2type = dict()
@@ -323,19 +328,19 @@ class Mujoco:
                 dim = len(data.body(xml_name).xpos)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.body(xml_name).id
-                self._obs_body_xpos_ind.append(obs_type_ind)
+                self._data_body_xpos_ind.append(obs_type_ind)
             elif obs_type == ObservationType.BODY_VEL:
                 mj_type = mujoco.mjtObj.mjOBJ_BODY
                 dim = len(data.body(xml_name).cvel)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.body(xml_name).id
-                self._obs_body_cvel_ind.append(obs_type_ind)
+                self._data_body_cvel_ind.append(obs_type_ind)
             elif obs_type == ObservationType.BODY_ROT:
                 mj_type = mujoco.mjtObj.mjOBJ_BODY
                 dim = len(data.body(xml_name).xquat)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.body(xml_name).id
-                self._obs_body_xquat_ind.append(obs_type_ind)
+                self._data_body_xquat_ind.append(obs_type_ind)
             elif obs_type == ObservationType.JOINT_POS:
                 mj_type = mujoco.mjtObj.mjOBJ_JOINT
                 dim = len(data.joint(xml_name).qpos)
@@ -346,19 +351,19 @@ class Mujoco:
                     # note: free joints do not have limits
                     obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.joint(xml_name).id
-                self._obs_joint_qpos_ind.append(obs_type_ind)
+                self._data_joint_qpos_ind.append(obs_type_ind)
             elif obs_type == ObservationType.JOINT_VEL:
                 mj_type = mujoco.mjtObj.mjOBJ_JOINT
                 dim = len(data.joint(xml_name).qvel)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.joint(xml_name).id
-                self._obs_joint_qvel_ind.append(obs_type_ind)
+                self._data_joint_qvel_ind.append(obs_type_ind)
             elif obs_type == ObservationType.SITE_POS:
                 mj_type = mujoco.mjtObj.mjOBJ_SITE
                 dim = len(data.site(xml_name).xpos)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.site(xml_name).id
-                self._obs_site_xpos_ind.append(obs_type_ind)
+                self._data_site_xpos_ind.append(obs_type_ind)
             elif obs_type == ObservationType.SITE_ROT:
                 # Sites don't have rotation quaternion for some reason...
                 # x_mat is rotation matrix with shape (9,)
@@ -366,66 +371,83 @@ class Mujoco:
                 dim = len(data.site(xml_name).xmat)
                 obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
                 obs_type_ind = data.site(xml_name).id
-                self._obs_site_xmat_ind.append(obs_type_ind)
+                self._data_site_xmat_ind.append(obs_type_ind)
             else:
                 raise ValueError
 
             obs_ind = [j for j in range(i, i + dim)]
             i += dim
-            if observation_name in self._obs_dict.keys():
+            if observation_name in obs_dict.keys():
                 raise KeyError("Duplicate keys are not allowed. Key: ", observation_name)
 
-            self._obs_dict[observation_name] = ObservationEntry(obs_ind, xml_name, obs_type_ind,
-                                                                dim, obs_min, obs_max, obs_type, mj_type)
+            obs_dict[observation_name] = ObservationEntry(jnp.array(obs_ind),
+                                                          xml_name, obs_type_ind,
+                                                          dim, obs_min, obs_max, obs_type, mj_type)
 
-        self._obs_body_xpos_ind = jnp.array(self._obs_body_xpos_ind, dtype=int)
-        self._obs_body_xquat_ind = jnp.array(self._obs_body_xquat_ind, dtype=int)
-        self._obs_body_cvel_ind = jnp.array(self._obs_body_cvel_ind, dtype=int)
-        self._obs_joint_qpos_ind = jnp.array(self._obs_joint_qpos_ind, dtype=int)
-        self._obs_joint_qvel_ind = jnp.array(self._obs_joint_qvel_ind, dtype=int)
-        self._obs_site_xpos_ind = jnp.array(self._obs_site_xpos_ind, dtype=int)
-        self._obs_site_xmat_ind = jnp.array(self._obs_site_xmat_ind, dtype=int)
+        # create a read-only dict (obs_dict is used inside jitted functions, so we want to prohibit modifications to it)
+        self._obs_dict = types.MappingProxyType(obs_dict)
 
-        self._body_xpos_range = jnp.arange(0, jnp.size(self._obs_body_xpos_ind))
-        self._body_xquat_range = jnp.arange(jnp.size(self._obs_body_xpos_ind), jnp.size(self._obs_body_xquat_ind))
-        self._body_cvel_range = jnp.arange(jnp.size(self._obs_body_xquat_ind), jnp.size(self._obs_body_cvel_ind))
-        self._joint_qpos_range = jnp.arange(jnp.size(self._obs_body_cvel_ind), jnp.size(self._obs_joint_qpos_ind))
-        self._joint_qvel_range = jnp.arange(jnp.size(self._obs_joint_qpos_ind), jnp.size(self._obs_joint_qvel_ind))
-        self._site_xpos_range = jnp.arange(jnp.size(self._obs_joint_qvel_ind), jnp.size(self._obs_site_xpos_ind))
-        self._site_xmat_range = jnp.arange(jnp.size(self._obs_site_xpos_ind), jnp.size(self._obs_site_xmat_ind))
+        ranges = [0, len(self._data_body_xpos_ind)]
+        ranges.append(len(self._data_body_xquat_ind) + ranges[-1])
+        ranges.append(len(self._data_body_cvel_ind) + ranges[-1])
+        ranges.append(len(self._data_joint_qpos_ind) + ranges[-1])
+        ranges.append(len(self._data_joint_qvel_ind) + ranges[-1])
+        ranges.append(len(self._data_site_xpos_ind) + ranges[-1])
+        ranges.append(len(self._data_site_xmat_ind) + ranges[-1])
 
-    def _reward(self, obs, action, next_obs, absorbing, data):
+        self._data_body_xpos_ind = jnp.array(self._data_body_xpos_ind, dtype=int)
+        self._data_body_xquat_ind = jnp.array(self._data_body_xquat_ind, dtype=int)
+        self._data_body_cvel_ind = jnp.array(self._data_body_cvel_ind, dtype=int)
+        self._data_joint_qpos_ind = jnp.array(self._data_joint_qpos_ind, dtype=int)
+        self._data_joint_qvel_ind = jnp.array(self._data_joint_qvel_ind, dtype=int)
+        self._data_site_xpos_ind = jnp.array(self._data_site_xpos_ind, dtype=int)
+        self._data_site_xmat_ind = jnp.array(self._data_site_xmat_ind, dtype=int)
+
+        self._body_xpos_range = jnp.arange(ranges[0], ranges[1])
+        self._body_xquat_range = jnp.arange(ranges[1], ranges[2])
+        self._body_cvel_range = jnp.arange(ranges[2], ranges[3])
+        self._joint_qpos_range = jnp.arange(ranges[3], ranges[4])
+        self._joint_qvel_range = jnp.arange(ranges[4], ranges[5])
+        self._site_xpos_range = jnp.arange(ranges[5], ranges[6])
+        self._site_xmat_range = jnp.arange(ranges[6], ranges[7])
+
+    def _reward(self, obs, action, next_obs, absorbing, info, data):
         return 0.0
 
     def _create_observation(self, data):
+        return self._create_observation_compat(data, np)
 
-        obs = jnp.concatenate(
-            [jnp.ravel(data.xpos[self._obs_body_xpos_ind]),
-             jnp.ravel(data.xquat[self._obs_body_xquat_ind]),
-             jnp.ravel(data.cvel[self._obs_body_cvel_ind]),
-             jnp.ravel(data.qpos[self._obs_joint_qpos_ind]),
-             jnp.ravel(data.qvel[self._obs_joint_qvel_ind]),
-             jnp.ravel(data.site_xpos[self._obs_site_xpos_ind]),
-             jnp.ravel(data.site_xmat[self._obs_site_xmat_ind])])
+    def _create_observation_compat(self, data, backend):
+
+        obs = backend.concatenate(
+            [backend.ravel(data.xpos[self._data_body_xpos_ind]),
+             backend.ravel(data.xquat[self._data_body_xquat_ind]),
+             backend.ravel(data.cvel[self._data_body_cvel_ind]),
+             backend.ravel(data.qpos[self._data_joint_qpos_ind]),
+             backend.ravel(data.qvel[self._data_joint_qvel_ind]),
+             backend.ravel(data.site_xpos[self._data_site_xpos_ind]),
+             backend.ravel(data.site_xmat[self._data_site_xmat_ind])])
 
         return obs
 
-    def _set_sim_state(self, sample):
+    def _set_sim_state(self, data, sample):
 
         # set the body pos
-        data.xpos[self._obs_body_xpos_ind] = sample[self._body_xpos_range]
+        data.xpos[self._data_body_xpos_ind, :] = sample[self._body_xpos_range].reshape(-1, 3)
         # set the body orientation
-        data.xquat[self._obs_body_xquat_ind] = sample[self._body_xquat_range]
+        data.xquat[self._data_body_xquat_ind, :] = sample[self._body_xquat_range].reshape(-1, 4)
         # set the body velocity
-        data.cvel[self._obs_body_cvel_ind] = sample[self._body_cvel_range]
+        data.cvel[self._data_body_cvel_ind, :] = sample[self._body_cvel_range].reshape(-1, 6)
         # set the joint positions
-        data.qpos[self._obs_joint_qpos_ind] = sample[self._joint_qpos_range]
+        data.qpos[self._data_joint_qpos_ind] = sample[self._joint_qpos_range]
         # set the joint velocities
-        data.qvel[self._obs_joint_qvel_ind] = sample[self._joint_qvel_range]
+        data.qvel[self._data_joint_qvel_ind] = sample[self._joint_qvel_range]
         # set the site positions
-        data.site_xpos[self._obs_site_xpos_ind] = sample[self._site_xpos_range]
+        data.site_xpos[self._data_site_xpos_ind, :] = sample[self._site_xpos_range].reshape(-1, 3)
         # set the site rotation
-        data.site_xmat[self._obs_site_xmat_ind] = sample[self._site_xmat_range]
+        data.site_xmat[self._data_site_xmat_ind, :] = sample[self._site_xmat_range].reshape(-1, 9)
+
+        return data
 
     def _process_collision_groups(self, collision_groups):
         processed_collision_groups = {}
@@ -552,3 +574,56 @@ class Mujoco:
     @property
     def dt(self):
         return self._timestep * self._n_intermediate_steps * self._n_substeps
+
+    @classmethod
+    def register(cls):
+        """
+        Register an environment in the environment list.
+
+        """
+        env_name = cls.__name__
+
+        if env_name not in Mujoco._registered_envs:
+            Mujoco._registered_envs[env_name] = cls
+
+    @staticmethod
+    def list_registered():
+        """
+        List registered environments.
+
+        Returns:
+             The list of the registered environments.
+
+        """
+        return list(Mujoco._registered_envs.keys())
+
+    @staticmethod
+    def make(env_name, *args, **kwargs):
+        """
+        Generate an environment given an environment name and parameters.
+        The environment is created using the generate method, if available. Otherwise, the constructor is used.
+        The generate method has a simpler interface than the constructor, making it easier to generate a standard
+        version of the environment. If the environment name contains a '.' separator, the string is splitted, the first
+        element is used to select the environment and the other elements are passed as positional parameters.
+
+        Args:
+            env_name (str): Name of the environment,
+            *args: positional arguments to be provided to the environment generator;
+            **kwargs: keyword arguments to be provided to the environment generator.
+
+        Returns:
+            An instance of the constructed environment.
+
+        """
+
+        if '.' in env_name:
+            env_data = env_name.split('.')
+            env_name = env_data[0]
+            args = env_data[1:] + list(args)
+
+        env = Mujoco._registered_envs[env_name]
+
+        if hasattr(env, 'generate'):
+            return env.generate(*args, **kwargs)
+        else:
+            return env(*args, **kwargs)

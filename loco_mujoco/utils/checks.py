@@ -1,7 +1,7 @@
 
 
 def check_validity_task_mode_dataset(env_name, task=None, mode=None, dataset_type=None,
-                                     valid_tasks=None, valid_modes=None, valid_dataset_types=None, non_combineable=None):
+                                     valid_tasks=None, valid_modes=None, valid_dataset_types=None, non_combinable=None):
     """
     Checks if the chosen environment configuration is valid for the environment generator.
     If some of the args are None, they won't be checked.
@@ -50,8 +50,8 @@ def check_validity_task_mode_dataset(env_name, task=None, mode=None, dataset_typ
     elif dataset_type is not None and dataset_type not in valid_dataset_types:
         raise ValueError(f"Dataset type \"{dataset_type}\" does not exit in the environment {env_name}. "
                          f"Please, choose from {valid_dataset_types}. {example_msg}")
-    elif non_combineable is not None:
-        for nc in non_combineable:
+    elif non_combinable is not None:
+        for nc in non_combinable:
             bad_t, bad_m, bad_dt = nc
             if (task == bad_t or bad_t is None) and (mode == bad_m or bad_m is None)\
                     and (dataset_type == bad_dt or bad_dt is None):
@@ -63,7 +63,7 @@ def check_validity_task_mode_dataset(env_name, task=None, mode=None, dataset_typ
                 if dataset_type is not None:
                     msg += f" and dataset type \"{dataset_type}\""
                 example_msg += "\n\nHere are the combinations that are NOT allowed:"
-                for nc_msg in non_combineable:
+                for nc_msg in non_combinable:
                     example_msg += f"\n{env_name}"
                     if nc_msg[0] is not None:
                         example_msg += f".{nc_msg[0]}"
@@ -72,5 +72,5 @@ def check_validity_task_mode_dataset(env_name, task=None, mode=None, dataset_typ
                     if nc_msg[2] is not None:
                         example_msg += f".{nc_msg[2]}"
 
-                raise ValueError(msg + f" are not combineable for "
+                raise ValueError(msg + f" are not combinable for "
                                  f"the environment {env_name}. {example_msg}")

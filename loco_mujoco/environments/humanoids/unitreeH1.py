@@ -1,10 +1,12 @@
 from pathlib import Path
 from copy import deepcopy
+
+import numpy as np
 from dm_control import mjcf
 
 from mushroom_rl.utils.running_stats import *
-from mushroom_rl.utils.mujoco import *
 
+from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
@@ -232,6 +234,8 @@ class UnitreeH1(BaseRobotHumanoid):
                                      data_types=["real", "perfect"],
                                      non_combinable=[("carry", None, "perfect")])
 
+    mjx_enabled = False
+
     def __init__(self, disable_arms=True, disable_back_joint=False, hold_weight=False,
                  weight_mass=None, **kwargs):
         """
@@ -249,9 +253,7 @@ class UnitreeH1(BaseRobotHumanoid):
 
         observation_spec = self._get_observation_specification()
 
-        collision_groups = [("floor", ["floor"]),
-                            ("foot_r", ["right_foot"]),
-                            ("foot_l", ["left_foot"])]
+        collision_groups = self._get_collision_groups()
 
         self._hidable_obs = ("positions", "velocities", "foot_forces", "weight")
 
@@ -262,8 +264,13 @@ class UnitreeH1(BaseRobotHumanoid):
         self._weight_mass = weight_mass
         self._valid_weights = [0.1, 1.0, 5.0, 10.0]
 
+        xml_handles = []
+        xml_handle = mjcf.from_path(xml_path)
+
+        if self.mjx_enabled:
+            xml_handle = self._modify_xml_for_mjx(xml_handle)
+
         if disable_arms or hold_weight:
-            xml_handle = mjcf.from_path(xml_path)
 
             if disable_arms or disable_back_joint:
                 joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_xml_modifications()
@@ -276,7 +283,6 @@ class UnitreeH1(BaseRobotHumanoid):
             if disable_arms and not hold_weight:
                 xml_handle = self._reorient_arms(xml_handle)
 
-            xml_handles = []
             if hold_weight and weight_mass is not None:
                 color_red = np.array([1.0, 0.0, 0.0, 1.0])
                 xml_handle = self._add_weight(xml_handle, weight_mass, color_red)
@@ -289,11 +295,11 @@ class UnitreeH1(BaseRobotHumanoid):
                     xml_handles.append(current_xml_handle)
             else:
                 xml_handles.append(xml_handle)
-
         else:
-            xml_handles = mjcf.from_path(xml_path)
+            xml_handles.append(xml_handle)
 
-        super().__init__(xml_handles, action_spec, observation_spec, collision_groups, **kwargs)
+        super().__init__(xml_handles, action_spec, observation_spec, collision_groups, enable_mjx=self.mjx_enabled,
+                         **kwargs)
 
     def _get_ground_forces(self):
         """
@@ -344,7 +350,13 @@ class UnitreeH1(BaseRobotHumanoid):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
-    def _has_fallen(self, obs, return_err_msg=False):
+    def _get_collision_groups(self):
+        collision_groups = [("floor", ["floor"]),
+                            ("foot_r", ["right_foot"]),
+                            ("foot_l", ["left_foot"])]
+        return collision_groups
+
+    def _has_fallen(self, obs, info, data, return_err_msg=True):
         """
         Checks if a model has fallen.
 
@@ -355,35 +367,56 @@ class UnitreeH1(BaseRobotHumanoid):
         Returns:
             True, if the model has fallen for the current observation, False otherwise.
             Optionally an error message is returned.
-
         """
 
-        pelvis_euler = self._get_from_obs(obs, ["q_pelvis_tilt", "q_pelvis_list", "q_pelvis_rotation"])
-        pelvis_y_condition = (obs[0] < -0.3) or (obs[0] > 0.1)
-        pelvis_tilt_condition = (pelvis_euler[0] < (-np.pi / 4.5)) or (pelvis_euler[0] > (np.pi / 12))
-        pelvis_list_condition = (pelvis_euler[1] < -np.pi / 12) or (pelvis_euler[1] > np.pi / 8)
-        pelvis_rotation_condition = (pelvis_euler[2] < (-np.pi / 8)) or (pelvis_euler[2] > (np.pi / 8))
-        pelvis_condition = (pelvis_y_condition or pelvis_tilt_condition or
-                            pelvis_list_condition or pelvis_rotation_condition)
+        pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond = (
+            self._has_fallen_compat(obs, info, data, np))
 
         if return_err_msg:
             error_msg = ""
-            if pelvis_y_condition:
+            if pelvis_y_cond:
                 error_msg += "pelvis_y_condition violated.\n"
-            elif pelvis_tilt_condition:
+            elif pelvis_tilt_cond:
                 error_msg += "pelvis_tilt_condition violated.\n"
-            elif pelvis_list_condition:
+            elif pelvis_list_cond:
                 error_msg += "pelvis_list_condition violated.\n"
-            elif pelvis_rotation_condition:
+            elif pelvis_rotation_cond:
                 error_msg += "pelvis_rotation_condition violated.\n"
-
-            return pelvis_condition, error_msg
+            print(error_msg)
+            return pelvis_cond
         else:
 
-            return pelvis_condition
+            return pelvis_cond
 
-    @staticmethod
-    def generate(task="walk", dataset_type="real", **kwargs):
+    def _has_fallen_compat(self, obs, info, data, backend):
+
+        q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
+        q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
+        q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
+        q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
+
+        pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
+                                           backend.greater(q_pelvis_y, 0.1))
+        pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -np.pi / 4.5),
+                                              backend.greater(q_pelvis_tilt, np.pi / 12))
+        pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -np.pi / 12),
+                                              backend.greater(q_pelvis_list, np.pi / 8))
+        pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -np.pi / 8),
+                                                  backend.greater(q_pelvis_rotation, np.pi / 8))
+
+        pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
+                                         backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
+
+        # pelvis_y_cond = (obs[0] < -0.3) or (obs[0] > 0.1)
+        # pelvis_tilt_cond = (q_pelvis_tilt < (-np.pi / 4.5)) or (q_pelvis_tilt > (np.pi / 12))
+        # pelvis_list_cond = (q_pelvis_list < -np.pi / 12) or (q_pelvis_list > np.pi / 8)
+        # pelvis_rotation_cond = (q_pelvis_rotation < (-np.pi / 8)) or (q_pelvis_rotation > (np.pi / 8))
+        # pelvis_cond = (pelvis_y_cond or pelvis_tilt_cond or pelvis_list_cond or pelvis_rotation_cond)
+
+        return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
+
+    @classmethod
+    def generate(cls, task="walk", dataset_type="real", **kwargs):
         """
         Returns an environment corresponding to the specified task.
 
@@ -418,7 +451,7 @@ class UnitreeH1(BaseRobotHumanoid):
             else:
                 path = "datasets/humanoids/perfect/unitreeh1_walk/perfect_expert_dataset_det.npz"
 
-        return BaseRobotHumanoid.generate(UnitreeH1, path, task, dataset_type,
+        return BaseRobotHumanoid.generate(cls, path, task, dataset_type,
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod
@@ -466,6 +499,10 @@ class UnitreeH1(BaseRobotHumanoid):
         left_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
 
         return xml_handle
+
+    @staticmethod
+    def _modify_xml_for_mjx(xml_handle):
+        raise NotImplementedError
 
     @staticmethod
     def _get_observation_specification():

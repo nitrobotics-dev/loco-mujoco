@@ -46,10 +46,10 @@ class Mjx(Mujoco):
         state = state.replace(done=jnp.zeros_like(state.done, dtype=bool))
 
         # preprocess action
-        action = self._preprocess_action(action, data)
+        action = self._mjx_preprocess_action(action, data)
 
         # modify data *before* step if needed
-        data = self._simulation_pre_step(data)
+        data = self._mjx_simulation_pre_step(data)
 
         # step in the environment using the action
         # todo: what is xs?
@@ -57,28 +57,29 @@ class Mjx(Mujoco):
                                init=data, xs=(), length=self._n_substeps)
 
         # modify data *after* step if needed
-        data = self._simulation_post_step(data)
+        data = self._mjx_simulation_post_step(data)
 
         # create the observation
-        next_obs = self._create_observation(data)
+        cur_obs = self._mjx_create_observation(data)
 
         # modify the observation and the data if needed
-        next_obs, data = self._step_finalize(next_obs, data)
+        cur_obs, data = self._mjx_step_finalize(cur_obs, data)
+
+        # create info
+        cur_info = self._mjx_update_info_dictionary(state.info, cur_obs, data)
 
         # check if the next obs is an absorbing state
-        absorbing = self._is_absorbing(next_obs, data)
+        absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data)
 
         # calculate the reward
-        reward = self._reward(state.observation, action, next_obs, absorbing, data)
+        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, data)
 
         # check if done
         done = jnp.greater_equal(state.info["cur_step_in_episode"], self.info.horizon)
         done = jnp.logical_or(done, absorbing)
 
-        #info = self._create_info_dictionary(next_obs)
-        state.info["cur_step_in_episode"] += 1
-
-        state = state.replace(data=data, observation=next_obs, reward=reward, absorbing=absorbing, done=done)
+        state = state.replace(data=data, observation=cur_obs, reward=reward,
+                              absorbing=absorbing, done=done, info=cur_info)
 
         # reset states that are done
         state = self._mjx_reset_in_step(state)
@@ -97,7 +98,7 @@ class Mjx(Mujoco):
         data = data.replace(qpos=qpos, qvel=qvel, ctrl=jnp.zeros(self.sys.nu))
         data = mjx.forward(self.sys, data)
 
-        obs = self._create_observation(data)
+        obs = self._mjx_create_observation(data)
         # todo: activate this and add traj resetting
         #obs = self._modify_observation(obs)
         #obs, data = self.setup(obs, data)
@@ -105,7 +106,7 @@ class Mjx(Mujoco):
         reward = 0.0
         absorbing = False
         done = False
-        info = self._mjx_reset_info_dictionary(obs, data, subkey=subkey)
+        info = self._mjx_reset_info_dictionary(obs, data, subkey)
 
         return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
                         first_data=data, final_observation=jnp.zeros_like(obs), info=info)
@@ -119,20 +120,64 @@ class Mjx(Mujoco):
         data = jax.tree.map(where_done, state.first_data, state.data)
         final_obs = where_done(state.observation, jnp.zeros_like(state.observation))
         state.info["cur_step_in_episode"] = where_done(0, state.info["cur_step_in_episode"])
-        new_obs = self._create_observation(data)
+        new_obs = self._mjx_create_observation(data)
 
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
 
-    def _mjx_reset_info_dictionary(self, obs, data, **kwargs):
+    def _mjx_create_observation(self, data):
+        return self._create_observation_compat(data, jnp)
+
+    def _mjx_reset_info_dictionary(self, obs, data, key):
         info = {"cur_step_in_episode": 0,
                 "final_observation": jnp.zeros_like(obs),
                 "final_info": {"cur_step_in_episode": 0},
-                "key": kwargs["subkey"]
+                "key": key
                 }
         return info
 
-    def _mjx_modify_info_dictionary(self, info, obs, data):
+    def _mjx_update_info_dictionary(self, info, obs, data):
+        info["cur_step_in_episode"] += 1
         return info
+
+    def _mjx_reward(self, obs, action, next_obs, absorbing, info, data):
+        return 0.0
+
+    def _mjx_is_absorbing(self, obs, info, data):
+        return False
+
+    def _mjx_simulation_pre_step(self, data):
+        return data
+
+    def _mjx_simulation_post_step(self, data):
+        return data
+
+    def _mjx_preprocess_action(self, action, data):
+        return action
+
+    def _mjx_step_finalize(self, obs, data):
+        """
+        Allows information to be accessed at the end of a step.
+        """
+        return obs, data
+
+    def _mjx_set_sim_state(self, data, sample):
+
+        # set the body pos
+        data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3))
+        # set the body orientation
+        data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4))
+        # set the body velocity
+        data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6))
+        # set the joint positions
+        data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range])
+        # set the joint velocities
+        data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range])
+        # set the site positions
+        data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3))
+        # set the site rotation
+        data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9))
+
+        return data
 
     def mjx_render_trajectory(self, trajectory, height: int = 480, width: int = 640, camera=None):
 
@@ -153,7 +198,7 @@ class Mjx(Mujoco):
         return get_image(trajectory)
 
     def _process_collision_groups(self, collision_groups):
-        if collision_groups is not None:
+        if collision_groups is not None and len(collision_groups) > 0:
             raise ValueError("Collisions groups are currently not supported in Mjx.")
 
     @property
@@ -165,86 +210,86 @@ class Mjx(Mujoco):
         return True
 
 
-if __name__ == "__main__":
-
-
-    observation_spec = [("b_pelvis", "pelvis", ObservationType.BODY_POS),
-                        ("q_pelvis_tx", "pelvis_tx", ObservationType.JOINT_POS),
-                        ("q_l_arm_shy", "l_arm_shy", ObservationType.JOINT_POS),
-                        ("q_l_arm_shx", "l_arm_shx", ObservationType.JOINT_POS),
-                        ("q_l_arm_shz", "l_arm_shz", ObservationType.JOINT_POS),
-                        ("q_left_elbow", "left_elbow", ObservationType.JOINT_POS),
-                        ("q_r_arm_shy", "r_arm_shy", ObservationType.JOINT_POS)]
-
-    action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
-                   "l_arm_shz_actuator", "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
-                   "r_arm_shz_actuator", "right_elbow_actuator", "hip_flexion_r_actuator",
-                   "hip_adduction_r_actuator", "hip_rotation_r_actuator", "knee_angle_r_actuator",
-                   "ankle_angle_r_actuator", "hip_flexion_l_actuator", "hip_adduction_l_actuator",
-                   "hip_rotation_l_actuator", "knee_angle_l_actuator", "ankle_angle_l_actuator"]
-
-    env = Mjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
-              actuation_spec=action_spec,
-              observation_spec=observation_spec,
-              horizon=1000,
-              n_envs=4000,
-              gamma=0.99)
-
-    action_dim = env.info.action_space.shape[0]
-
-    # env.reset()
-    # env.render()
-    #
-    # while True:
-    #     for i in range(500):
-    #         env.step(np.random.randn(action_dim))
-    #         env.render()
-    #     env.reset()
-    #
-    # exit()
-
-    LOGGING_FREQUENCY = 100000
-
-    def sample():
-        key = random.PRNGKey(758493)  # Random seed is explicit in JAX
-        action = random.uniform(key, shape=(env.info.n_envs, env.info.action_space.shape[0]))
-        return action
-
-
-    sample_X = jax.jit(sample)
-    ###
-    import time
-
-    previous_time = time.time()
-    step = 0
-    ###
-
-    keys = jax.random.PRNGKey(165416)  # Random seed is explicit in JAX
-    keys = jax.random.split(keys, env.info.n_envs + 1)
-    keys, env_keys = keys[0], keys[1:]
-
-    state = env.mjx_reset(env_keys)
-    i = 0
-    #rollout = []
-    while True:
-        # action = np.random.uniform(env.action_space.low, env.action_space.high, size=(env.nr_envs, env.action_space.shape[0]))
-        key = random.PRNGKey(758493)  # Random seed is explicit in JAX
-        action = random.uniform(key, shape=(env.n_envs, env.info.action_space.shape[0]))
-        #action = sample_X()
-        state = env.mjx_step(state, action)
-
-        #rollout.append(state)
-
-        #print(i)
-        i += 1
-        # print(observation)
-
-        ###
-        step += env.info.n_envs
-        if step % LOGGING_FREQUENCY == 0:
-            current_time = time.time()
-            print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second")
-            previous_time = current_time
+# if __name__ == "__main__":
+#
+#
+#     observation_spec = [("b_pelvis", "pelvis", ObservationType.BODY_POS),
+#                         ("q_pelvis_tx", "pelvis_tx", ObservationType.JOINT_POS),
+#                         ("q_l_arm_shy", "l_arm_shy", ObservationType.JOINT_POS),
+#                         ("q_l_arm_shx", "l_arm_shx", ObservationType.JOINT_POS),
+#                         ("q_l_arm_shz", "l_arm_shz", ObservationType.JOINT_POS),
+#                         ("q_left_elbow", "left_elbow", ObservationType.JOINT_POS),
+#                         ("q_r_arm_shy", "r_arm_shy", ObservationType.JOINT_POS)]
+#
+#     action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
+#                    "l_arm_shz_actuator", "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
+#                    "r_arm_shz_actuator", "right_elbow_actuator", "hip_flexion_r_actuator",
+#                    "hip_adduction_r_actuator", "hip_rotation_r_actuator", "knee_angle_r_actuator",
+#                    "ankle_angle_r_actuator", "hip_flexion_l_actuator", "hip_adduction_l_actuator",
+#                    "hip_rotation_l_actuator", "knee_angle_l_actuator", "ankle_angle_l_actuator"]
+#
+#     env = Mjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
+#               actuation_spec=action_spec,
+#               observation_spec=observation_spec,
+#               horizon=1000,
+#               n_envs=4000,
+#               gamma=0.99)
+#
+#     action_dim = env.info.action_space.shape[0]
+#
+#     # env.reset()
+#     # env.render()
+#     #
+#     # while True:
+#     #     for i in range(500):
+#     #         env.step(np.random.randn(action_dim))
+#     #         env.render()
+#     #     env.reset()
+#     #
+#     # exit()
+#
+#     LOGGING_FREQUENCY = 100000
+#
+#     def sample():
+#         key = random.PRNGKey(758493)  # Random seed is explicit in JAX
+#         action = random.uniform(key, shape=(env.info.n_envs, env.info.action_space.shape[0]))
+#         return action
+#
+#
+#     sample_X = jax.jit(sample)
+#     ###
+#     import time
+#
+#     previous_time = time.time()
+#     step = 0
+#     ###
+#
+#     keys = jax.random.PRNGKey(165416)  # Random seed is explicit in JAX
+#     keys = jax.random.split(keys, env.info.n_envs + 1)
+#     keys, env_keys = keys[0], keys[1:]
+#
+#     state = env.mjx_reset(env_keys)
+#     i = 0
+#     #rollout = []
+#     while True:
+#         # action = np.random.uniform(env.action_space.low, env.action_space.high, size=(env.nr_envs, env.action_space.shape[0]))
+#         key = random.PRNGKey(758493)  # Random seed is explicit in JAX
+#         action = random.uniform(key, shape=(env.n_envs, env.info.action_space.shape[0]))
+#         #action = sample_X()
+#         state = env.mjx_step(state, action)
+#
+#         #rollout.append(state)
+#
+#         #print(i)
+#         i += 1
+#         # print(observation)
+#
+#         ###
+#         step += env.info.n_envs
+#         if step % LOGGING_FREQUENCY == 0:
+#             current_time = time.time()
+#             print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second")
+#             previous_time = current_time
         ###
 
     # # Simulate and display video.
