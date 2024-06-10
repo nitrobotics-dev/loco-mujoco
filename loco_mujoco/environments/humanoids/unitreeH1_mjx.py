@@ -5,6 +5,14 @@ from .unitreeH1 import UnitreeH1
 class MjxUnitreeH1(UnitreeH1):
 
     mjx_enabled = True
+    
+    def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
+        super().__init__(timestep=timestep, n_substeps=n_substeps, **kwargs)
+
+    @staticmethod
+    def _modify_model(model):
+        model.opt.iterations = 2
+        model.opt.ls_iterations = 4
 
     @staticmethod
     def _modify_xml_for_mjx(xml_handle):

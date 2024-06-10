@@ -24,7 +24,6 @@ from loco_mujoco.utils import NoReward, CustomReward,\
 
 @struct.dataclass
 class TrajState:
-    trajectory: jnp.array
     traj_no: int
     subtraj_step_no: int
 
@@ -173,6 +172,7 @@ class LocoEnv(Mjx):
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
+        self._use_fixed_start = True if fixed_start_conf is not None else False
 
         self._use_absorbing_states = use_absorbing_states
 
@@ -294,7 +294,7 @@ class LocoEnv(Mjx):
 
     def _mjx_is_absorbing(self, obs, info, data):
         return jax.lax.cond(self._use_absorbing_states, lambda o, i, d: self._mjx_has_fallen(o, i, d),
-                            lambda o, i, d: False, obs, info, data)
+                            lambda o, i, d: jnp.array([False]), obs, info, data)
 
     def get_kinematic_obs_mask(self):
         """
@@ -651,53 +651,75 @@ class LocoEnv(Mjx):
         return obs
 
     def reset(self, key):
+        key, subkey = jax.random.split(key)
         obs = super().reset(key)
 
         # some sanity checks
         self._check_reset_configuration()
 
-        # init simulation from trajectory
-        traj_state = self._info["TrajState"]
+        # reset trajectory state
+        traj_state = self._reset_trajectory_state(subkey)
+        self._info["TrajState"] = traj_state
 
-        # get current sample
-        sample = self.get_traj_current_sample(traj_state.trajectory, traj_state.traj_no, traj_state.subtraj_step_no)
-
-        # set simulation state to sample
-        self._set_sim_state(self._data, np.asarray(sample))
+        if self._random_start or self._use_fixed_start:
+            # init simulation from trajectory state
+            sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
+            self._set_sim_state(self._data, sample)
 
         return obs
 
     def _mjx_reset(self, key):
+        key, subkey = jax.random.split(key)
         mjx_state = super()._mjx_reset(key)
 
         # some sanity checks
         jax.debug.callback(self._check_reset_configuration)
 
-        # init simulation from trajectory
-        traj_state = mjx_state.info["TrajState"]
+        # reset trajectory state
+        traj_state = self._reset_trajectory_state(subkey)
+        mjx_state.info["TrajState"] = traj_state
 
-        # get current sample
-        sample = self.get_traj_current_sample(traj_state.trajectory, traj_state.traj_no, traj_state.subtraj_step_no)
-
-        # set simulation state to sample
-        data = self._mjx_set_sim_state(mjx_state.data, sample)
-        mjx_state.replace(data=data)
+        if self._random_start or self._use_fixed_start:
+            # init simulation from trajectory state
+            sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
+            data = self._mjx_set_sim_state(mjx_state.data, sample)
+            mjx_state.replace(data=data)
 
         return mjx_state
 
-    def _reset_info_dictionary(self, obs, data, key):
-        info = super()._reset_info_dictionary(obs, data, key)
-        info = self._reset_trajectory_info(key, info)
-        return info
+    def _mjx_reset_in_step(self, state: MjxState):
+        def where_done(x, y):
+            done = state.done
+            return jnp.where(done, x, y)
+
+        # reset trajectory state
+        key = state.info["key"]
+        key, subkey = jax.random.split(key)
+        traj_state = self._reset_trajectory_state(subkey)
+        # jax.debug.print("traj_no {x} and subtraj_no: {y}", x=traj_state.traj_no, y=traj_state.subtraj_step_no)
+        state.info["TrajState"] = traj_state
+
+        if self._random_start or self._use_fixed_start:
+            # init simulation from trajectory state
+            sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
+            data = jax.tree.map(where_done, self._mjx_set_sim_state(state.data, sample), state.data)
+            #data = jax.lax.cond(state.done[0], lambda d, s: d, lambda d, s: self._mjx_set_sim_state(d, s), state.data, sample)
+
+        else:
+            # init simulation from default state
+            data = jax.tree.map(where_done, state.first_data, state.data)
+
+        final_obs = where_done(state.observation, jnp.zeros_like(state.observation))
+        state.info["cur_step_in_episode"] = where_done(0, state.info["cur_step_in_episode"])
+        new_obs = self._mjx_create_observation(data)
+
+        state.info["key"] = key
+
+        return state.replace(data=data, observation=new_obs, final_observation=final_obs)
 
     def _update_info_dictionary(self, info, obs, data):
         info = super()._update_info_dictionary(info, obs, data)
         self._update_trajectory_info(info)
-        return info
-
-    def _mjx_reset_info_dictionary(self, obs, data, key):
-        info = super()._mjx_reset_info_dictionary(obs, data, key)
-        info = self._reset_trajectory_info(key, info)
         return info
 
     def _mjx_update_info_dictionary(self, info, obs, data):
@@ -705,15 +727,33 @@ class LocoEnv(Mjx):
         self._update_trajectory_info(info)
         return info
 
-    def _reset_trajectory_info(self, key, info):
+    @partial(jax.jit, static_argnums=(0,))
+    def _reset_trajectory_state(self, key):
 
-        info["TrajState"] = TrajState(self._jax_trajectory, 0, 0)
-        return info
+        n_trajs = self.n_trajectories(self._jax_trajectory)
+        len_traj = self.len_trajectory(self._jax_trajectory)
+
+        if self._random_start:
+            idx = jax.random.randint(key, shape=(2,), minval=jnp.array([0, 0]),
+                                     maxval=jnp.array([n_trajs, len_traj]))
+        elif self._use_fixed_start:
+            idx = self._fixed_start_conf
+        else:
+            idx = [0, 0]
+
+        new_traj_no, new_subtraj_step_no = idx
+        traj_state = TrajState(new_traj_no, new_subtraj_step_no)
+        return traj_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_init_state_from_trajectory(self, traj_state):
+        sample = self.get_traj_current_sample(self._jax_trajectory, traj_state.traj_no, traj_state.subtraj_step_no)
+        sample = sample.at[0:2].set(0.0)
+        return sample
 
     def _update_trajectory_info(self, info):
         traj_state = info["TrajState"]
-        # todo: check if this is updated in the dict
-        next_traj_no, next_subtraj_step_no = self.increment_traj_counter(traj_state.trajectory,
+        next_traj_no, next_subtraj_step_no = self.increment_traj_counter(self._jax_trajectory,
                                                                          traj_state.traj_no,
                                                                          traj_state.subtraj_step_no)
         traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
@@ -933,9 +973,9 @@ class LocoEnv(Mjx):
 
         if not self.trajectories and self._random_start:
             raise ValueError("Random start not possible without trajectory data.")
-        elif not self.trajectories and self._fixed_start_conf is not None:
+        elif not self.trajectories and self._use_fixed_start:
             raise ValueError("Setting an initial start is not possible without trajectory data.")
-        elif self._fixed_start_conf is not None and self._random_start:
+        elif self._use_fixed_start and self._random_start:
             raise ValueError("Either use a random start or set a fixed initial start, but not both.")
 
     @staticmethod
@@ -988,6 +1028,10 @@ class LocoEnv(Mjx):
     @jax.jit
     def get_traj_current_sample(trajectories, traj_no, subtraj_step_no):
         return jnp.ravel(trajectories[:, traj_no, subtraj_step_no])
+
+    @staticmethod
+    def dim_obs_trajectory(trajectories):
+        return jnp.shape(trajectories)[0]
 
     @staticmethod
     def n_trajectories(trajectories):

@@ -1,4 +1,5 @@
 from typing import Any, Dict
+from functools import partial
 import mujoco
 from mujoco import mjx
 from flax import struct
@@ -8,6 +9,7 @@ import jax.numpy as jnp
 from jax import random
 
 from loco_mujoco.core.mujoco_base import Mujoco, ObservationType
+from loco_mujoco.core.utils import  MujocoViewer
 
 
 @struct.dataclass
@@ -31,6 +33,7 @@ class Mjx(Mujoco):
 
         assert n_envs > 0, "Setting the number of environments smaller than or equal to 0 is not allowed."
         self._n_envs = n_envs
+
         self.sys = mjx.put_model(self._model)
         self.mjx_reset = jax.jit(jax.vmap(self._mjx_reset))
         self.mjx_step = jax.jit(jax.vmap(self._mjx_step))
@@ -162,40 +165,56 @@ class Mjx(Mujoco):
 
     def _mjx_set_sim_state(self, data, sample):
 
-        # set the body pos
-        data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3))
-        # set the body orientation
-        data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4))
-        # set the body velocity
-        data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6))
-        # set the joint positions
-        data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range])
-        # set the joint velocities
-        data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range])
-        # set the site positions
-        data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3))
-        # set the site rotation
-        data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9))
+        return data.replace(
+            xpos=data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3)),
+            xquat=data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4)),
+            cvel=data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6)),
+            qpos=data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range]),
+            qvel=data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range]),
+            site_xpos=data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3)),
+            site_xmat=data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9)))
 
-        return data
 
-    def mjx_render_trajectory(self, trajectory, height: int = 480, width: int = 640, camera=None):
+        # # set the body pos
+        # xpos = data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3))
+        # # set the body orientation
+        # xquat = data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4))
+        # # set the body velocity
+        # cvel = data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6))
+        # # set the joint positions
+        # qpos = data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range])
+        # # set the joint velocities
+        # qvel = data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range])
+        # # set the site positions
+        # site_xpos = data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3))
+        # # set the site rotation
+        # site_xmat = data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9))
+        #
+        # return data.replace(xpos=xpos, xquat=xquat, cvel=cvel, qpos=qpos,
+        #                     qvel=qvel, site_xpos=site_xpos, site_xmat=site_xmat)
 
-        # todo: include cv2 viewer, and add optional saving (using the same saving mechanisms as the orig viewer)
-        renderer = mujoco.Renderer(self._model, height=height, width=width)
-        camera = camera or -1
+    def mjx_render_trajectory(self, trajectory, record=False):
 
-        def get_image(state: MjxState):
-            d = mujoco.MjData(self._model)
-            d.qpos, d.qvel = state.data.qpos, state.data.qvel
-            mujoco.mj_forward(self._model, d)
-            renderer.update_scene(d, camera=camera)
-            return renderer.render()
+        if self._viewer is None:
+            self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
 
-        if isinstance(trajectory, list):
-            return [get_image(s) for s in trajectory]
+        # get number of environment per state in trajectory
+        n_envs = trajectory[0].data.qpos.shape[0]
 
-        return get_image(trajectory)
+        # render each environment
+        for i in range(n_envs):
+            # for each environment, render all trajectories
+            for state in trajectory:
+                self._data.qpos, self._data.qvel = state.data.qpos[i, :], state.data.qvel[i, :]
+                mujoco.mj_forward(self._model, self._data)
+                self._viewer.render(self._data, record)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def sample_action_space(self, key):
+        action_dim = self.info.action_space.shape[0]
+        action = jax.random.uniform(key, minval=self.info.action_space.low, maxval=self.info.action_space.high,
+                                    shape=(action_dim,))
+        return action
 
     def _process_collision_groups(self, collision_groups):
         if collision_groups is not None and len(collision_groups) > 0:

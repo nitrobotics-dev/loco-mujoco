@@ -63,6 +63,7 @@ class Mujoco:
 
         # load the model and data
         self._model = self.load_model(xml_file)
+        self._modify_model(self._model)
         self._data = mujoco.MjData(self._model)
 
         # set the timestep if provided, else read it from model
@@ -466,6 +467,10 @@ class Mujoco:
         obs_min = np.concatenate([np.array(entry.obs_min) for entry in self._obs_dict.values()])
         obs_max = np.concatenate([np.array(entry.obs_max) for entry in self._obs_dict.values()])
         return obs_min, obs_max
+
+    @staticmethod
+    def _modify_model(model):
+        pass
 
     @staticmethod
     def get_action_indices(model, data, actuation_spec):
