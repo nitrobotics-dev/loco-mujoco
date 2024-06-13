@@ -2,6 +2,7 @@ import types
 from enum import Enum
 from typing import List, Optional, Any, Dict
 from dataclasses import dataclass
+from functools import partial
 import mujoco
 import numpy as np
 from dm_control import mjcf
@@ -59,11 +60,11 @@ class Mujoco:
 
     def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, n_environments=1,
                  timestep=None, n_substeps=1, n_intermediate_steps=1,  collision_groups=None,
-                 **viewer_params):
+                 model_option_conf=None, **viewer_params):
 
         # load the model and data
         self._model = self.load_model(xml_file)
-        self._modify_model(self._model)
+        self._modify_model(self._model, model_option_conf)
         self._data = mujoco.MjData(self._model)
 
         # set the timestep if provided, else read it from model
@@ -134,6 +135,8 @@ class Mujoco:
 
         ctrl_action = None
 
+        # print("PRE nobs: ", self._create_observation(self._data))
+
         for i in range(self._n_intermediate_steps):
 
             if self._recompute_action_per_step or ctrl_action is None:
@@ -141,13 +144,16 @@ class Mujoco:
                 self._data.ctrl[self._action_indices] = ctrl_action
 
             # modify data during simulation, before main step (does nothing by default)
-            self._data = self._simulation_pre_step(self._data)
+            #self._data = self._simulation_pre_step(self._data)
+
+            # print("CTRL ", self._data.ctrl)
+            # print("action indices: ", self._action_indices)
 
             # main mujoco step, runs the sim for n_substeps
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
             # modify data during simulation, after main step (does nothing by default)
-            self._data = self._simulation_pre_step(self._data)
+            #self._data = self._simulation_post_step(self._data)
 
             # recompute the action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
@@ -157,11 +163,13 @@ class Mujoco:
         if not self._recompute_action_per_step:
             cur_obs = self._create_observation(self._data)
 
+        # print("First nobs: ", cur_obs)
+
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data = self._step_finalize(cur_obs, self._data)
 
         # create info (does nothing by default)
-        cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
+        # cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
 
         # check if the current state is an absorbing state
         absorbing = self._is_absorbing(cur_obs, cur_info, self._data)
@@ -188,6 +196,13 @@ class Mujoco:
             self._viewer.stop()
             del self._viewer
             self._viewer = None
+
+    @partial(jax.jit, static_argnums=(0,))
+    def sample_action_space(self, key):
+        action_dim = self.info.action_space.shape[0]
+        action = jax.random.uniform(key, minval=self.info.action_space.low, maxval=self.info.action_space.high,
+                                    shape=(action_dim,))
+        return action
 
     def get_all_observation_keys(self):
         return list(self._obs_dict.keys())
@@ -469,8 +484,10 @@ class Mujoco:
         return obs_min, obs_max
 
     @staticmethod
-    def _modify_model(model):
-        pass
+    def _modify_model(model, option_config):
+        if option_config is not None:
+            for key, value in option_config.items():
+                setattr(model.opt, key, value)
 
     @staticmethod
     def get_action_indices(model, data, actuation_spec):

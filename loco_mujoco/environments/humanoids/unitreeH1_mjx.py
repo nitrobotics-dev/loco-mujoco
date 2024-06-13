@@ -1,18 +1,22 @@
 import jax.numpy as jnp
 from .unitreeH1 import UnitreeH1
+from loco_mujoco.environments import ValidTaskConf
 
 
 class MjxUnitreeH1(UnitreeH1):
 
+    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
+                                     data_types=["real"],
+                                     non_combinable=[("carry", None, "perfect")])
     mjx_enabled = True
     
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
-        super().__init__(timestep=timestep, n_substeps=n_substeps, **kwargs)
-
-    @staticmethod
-    def _modify_model(model):
-        model.opt.iterations = 2
-        model.opt.ls_iterations = 4
+        if "model_option_conf" not in kwargs.keys():
+            model_option_conf = dict(iterations=2, ls_iterations=4)
+        else:
+            model_option_conf = kwargs["model_option_conf"]
+            del kwargs["model_option_conf"]
+        super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
 
     @staticmethod
     def _modify_xml_for_mjx(xml_handle):

@@ -39,7 +39,7 @@ class LocoEnv(Mjx):
                  traj_params=None, random_start=True, fixed_start_conf=None, timestep=0.001,
                  use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
                  domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
-                 **viewer_params):
+                 model_option_conf=None, **viewer_params):
         """
         Constructor.
 
@@ -129,7 +129,8 @@ class LocoEnv(Mjx):
                                           horizon=horizon, n_substeps=n_substeps,
                                           n_intermediate_steps=n_intermediate_steps,
                                           timestep=timestep, collision_groups=collision_groups,
-                                          default_camera_mode=default_camera_mode, **viewer_params)
+                                          default_camera_mode=default_camera_mode,
+                                          model_option_conf=model_option_conf, **viewer_params)
         else:
             assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
@@ -137,7 +138,8 @@ class LocoEnv(Mjx):
                                       observation_spec=observation_spec, gamma=gamma,
                                       horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
                                       timestep=timestep, collision_groups=collision_groups,
-                                      default_camera_mode=default_camera_mode, **viewer_params)
+                                      default_camera_mode=default_camera_mode,
+                                      model_option_conf=model_option_conf, **viewer_params)
 
         # specify reward function
         self._reward_function = self._get_reward_function(reward_type, reward_params)
@@ -211,44 +213,6 @@ class LocoEnv(Mjx):
 
         return self._reward_function(state, action, next_state, absorbing)
 
-    # def reset(self, key):
-    #
-    #     key, subkey1, subkey2 = jax.random.split(key, 3)
-    #     mujoco.mj_resetData(self._model, self._data)
-    #
-    #     # todo: reactivate
-    #     #self.mean_grf.reset()
-    #
-    #     # todo: reactivate
-    #     # if self._domain_rand is not None:
-    #     #     self._models[self._current_model_idx] = self._domain_rand.get_randomized_model(self._current_model_idx)
-    #     #     self._datas[self._current_model_idx] = mujoco.MjData(self._models[self._current_model_idx])
-    #     #
-    #     # if self._random_env_reset:
-    #     #     self._current_model_idx = jax.random.randint(subkey, 0, len(self._models))
-    #     # else:
-    #     #     self._current_model_idx = self._current_model_idx + 1 \
-    #     #         if self._current_model_idx < len(self._models) - 1 else 0
-    #     #
-    #     # self._model = self._models[self._current_model_idx]
-    #     # self._data = self._datas[self._current_model_idx]
-    #     # self.obs_helper = self.obs_helpers[self._current_model_idx]
-    #     #
-    #     # if self._viewer is not None and self.more_than_one_env:
-    #     #       self._viewer.load_new_model(self._model)
-    #
-    #     self._data = self._setup(self._data, key)
-    #     self._obs = self._create_observation(self._data)
-    #     self._info = self._reset_info_dictionary(self._obs, self._data)
-    #
-    #     self._cur_step_in_episode = 0
-    #
-    #     return np.asarray(self._obs)
-    #
-    #     self._obs = self._create_observation(self._data)
-    #
-    #     return self._obs
-
     def setup(self, data, key):
         """
         Function to setup the initial state of the simulation. Initialization can be done either
@@ -294,7 +258,7 @@ class LocoEnv(Mjx):
 
     def _mjx_is_absorbing(self, obs, info, data):
         return jax.lax.cond(self._use_absorbing_states, lambda o, i, d: self._mjx_has_fallen(o, i, d),
-                            lambda o, i, d: jnp.array([False]), obs, info, data)
+                            lambda o, i, d: jnp.array(False), obs, info, data)
 
     def get_kinematic_obs_mask(self):
         """
@@ -522,27 +486,6 @@ class LocoEnv(Mjx):
         if record:
             recorder.stop()
 
-    def set_sim_state_old(self, sample):
-        """
-        Sets the state of the simulation according to an observation.
-
-        Args:
-            sample (list or np.array): Sample used to set the state of the simulation.
-
-        """
-
-        obs_spec = self.obs_helper.observation_spec
-        assert len(sample) == len(obs_spec)
-
-        for key_name_ot, value in zip(obs_spec, sample):
-            key, name, ot = key_name_ot
-            if ot == ObservationType.JOINT_POS:
-                self._data.joint(name).qpos = value
-            elif ot == ObservationType.JOINT_VEL:
-                self._data.joint(name).qvel = value
-            elif ot == ObservationType.SITE_ROT:
-                self._data.site(name).xmat = value
-
     def load_dataset_and_get_traj_files(self, dataset_path, freq=None):
         """
         Calculates a dictionary containing the kinematics given a dataset. If freq is provided,
@@ -666,11 +609,12 @@ class LocoEnv(Mjx):
             sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
             self._set_sim_state(self._data, sample)
 
+        obs = self._create_observation(self._data)
         return obs
 
-    def _mjx_reset(self, key):
+    def mjx_reset(self, key):
         key, subkey = jax.random.split(key)
-        mjx_state = super()._mjx_reset(key)
+        mjx_state = super().mjx_reset(key)
 
         # some sanity checks
         jax.debug.callback(self._check_reset_configuration)
@@ -683,7 +627,7 @@ class LocoEnv(Mjx):
             # init simulation from trajectory state
             sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
             data = self._mjx_set_sim_state(mjx_state.data, sample)
-            mjx_state.replace(data=data)
+            mjx_state = mjx_state.replace(data=data, observation=self._mjx_create_observation(data))
 
         return mjx_state
 
@@ -756,7 +700,8 @@ class LocoEnv(Mjx):
         next_traj_no, next_subtraj_step_no = self.increment_traj_counter(self._jax_trajectory,
                                                                          traj_state.traj_no,
                                                                          traj_state.subtraj_step_no)
-        traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
+        traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
+        info["TrajState"] = traj_state
 
     def _preprocess_action(self, action, data):
         """
@@ -789,6 +734,8 @@ class LocoEnv(Mjx):
         if self._use_foot_forces:
             grf = self._get_ground_forces()
             self.mean_grf.update_stats(grf)
+
+        return data
 
     def _init_sim_from_obs(self, obs):
         """

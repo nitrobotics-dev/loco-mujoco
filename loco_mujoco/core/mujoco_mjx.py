@@ -1,3 +1,4 @@
+import functools
 from typing import Any, Dict
 from functools import partial
 import mujoco
@@ -35,13 +36,11 @@ class Mjx(Mujoco):
         self._n_envs = n_envs
 
         self.sys = mjx.put_model(self._model)
-        self.mjx_reset = jax.jit(jax.vmap(self._mjx_reset))
-        self.mjx_step = jax.jit(jax.vmap(self._mjx_step))
 
         # add information to mdp_info
         self._mdp_info.mjx_env, self._mdp_info.n_envs = True, n_envs
 
-    def _mjx_step(self, state: MjxState, action: jax.Array):
+    def mjx_step(self, state: MjxState, action: jax.Array):
 
         data = state.data
 
@@ -55,9 +54,10 @@ class Mjx(Mujoco):
         data = self._mjx_simulation_pre_step(data)
 
         # step in the environment using the action
-        # todo: what is xs?
-        data, _ = jax.lax.scan(f=lambda data, _: (mjx.step(self.sys, data.replace(ctrl=action)), None),
-                               init=data, xs=(), length=self._n_substeps)
+        ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(action)
+        data = data.replace(ctrl=ctrl)
+        step_fn = lambda _, x: mjx.step(self.sys, x)
+        data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
 
         # modify data *after* step if needed
         data = self._mjx_simulation_post_step(data)
@@ -89,26 +89,16 @@ class Mjx(Mujoco):
 
         return state
 
-    def _mjx_reset(self, key):
+    def mjx_reset(self, key):
         key, subkey = jax.random.split(key)
 
-        # self._data is not modified, no reset need
-        #mujoco.mj_resetData(self._model, self._data)
-        # todo: double check that resetting
-        qpos = self.sys.qpos0
-        qvel = jnp.zeros(self.sys.nv)
+        mujoco.mj_resetData(self._model, self._data)
         data = mjx.put_data(self._model, self._data)
-        data = data.replace(qpos=qpos, qvel=qvel, ctrl=jnp.zeros(self.sys.nu))
-        data = mjx.forward(self.sys, data)
 
         obs = self._mjx_create_observation(data)
-        # todo: activate this and add traj resetting
-        #obs = self._modify_observation(obs)
-        #obs, data = self.setup(obs, data)
-
         reward = 0.0
-        absorbing = False
-        done = False
+        absorbing = jnp.array(False, dtype=bool)
+        done = jnp.array(False, dtype=bool)
         info = self._mjx_reset_info_dictionary(obs, data, subkey)
 
         return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
@@ -116,13 +106,9 @@ class Mjx(Mujoco):
 
     def _mjx_reset_in_step(self, state: MjxState):
 
-        def where_done(x, y):
-            done = state.done
-            return jnp.where(done, x, y)
-
-        data = jax.tree.map(where_done, state.first_data, state.data)
-        final_obs = where_done(state.observation, jnp.zeros_like(state.observation))
-        state.info["cur_step_in_episode"] = where_done(0, state.info["cur_step_in_episode"])
+        data = jax.lax.cond(state.done, lambda: state.first_data, lambda: state.data)
+        final_obs = jnp.where(state.done, state.observation, jnp.zeros_like(state.observation))
+        state.info["cur_step_in_episode"] = jnp.where(state.done, 0, state.info["cur_step_in_episode"])
         new_obs = self._mjx_create_observation(data)
 
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
@@ -195,6 +181,8 @@ class Mjx(Mujoco):
 
     def mjx_render_trajectory(self, trajectory, record=False):
 
+        assert len(trajectory) > 0, "Mjx render got provided with an empty trajectory."
+
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
 
@@ -208,13 +196,6 @@ class Mjx(Mujoco):
                 self._data.qpos, self._data.qvel = state.data.qpos[i, :], state.data.qvel[i, :]
                 mujoco.mj_forward(self._model, self._data)
                 self._viewer.render(self._data, record)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def sample_action_space(self, key):
-        action_dim = self.info.action_space.shape[0]
-        action = jax.random.uniform(key, minval=self.info.action_space.low, maxval=self.info.action_space.high,
-                                    shape=(action_dim,))
-        return action
 
     def _process_collision_groups(self, collision_groups):
         if collision_groups is not None and len(collision_groups) > 0:

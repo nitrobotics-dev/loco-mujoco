@@ -356,7 +356,7 @@ class UnitreeH1(BaseRobotHumanoid):
                             ("foot_l", ["left_foot"])]
         return collision_groups
 
-    def _has_fallen(self, obs, info, data, return_err_msg=True):
+    def _has_fallen(self, obs, info, data, return_err_msg=False):
         """
         Checks if a model has fallen.
 
@@ -382,8 +382,7 @@ class UnitreeH1(BaseRobotHumanoid):
                 error_msg += "pelvis_list_condition violated.\n"
             elif pelvis_rotation_cond:
                 error_msg += "pelvis_rotation_condition violated.\n"
-            print(error_msg)
-            return pelvis_cond
+            return pelvis_cond, error_msg
         else:
 
             return pelvis_cond
@@ -407,11 +406,11 @@ class UnitreeH1(BaseRobotHumanoid):
         pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
                                          backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
 
-        # pelvis_y_cond = (obs[0] < -0.3) or (obs[0] > 0.1)
-        # pelvis_tilt_cond = (q_pelvis_tilt < (-np.pi / 4.5)) or (q_pelvis_tilt > (np.pi / 12))
-        # pelvis_list_cond = (q_pelvis_list < -np.pi / 12) or (q_pelvis_list > np.pi / 8)
-        # pelvis_rotation_cond = (q_pelvis_rotation < (-np.pi / 8)) or (q_pelvis_rotation > (np.pi / 8))
-        # pelvis_cond = (pelvis_y_cond or pelvis_tilt_cond or pelvis_list_cond or pelvis_rotation_cond)
+        pelvis_cond = backend.squeeze(pelvis_cond)
+        pelvis_y_cond = backend.squeeze(pelvis_y_cond)
+        pelvis_tilt_cond = backend.squeeze(pelvis_tilt_cond)
+        pelvis_list_cond = backend.squeeze(pelvis_list_cond)
+        pelvis_rotation_cond = backend.squeeze(pelvis_rotation_cond)
 
         return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
 
