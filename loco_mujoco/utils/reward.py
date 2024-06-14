@@ -8,7 +8,7 @@ class RewardInterface:
 
     """
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         """
         Compute the reward.
 
@@ -23,13 +23,6 @@ class RewardInterface:
         """
         raise NotImplementedError
 
-    def reset_state(self):
-        """
-        Reset the state of the object.
-
-        """
-        pass
-
 
 class NoReward(RewardInterface):
     """
@@ -37,7 +30,7 @@ class NoReward(RewardInterface):
 
     """
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         return 0
 
 
@@ -46,7 +39,7 @@ class PosReward(RewardInterface):
     def __init__(self, pos_idx):
         self._pos_idx = pos_idx
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         pos = state[self._pos_idx]
         return pos
 
@@ -56,22 +49,22 @@ class CustomReward(RewardInterface):
     def __init__(self, reward_callback=None):
         self._reward_callback = reward_callback
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         if self._reward_callback is not None:
             return self._reward_callback(state, action, next_state)
         else:
             return 0
 
-
+import jax
 class TargetVelocityReward(RewardInterface):
 
     def __init__(self, target_velocity, x_vel_idx):
         self._target_vel = target_velocity
         self._x_vel_idx = x_vel_idx
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         x_vel = state[self._x_vel_idx]
-        return np.exp(- np.square(x_vel - self._target_vel))
+        return backend.exp(-backend.square(x_vel - self._target_vel))
 
 
 class MultiTargetVelocityReward(RewardInterface):
@@ -82,19 +75,20 @@ class MultiTargetVelocityReward(RewardInterface):
         self._scalings = scalings
         self._x_vel_idx = x_vel_idx
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         x_vel = state[self._x_vel_idx]
         env_id = state[-self._env_id_len:]
 
         # convert binary array to index
-        ind = np.packbits(env_id.astype(int), bitorder='big') >> (8 - env_id.shape[0])
+        # todo: evaluate if this working fine with jax backend
+        ind = backend.packbits(env_id.astype(int), bitorder='big') >> (8 - env_id.shape[0])
         ind = ind[0]
         scaling = self._scalings[ind]
 
         # calculate target vel
         target_vel = self._target_vel * scaling
 
-        return np.exp(- np.square(x_vel - target_vel))
+        return backend.exp(- backend.square(x_vel - target_vel))
 
 
 class VelocityVectorReward(RewardInterface):
@@ -105,13 +99,13 @@ class VelocityVectorReward(RewardInterface):
         self._angle_idx = angle_idx
         self._goal_vel_idx = goal_vel_idx
 
-    def __call__(self, state, action, next_state, absorbing):
+    def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
 
         # get current velocity vector in x-y-plane
-        curr_velocity_xy = np.array([state[self._x_vel_idx], state[self._y_vel_idx]])
+        curr_velocity_xy = backend.array([state[self._x_vel_idx], state[self._y_vel_idx]])
 
         # get desired velocity vector in x-y-plane
         cos_sine = state[self._angle_idx]
         des_vel = state[self._goal_vel_idx] * cos_sine
 
-        return np.exp(-5.0*np.linalg.norm(curr_velocity_xy - des_vel))
+        return backend.exp(-5.0*backend.linalg.norm(curr_velocity_xy - des_vel))

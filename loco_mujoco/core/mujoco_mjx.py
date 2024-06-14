@@ -75,7 +75,7 @@ class Mjx(Mujoco):
         absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data)
 
         # calculate the reward
-        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, data)
+        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data)
 
         # check if done
         done = jnp.greater_equal(state.info["cur_step_in_episode"], self.info.horizon)
@@ -100,6 +100,7 @@ class Mjx(Mujoco):
         absorbing = jnp.array(False, dtype=bool)
         done = jnp.array(False, dtype=bool)
         info = self._mjx_reset_info_dictionary(obs, data, subkey)
+        info["key"] = key
 
         return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
                         first_data=data, final_observation=jnp.zeros_like(obs), info=info)
@@ -108,7 +109,7 @@ class Mjx(Mujoco):
 
         data = jax.lax.cond(state.done, lambda: state.first_data, lambda: state.data)
         final_obs = jnp.where(state.done, state.observation, jnp.zeros_like(state.observation))
-        state.info["cur_step_in_episode"] = jnp.where(state.done, 0, state.info["cur_step_in_episode"])
+        state.info["cur_step_in_episode"] = jnp.where(state.done, 1, state.info["cur_step_in_episode"] + 1)
         new_obs = self._mjx_create_observation(data)
 
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
@@ -117,18 +118,17 @@ class Mjx(Mujoco):
         return self._create_observation_compat(data, jnp)
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
-        info = {"cur_step_in_episode": 0,
+        info = {"cur_step_in_episode": 1,
                 "final_observation": jnp.zeros_like(obs),
-                "final_info": {"cur_step_in_episode": 0},
-                "key": key
+                "final_info": {"cur_step_in_episode": 1},
                 }
         return info
 
     def _mjx_update_info_dictionary(self, info, obs, data):
-        info["cur_step_in_episode"] += 1
         return info
 
-    def _mjx_reward(self, obs, action, next_obs, absorbing, info, data):
+    @partial(jax.jit, static_argnums=(0, 6))
+    def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data):
         return 0.0
 
     def _mjx_is_absorbing(self, obs, info, data):

@@ -117,11 +117,11 @@ class Mujoco:
     def reset(self, key):
         key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
-        self._data = self._setup(self._data, key)
         self._obs = self._create_observation(self._data)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
-        self._cur_step_in_episode = 0
-        return np.asarray(self._obs)
+        self._info["key"] = key
+        self._cur_step_in_episode = 1
+        return self._obs
 
     def step(self, action):
         cur_obs = self._obs.copy()
@@ -144,16 +144,13 @@ class Mujoco:
                 self._data.ctrl[self._action_indices] = ctrl_action
 
             # modify data during simulation, before main step (does nothing by default)
-            #self._data = self._simulation_pre_step(self._data)
-
-            # print("CTRL ", self._data.ctrl)
-            # print("action indices: ", self._action_indices)
+            self._data = self._simulation_pre_step(self._data)
 
             # main mujoco step, runs the sim for n_substeps
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
             # modify data during simulation, after main step (does nothing by default)
-            #self._data = self._simulation_post_step(self._data)
+            self._data = self._simulation_post_step(self._data)
 
             # recompute the action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
@@ -169,13 +166,13 @@ class Mujoco:
         cur_obs, self._data = self._step_finalize(cur_obs, self._data)
 
         # create info (does nothing by default)
-        # cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
+        cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
 
         # check if the current state is an absorbing state
         absorbing = self._is_absorbing(cur_obs, cur_info, self._data)
 
         # calculate the reward
-        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._data)
+        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data)
 
         # calculate flag indicating whether this is the last obs before resetting
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
@@ -207,9 +204,6 @@ class Mujoco:
     def get_all_observation_keys(self):
         return list(self._obs_dict.keys())
 
-    def _setup(self, data, key):
-        return data
-
     def _step_init(self, obs, data):
         return obs, data
 
@@ -233,8 +227,7 @@ class Mujoco:
         return obs, data
 
     def _reset_info_dictionary(self, obs, data, key):
-        info = {"key": key}
-        return info
+        return {}
 
     def _update_info_dictionary(self, info, obs, data):
         return info
@@ -427,7 +420,7 @@ class Mujoco:
         self._site_xpos_range = jnp.arange(ranges[5], ranges[6])
         self._site_xmat_range = jnp.arange(ranges[6], ranges[7])
 
-    def _reward(self, obs, action, next_obs, absorbing, info, data):
+    def _reward(self, obs, action, next_obs, absorbing, info, model, data):
         return 0.0
 
     def _create_observation(self, data):

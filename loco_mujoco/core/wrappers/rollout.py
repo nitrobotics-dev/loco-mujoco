@@ -17,20 +17,21 @@ class RolloutWrapper:
         todo: use multiprocessing
 
         """
-        all_obs, all_action, all_reward, all_next_obs, all_done, cum_return = [], [], [], [], [], []
+        all_obs, all_action, all_reward, all_next_obs, all_absorbing, all_done, cum_return = [], [], [], [], [], [], []
         for k in rng_keys:
             (ep_obs, ep_action, ep_reward, ep_next_obs,
-             ep_done, ep_cum_return) = self.single_rollout(k, n_steps, policy_params)
+             ep_absorbing, ep_done,  ep_cum_return) = self.single_rollout(k, n_steps, policy_params)
 
             all_obs.append(ep_obs)
             all_next_obs.append(ep_next_obs)
             all_action.append(ep_action)
             all_reward.append(ep_reward)
+            all_absorbing.append(ep_absorbing)
             all_done.append(ep_done)
             cum_return.append(ep_cum_return)
 
-        return (np.stack(all_obs), np.stack(all_action), np.stack(all_reward),
-                np.stack(all_next_obs), np.stack(all_done), np.stack(cum_return))
+        return (np.stack(all_obs), np.stack(all_action), np.stack(all_reward), np.stack(all_next_obs),
+                np.stack(all_absorbing), np.stack(all_done), np.stack(cum_return))
 
     def single_rollout(self, rng_key, n_steps, policy_params=None):
         """Rollout an episode."""
@@ -39,7 +40,7 @@ class RolloutWrapper:
 
         obs = self.env.reset(rng_reset)
 
-        all_obs, all_action, all_reward, all_next_obs, all_done, cum_return = [], [], [], [], [], []
+        all_obs, all_action, all_reward, all_next_obs, all_absorbing, all_done, cum_return = [], [], [], [], [], [], []
         first_state_in_episode = True
 
         for i in range(n_steps):
@@ -56,6 +57,7 @@ class RolloutWrapper:
             all_next_obs.append(next_obs)
             all_action.append(action)
             all_reward.append(reward)
+            all_absorbing.append(absorbing)
             all_done.append(done)
             if first_state_in_episode:
                 cum_return.append(reward)
@@ -68,8 +70,8 @@ class RolloutWrapper:
             else:
                 first_state_in_episode = False
 
-        return (np.array(all_obs), np.array(all_action), np.array(all_reward),
-                np.array(all_next_obs), np.array(all_done), np.array(cum_return))
+        return (np.array(all_obs), np.array(all_action), np.array(all_reward), np.array(all_next_obs),
+                np.array(all_absorbing), np.array(all_done), np.array(cum_return))
 
 
 class MjxRolloutWrapper:
@@ -112,7 +114,10 @@ class MjxRolloutWrapper:
             next_state = self.env.mjx_step(nstate, action)
             next_obs = next_state.observation
             reward = next_state.reward
+            absorbing = next_state.absorbing
             done = next_state.done
+
+            next_obs = jnp.where(done, next_state.final_observation, next_obs)
 
             new_cum_reward = cum_reward + reward * valid_mask
             new_valid_mask = valid_mask * (1 - done)
@@ -125,7 +130,7 @@ class MjxRolloutWrapper:
                 new_cum_reward,
                 new_valid_mask,
             ]
-            y = [obs, action, reward, next_obs, done]
+            y = [obs, action, reward, next_obs, absorbing, done]
             return carry, y
 
         # Scan over episode step loop
@@ -134,6 +139,7 @@ class MjxRolloutWrapper:
                                             jnp.float32(0.0), jnp.float32(1.0)], (), n_steps)
 
         # Return the sum of rewards accumulated by agent in episode rollout
-        obs, action, reward, next_obs, done = scan_out
+        obs, action, reward, next_obs, absorbing, done = scan_out
+
         cum_return = carry_out[-2]
-        return obs, action, reward, next_obs, done, cum_return
+        return obs, action, reward, next_obs, absorbing, done, cum_return

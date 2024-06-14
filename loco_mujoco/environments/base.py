@@ -205,17 +205,24 @@ class LocoEnv(Mjx):
         self._jax_trajectory = self.trajectories.get_jax_trajectory()
         self._trajectory_loaded = True
 
-    def reward(self, state, action, next_state, absorbing):
+    def _reward(self, state, action, next_state, absorbing, info, model, data):
         """
         Calls the reward function of the environment.
 
         """
+        return self._reward_function(state, action, next_state, absorbing, info, model, data, np)
 
-        return self._reward_function(state, action, next_state, absorbing)
+    @partial(jax.jit, static_argnums=(0, 6))
+    def _mjx_reward(self, state, action, next_state, absorbing, info, model, data):
+        """
+        Calls the reward function of the environment.
+
+        """
+        return self._reward_function(state, action, next_state, absorbing, info, model, data, jnp)
 
     def setup(self, data, key):
         """
-        Function to setup the initial state of the simulation. Initialization can be done either
+        Function to set up the initial state of the simulation. Initialization can be done either
         randomly, from a certain initial, or from the default initial state of the model.
 
         Args:
@@ -609,8 +616,8 @@ class LocoEnv(Mjx):
             sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
             self._set_sim_state(self._data, sample)
 
-        obs = self._create_observation(self._data)
-        return obs
+        self._obs = self._create_observation(self._data)
+        return self._obs
 
     def mjx_reset(self, key):
         key, subkey = jax.random.split(key)
@@ -639,8 +646,8 @@ class LocoEnv(Mjx):
         # reset trajectory state
         key = state.info["key"]
         key, subkey = jax.random.split(key)
+        state.info["key"] = key
         traj_state = self._reset_trajectory_state(subkey)
-        # jax.debug.print("traj_no {x} and subtraj_no: {y}", x=traj_state.traj_no, y=traj_state.subtraj_step_no)
         state.info["TrajState"] = traj_state
 
         if self._random_start or self._use_fixed_start:
@@ -653,11 +660,9 @@ class LocoEnv(Mjx):
             # init simulation from default state
             data = jax.tree.map(where_done, state.first_data, state.data)
 
-        final_obs = where_done(state.observation, jnp.zeros_like(state.observation))
-        state.info["cur_step_in_episode"] = where_done(0, state.info["cur_step_in_episode"])
+        final_obs = where_done(state.observation, jnp.ones_like(state.observation))
+        state.info["cur_step_in_episode"] = where_done(1, state.info["cur_step_in_episode"] + 1)
         new_obs = self._mjx_create_observation(data)
-
-        state.info["key"] = key
 
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
 
