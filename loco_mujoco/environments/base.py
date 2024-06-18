@@ -306,7 +306,8 @@ class LocoEnv(Mjx):
                 dataset = self.trajectories.create_dataset(ignore_keys=ignore_keys)
                 # check that all state in the dataset satisfy the has fallen method.
                 for state in dataset["states"]:
-                    has_fallen, msg = self._has_fallen(state, return_err_msg=True)
+                    # todo: think about excluding data and info from has_fallen
+                    has_fallen, msg = self._has_fallen(state, None, None, return_err_msg=True)
                     if has_fallen:
                         err_msg = "Some of the states in the created dataset are terminal states. " \
                                   "This should not happen.\n\nViolations:\n"

@@ -119,7 +119,7 @@ class MjxRolloutWrapper:
 
             next_obs = jnp.where(done, next_state.final_observation, next_obs)
 
-            new_cum_reward = cum_reward + reward * valid_mask
+            cum_reward = cum_reward + reward * valid_mask
             new_valid_mask = valid_mask * (1 - done)
 
             carry = [
@@ -127,10 +127,10 @@ class MjxRolloutWrapper:
                 next_state,
                 policy_params,
                 rng,
-                new_cum_reward,
+                cum_reward,
                 new_valid_mask,
             ]
-            y = [obs, action, reward, next_obs, absorbing, done]
+            y = [obs, action, reward, next_obs, absorbing, done, cum_reward]
             return carry, y
 
         # Scan over episode step loop
@@ -139,7 +139,7 @@ class MjxRolloutWrapper:
                                             jnp.float32(0.0), jnp.float32(1.0)], (), n_steps)
 
         # Return the sum of rewards accumulated by agent in episode rollout
-        obs, action, reward, next_obs, absorbing, done = scan_out
+        obs, action, reward, next_obs, absorbing, done, cum_reward = scan_out
 
-        cum_return = carry_out[-2]
-        return obs, action, reward, next_obs, absorbing, done, cum_return
+        #cum_return = carry_out[-2]
+        return obs, action, reward, next_obs, absorbing, done, cum_reward
