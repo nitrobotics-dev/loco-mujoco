@@ -38,6 +38,7 @@ class Mjx(Mujoco):
         self.sys = mjx.put_model(self._model)
 
         # add information to mdp_info
+        # todo: remove the n_envs attribute
         self._mdp_info.mjx_env, self._mdp_info.n_envs = True, n_envs
 
     def mjx_step(self, state: MjxState, action: jax.Array):

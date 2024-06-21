@@ -1,7 +1,11 @@
+import os
+
 import jax
 import jax.numpy as jnp
+import wandb
 import chex
 import numpy as np
+import orbax
 from flax import struct
 from functools import partial
 from typing import Optional, Tuple, Union, Any
@@ -13,6 +17,7 @@ from loco_mujoco.core.wrappers import MjxRolloutWrapper
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
+from flax.training import orbax_utils
 import numpy as np
 import optax
 from flax.linen.initializers import constant, orthogonal
@@ -432,13 +437,13 @@ def make_train(config):
         )
         return config["LR"] * frac
 
-    def train(rng):
+    def train(train_rng):
         # INIT NETWORK
         network = ActorCritic(
             env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
         )
         discriminator = Discriminator(activation=config["ACTIVATION"])
-        rng, _rng1, _rng2 = jax.random.split(rng, 3)
+        rng, _rng1, _rng2 = jax.random.split(train_rng, 3)
         init_x = jnp.zeros(env.observation_space(env_params).shape)
         network_params = network.init(_rng1, init_x)
         discrim_params = discriminator.init(_rng2, init_x)
@@ -452,6 +457,8 @@ def make_train(config):
                 optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
                 optax.adam(config["LR"], eps=1e-5),
             )
+        # disc_tx = optax.adam(config["DISC_LR"], eps=1e-5)
+
         disc_tx = optax.chain(
             optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
             optax.adam(config["DISC_LR"], eps=1e-5),
@@ -634,14 +641,11 @@ def make_train(config):
             train_state = update_state[0]
             rng = update_state[-1]
 
-            def _update_discriminator(disc_train_state, traj_batch, rng):
-
+            def _update_discriminator(runner_state, unused):
+                disc_train_state, traj_batch, rng = runner_state
                 def _get_one_batch(data, batch_size, rng):
-                    permutation = jax.random.permutation(rng, batch_size)
-                    shuffled_batch = jax.tree_util.tree_map(
-                        lambda x: jnp.take(x, permutation, axis=0), data
-                    )
-                    return shuffled_batch
+                    idx = jax.random.randint(rng, shape=(batch_size,), minval=0, maxval=data.shape[0])
+                    return data[idx]
 
                 def _discrim_loss(params, disc_train_state, inputs, targets):
                     logits, updates = discriminator.apply({'params': params,
@@ -652,15 +656,33 @@ def make_train(config):
                     disc_train_state.replace(run_stats=updates["run_stats"])
 
                     # binary cross entropy loss
-                    bce_loss = jnp.maximum(logits, jnp.zeros_like(logits)) - logits * targets + jnp.log(
-                        1 + jnp.exp(-jnp.abs(logits)))
-                    bce_loss = jnp.mean(bce_loss)
+                    # bce_loss = jnp.maximum(logits, jnp.zeros_like(logits)) - logits * targets + jnp.log(
+                    #     1 + jnp.exp(-jnp.abs(logits)))
+                    # bce_loss = jnp.mean(bce_loss)
+                    #
+                    log_p = jax.nn.log_sigmoid(logits)
+                    log_not_p = jax.nn.log_sigmoid(-logits)
+                    bce_loss = jnp.mean(-targets * log_p - (1. - targets) * log_not_p)
 
                     # bernoulli entropy
+                    discrim_prob = nn.sigmoid(logits)
                     bernoulli_ent = (config["DISC_ENT_COEF"] *
-                                     jnp.mean((1. - nn.sigmoid(logits)) * logits - nn.log_sigmoid(logits)))
+                                     jnp.mean((1. - discrim_prob) * logits - nn.log_sigmoid(logits)))
 
                     total_loss = bce_loss - bernoulli_ent
+
+                    if config["DEBUG"]:
+
+                        def callback(discrim_probs_policy, discrim_probs_exp):
+                            wandb.log({"Policy Discriminator Output": jnp.mean(discrim_probs_policy)})
+                            wandb.log({"Expert Discriminator Output": jnp.mean(discrim_probs_exp)})
+
+                        plcy_idxs = jnp.arange(0, config["DISC_MINIBATCH_SIZE"])
+                        exp_idxs = jnp.arange(config["DISC_MINIBATCH_SIZE"], 2*config["DISC_MINIBATCH_SIZE"])
+                        discrim_probs_policy = discrim_prob[plcy_idxs]
+                        discrim_probs_exp = discrim_prob[exp_idxs]
+                        #jax.debug.breakpoint()
+                        jax.debug.callback(callback, discrim_probs_policy, discrim_probs_exp)
 
                     return total_loss, disc_train_state
 
@@ -673,8 +695,8 @@ def make_train(config):
                 demo_input = _get_one_batch(expert_states, batch_size, _rng2)
 
                 # Create labels
-                plcy_target = jnp.zeros(shape=(plcy_input.shape[0], 1))
-                demo_target = jnp.ones(shape=(demo_input.shape[0], 1))
+                plcy_target = jnp.zeros(shape=(plcy_input.shape[0],))
+                demo_target = jnp.ones(shape=(demo_input.shape[0],))
 
                 # concatenate inputs and targets
                 inputs = jnp.concatenate([plcy_input, demo_input], axis=0)
@@ -682,16 +704,27 @@ def make_train(config):
 
                 # update discriminator
                 grad_fn = jax.value_and_grad(_discrim_loss, has_aux=True)
-                (total_loss, disc_train_state), grads = grad_fn(disc_train_state.params, disc_train_state, inputs, targets)
+                (total_loss, disc_train_state), grads =\
+                    grad_fn(disc_train_state.params, disc_train_state, inputs, targets)
                 disc_train_state = disc_train_state.apply_gradients(grads=grads)
 
-                return disc_train_state, rng
+                runner_state = (disc_train_state, traj_batch, rng)
+                return runner_state, None
 
             counter = ((train_state.step + 1) // config["NUM_MINIBATCHES"] ) // config["UPDATE_EPOCHS"]
 
-            disc_train_state, rng = jax.lax.cond(counter % config["TRAIN_DISC_INTERVAL"] == 0,
-                                                 lambda x, y, z: _update_discriminator(x, y, z),
-                                                 lambda x, y, z: (x, z), disc_train_state, traj_batch, rng)
+            (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
+                _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=10
+            )
+
+            # disc_train_state, discrim_probs_plcy, discrim_probs_exp, rng =\
+            #     jax.lax.cond(counter % config["TRAIN_DISC_INTERVAL"] == 0,
+            #                  lambda x, y, z: _update_discriminator(x, y, z),
+            #                  lambda x, y, z: (x, z), disc_train_state, traj_batch, rng)
+
+            # disc_train_state, rng = _update_discriminator(disc_train_state,
+            #                                               traj_batch,
+            #                                               rng)
 
             metric = traj_batch.info
             if config.get("DEBUG"):
@@ -700,6 +733,8 @@ def make_train(config):
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
+                    wandb.log({"Episodic Return": jnp.mean(return_values)})
+
                 jax.debug.callback(callback, metric)
 
             runner_state = (train_state, disc_train_state, env_state, last_obs, rng)
@@ -713,14 +748,43 @@ def make_train(config):
         return {"runner_state": runner_state, "metrics": metric}
 
     return train
+
+
+def save_ckpt(ckpt, path="ckpts", tag=None, step=0):
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    save_args = orbax_utils.save_args_from_target(ckpt)
+    from datetime import datetime
+    if tag is None:
+        time_stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        tag = time_stamp
+    ckpt_dir = os.getcwd() + "/" + path + "/" + tag
+    options = orbax.checkpoint.CheckpointManagerOptions(create=True)
+    checkpoint_manager = orbax.checkpoint.CheckpointManager(
+        ckpt_dir, orbax_checkpointer, options)
+    checkpoint_manager.save(step, ckpt, save_kwargs={'save_args': save_args})
+
+
+def load_train_state(path, action_dim):
+    network = ActorCritic(
+        action_dim, activation=config["ACTIVATION"])
+    ckpt_dir = os.getcwd() + "/" + path
+    orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
+    options = orbax.checkpoint.CheckpointManagerOptions(create=True)
+    checkpoint_manager = orbax.checkpoint.CheckpointManager(
+        ckpt_dir, orbax_checkpointer, options)
+    step = checkpoint_manager.latest_step()
+    raw_restored = checkpoint_manager.restore(step)
+    train_state = TrainState(**raw_restored["train_state"], apply_fn=network.apply, tx=None)
+    return train_state
+
 #%%
 config = {
     "LR": 1e-4,
     "DISC_LR": 5e-5,
     "NUM_ENVS": 2048,
-    "NUM_STEPS": 1, #10
-    "TOTAL_TIMESTEPS": 2e7,
-    "UPDATE_EPOCHS": 10,    #4
+    "NUM_STEPS": 10, #10
+    "TOTAL_TIMESTEPS": 5e7,
+    "UPDATE_EPOCHS": 4,    #4
     "TRAIN_DISC_INTERVAL": 3,
     "DISC_MINIBATCH_SIZE": 2048,
     "NUM_MINIBATCHES": 32,
@@ -729,7 +793,7 @@ config = {
     "CLIP_EPS": 0.2,
     "DPO_ALPHA": 2.0,
     "DPO_BETA": 0.6,
-    "ENT_COEF": 1e-3, # 0.0
+    "ENT_COEF": 0.0, # 0.0
     "DISC_ENT_COEF": 0.0,
     "VF_COEF": 0.5,
     "MAX_GRAD_NORM": 0.5,
@@ -739,14 +803,53 @@ config = {
     "NORMALIZE_ENV": True,
     "DEBUG": True,
 }
-rng = jax.random.PRNGKey(30)
-train_jit = jax.jit(make_train(config))
-out = train_jit(rng)
 
-import time
+
+
+
+
+rng = jax.random.PRNGKey(30)
+# #rngs = jax.random.split(rng, config["N_SEEDS"])
+#
+
+
+mode = "train"
+if mode == "train":
+    wandb.login()
+    wandb.init(
+        project="gail-jax",
+        group="one_run",
+        config=config,
+        )
+
+    import time
+    start_time = time.time()
+    train_jit = jax.jit(make_train(config))
+    #train_vjit = jax.jit(jax.vmap(train_jit))
+    out = train_jit(rng)
+
+    print("Time taking for training: ", time.time() - start_time)
+
+    runner_state = out["runner_state"]
+    ckpt = dict(train_state=runner_state[0], disc_train_state=runner_state[1])
+    save_ckpt(ckpt)
+
+    # info = out["metrics"]
+    # cum_rewards = info["returned_episode_returns"][info["returned_episode"]]
+    # timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
+    # for t in range(len(timesteps)):
+    #     wandb.log(step=t, data={cum_rewards[t]})
+
 # replay policy
-runner_state = out["runner_state"]
-train_state = runner_state[0]
+#runner_state = out["runner_state"]
+
+
+#train_state = runner_state[0]
+
+
+
+#raw_restored = orbax_checkpointer.restore(os.getcwd() + "/ckpts/" + "20240619_185036")
+
 
 #env = LocoEnv.make("MjxUnitreeH1.walk", n_envs=100)
 
@@ -767,62 +870,62 @@ train_state = runner_state[0]
 #env.play_trajectory(n_episodes=10)
 
 # add the wrappers
-env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
-env = LogWrapper(env)
-env = ClipAction(env)
-env = VecEnv(env)
-if config["NORMALIZE_ENV"]:
-    #env = NormalizeVecObservation(env)
-    env = NormalizeVecReward(env, config["GAMMA"])
+else:
+    import time
+    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
+    env = LogWrapper(env)
+    env = ClipAction(env)
+    env = VecEnv(env)
+    if config["NORMALIZE_ENV"]:
+        #env = NormalizeVecObservation(env)
+        env = NormalizeVecReward(env, config["GAMMA"])
 
-network = ActorCritic(
-    env.info.action_space.shape[0], activation=config["ACTIVATION"]
-)
+    train_state = load_train_state("ckpts/20240621_173951", env.info.action_space.shape[0])
 
-
-key = jax.random.key(0)
-keys = jax.random.split(key, env.info.n_envs + 1)
-key, env_keys = keys[0], keys[1:]
-
-# jit and vmap all functions needed
-# rng_reset = jax.jit(jax.vmap(env.mjx_reset))
-# rng_step = jax.jit(jax.vmap(env.mjx_step))
-
-# reset env
-obs, state = env.reset(env_keys, None)
-
-
-# optionally collect rollouts for rendering
-rollout = []
-
-step = 0
-previous_time = time.time()
-LOGGING_FREQUENCY = 100000
-
-
-for i in range(1000):
-
+    key = jax.random.key(0)
     keys = jax.random.split(key, env.info.n_envs + 1)
-    key, action_keys = keys[0], keys[1:]
+    key, env_keys = keys[0], keys[1:]
 
-    # SELECT ACTION
-    rng, _rng = jax.random.split(rng)
-    y, _ = network.apply({'params': train_state.params, 'run_stats': train_state.run_stats},
-                         obs, mutable=["run_stats"])
-    pi, _ = y
-    action = pi.sample(seed=_rng)
+    # jit and vmap all functions needed
+    # rng_reset = jax.jit(jax.vmap(env.mjx_reset))
+    # rng_step = jax.jit(jax.vmap(env.mjx_step))
 
-    obs, state, reward, done, info = env.step(None, state, action)
+    # reset env
+    obs, state = env.reset(env_keys, None)
 
-    rollout.append(state.env_state.env_state)
 
-    step += env.info.n_envs
-    if step % LOGGING_FREQUENCY == 0:
-        current_time = time.time()
-        print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
-        previous_time = current_time
+    # optionally collect rollouts for rendering
+    rollout = []
 
-# Simulate and display video.
-env = env._env
-env.mjx_render_trajectory(rollout, record=True)
+    step = 0
+    previous_time = time.time()
+    LOGGING_FREQUENCY = 100000
+
+
+    for i in range(1000):
+
+        keys = jax.random.split(key, env.info.n_envs + 1)
+        key, action_keys = keys[0], keys[1:]
+
+        # SELECT ACTION
+        rng, _rng = jax.random.split(rng)
+        y, updates = train_state.apply_fn({'params': train_state.params,
+                                           'run_stats': train_state.run_stats},
+                                          obs, mutable=["run_stats"])
+        pi, _ = y
+        action = pi.sample(seed=_rng)
+
+        obs, state, reward, done, info = env.step(None, state, action)
+
+        rollout.append(state.env_state.env_state)
+
+        step += env.info.n_envs
+        if step % LOGGING_FREQUENCY == 0:
+            current_time = time.time()
+            print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
+            previous_time = current_time
+
+    # Simulate and display video.
+    env = env._env
+    env.mjx_render_trajectory(rollout, record=True)
 

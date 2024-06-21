@@ -10,3 +10,5 @@ loco_mujoco/datasets/
 mushroom_rl_recordings/
 record_all/
 _build/
+wandb/
+ckpts/
