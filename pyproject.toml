@@ -4,10 +4,13 @@ requires = ["setuptools", "wheel", "wget"]
 [project]
 name = "loco-mujoco"
 dependencies = [
-    "mushroom-rl>=1.10.0",
     "numpy",
     "scipy",
-    "mujoco==2.3.7",
+    "mujoco",
+    "jax",
+    "flax",
+    "orbax",
+    "distrax",
     "gymnasium",
     "dm_control",
     "pyyaml",

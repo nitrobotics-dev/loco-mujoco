@@ -340,6 +340,7 @@ class RunningMeanStd(nn.Module):
 class ActorCritic(nn.Module):
     action_dim: Sequence[int]
     activation: str = "tanh"
+    init_std: float = 1.0
 
     @nn.compact
     def __call__(self, x):
@@ -360,7 +361,8 @@ class ActorCritic(nn.Module):
         actor_mean = nn.Dense(
             self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
         )(actor_mean)
-        actor_logtstd = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
+        actor_logtstd = self.param("log_std", nn.initializers.constant(jnp.log(self.init_std)),
+                                   (self.action_dim,))
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
 
         critic = nn.Dense(
@@ -536,7 +538,7 @@ def make_train(config):
                                                     obs, mutable=["run_stats"])
 
                     plcy_prob = nn.sigmoid(logits)
-                    reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-8))
+                    reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-6))
 
                     delta = reward + config["GAMMA"] * next_value * (1 - done) - value
                     gae = (
@@ -714,7 +716,7 @@ def make_train(config):
             counter = ((train_state.step + 1) // config["NUM_MINIBATCHES"] ) // config["UPDATE_EPOCHS"]
 
             (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
-                _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=10
+                _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=config["N_DISC_EPOCHS"]
             )
 
             # disc_train_state, discrim_probs_plcy, discrim_probs_exp, rng =\
@@ -783,14 +785,16 @@ config = {
     "DISC_LR": 5e-5,
     "NUM_ENVS": 2048,
     "NUM_STEPS": 10, #10
-    "TOTAL_TIMESTEPS": 5e7,
+    "TOTAL_TIMESTEPS": 10e7,
     "UPDATE_EPOCHS": 4,    #4
     "TRAIN_DISC_INTERVAL": 3,
     "DISC_MINIBATCH_SIZE": 2048,
+    "N_DISC_EPOCHS": 10,
     "NUM_MINIBATCHES": 32,
     "GAMMA": 0.99,
     "GAE_LAMBDA": 0.95,
     "CLIP_EPS": 0.2,
+    "INIT_STD": 1.0,
     "DPO_ALPHA": 2.0,
     "DPO_BETA": 0.6,
     "ENT_COEF": 0.0, # 0.0
@@ -813,7 +817,7 @@ rng = jax.random.PRNGKey(30)
 #
 
 
-mode = "train"
+mode = "eval"
 if mode == "train":
     wandb.login()
     wandb.init(
@@ -880,7 +884,7 @@ else:
         #env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
 
-    train_state = load_train_state("ckpts/20240621_173951", env.info.action_space.shape[0])
+    train_state = load_train_state("ckpts/20240623_095853", env.info.action_space.shape[0])
 
     key = jax.random.key(0)
     keys = jax.random.split(key, env.info.n_envs + 1)

@@ -2,8 +2,8 @@ from pathlib import Path
 from copy import deepcopy
 from dm_control import mjcf
 
-from mushroom_rl.utils.running_stats import *
-from mushroom_rl.utils.mujoco import *
+# from mushroom_rl.utils.running_stats import *
+# from mushroom_rl.utils.mujoco import *
 
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset

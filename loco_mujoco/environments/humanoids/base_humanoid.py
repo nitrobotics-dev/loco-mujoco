@@ -4,8 +4,8 @@ from pathlib import Path
 
 from dm_control import mjcf
 
-from mushroom_rl.utils.running_stats import *
-from mushroom_rl.utils.mujoco import *
+# from mushroom_rl.utils.running_stats import *
+# from mushroom_rl.utils.mujoco import *
 
 import loco_mujoco
 from loco_mujoco.environments import LocoEnv

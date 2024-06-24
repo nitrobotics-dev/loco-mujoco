@@ -1,5 +1,5 @@
 import numpy as np
-from mushroom_rl.utils.angles import euler_to_mat, mat_to_euler
+# from mushroom_rl.utils.angles import euler_to_mat, mat_to_euler
 
 
 def rotate_obs(state, angle, idx_rot, idx_xvel, idx_yvel):

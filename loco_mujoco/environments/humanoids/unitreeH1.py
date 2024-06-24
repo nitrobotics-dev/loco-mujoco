@@ -4,7 +4,7 @@ from copy import deepcopy
 import numpy as np
 from dm_control import mjcf
 
-from mushroom_rl.utils.running_stats import *
+# from mushroom_rl.utils.running_stats import *
 
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
