@@ -396,12 +396,12 @@ class UnitreeH1(BaseRobotHumanoid):
 
         pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
                                            backend.greater(q_pelvis_y, 0.1))
-        pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -np.pi / 4.5),
-                                              backend.greater(q_pelvis_tilt, np.pi / 12))
-        pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -np.pi / 12),
-                                              backend.greater(q_pelvis_list, np.pi / 8))
-        pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -np.pi / 8),
-                                                  backend.greater(q_pelvis_rotation, np.pi / 8))
+        pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
+                                              backend.greater(q_pelvis_tilt, backend.pi / 12))
+        pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12),
+                                              backend.greater(q_pelvis_list, backend.pi / 8))
+        pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 8),
+                                                  backend.greater(q_pelvis_rotation, backend.pi / 8))
 
         pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
                                          backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
