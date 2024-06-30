@@ -43,39 +43,39 @@ class MjxUnitreeH1(UnitreeH1):
         lf_handle.remove()
 
         # add primitive foot shapes
-        # back_foot_attr = dict(type="capsule", quat=[1.0, 0.0, 1.0, 0.0], pos=[-0.03, 0.0, -0.05],
-        #                       size=[0.015, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        # front_foot_attr = dict(type="capsule", quat=[1.0, 1.0, 0.0, 0.0], pos=[0.15, 0.0, -0.054],
-        #                        size=[0.02, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        #
-        # r_foot_b = xml_handle.find("body", "right_ankle_link")
-        # r_foot_b.add("geom", name="right_foot1", **back_foot_attr)
-        # r_foot_b.add("geom", name="right_foot2", **front_foot_attr)
-        #
-        # l_foot_b = xml_handle.find("body", "left_ankle_link")
-        # l_foot_b.add("geom", name="left_foot1", **back_foot_attr)
-        # l_foot_b.add("geom", name="left_foot2", **front_foot_attr)
-
-        back_foot_attr_1 = dict(type="sphere", pos=[-0.03, 0.01, -0.06], size=[0.001],
-                                rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        back_foot_attr_2 = dict(type="sphere", pos=[-0.03, -0.01, -0.06], size=[0.001],
-                                rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        front_foot_attr_1 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
-                                 rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        front_foot_attr_2 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
-                                 rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        back_foot_attr = dict(type="capsule", quat=[1.0, 0.0, 1.0, 0.0], pos=[-0.03, 0.0, -0.05],
+                              size=[0.015, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        front_foot_attr = dict(type="capsule", quat=[1.0, 1.0, 0.0, 0.0], pos=[0.15, 0.0, -0.054],
+                               size=[0.02, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
 
         r_foot_b = xml_handle.find("body", "right_ankle_link")
-        r_foot_b.add("geom", name="right_foot1", **back_foot_attr_1)
-        r_foot_b.add("geom", name="right_foot2", **back_foot_attr_2)
-        r_foot_b.add("geom", name="right_foot3", **front_foot_attr_1)
-        r_foot_b.add("geom", name="right_foot4", **front_foot_attr_2)
+        r_foot_b.add("geom", name="right_foot1", **back_foot_attr)
+        r_foot_b.add("geom", name="right_foot2", **front_foot_attr)
 
-        r_foot_b = xml_handle.find("body", "left_ankle_link")
-        r_foot_b.add("geom", name="left_foot1", **back_foot_attr_1)
-        r_foot_b.add("geom", name="left_foot2", **back_foot_attr_2)
-        r_foot_b.add("geom", name="left_foot3", **front_foot_attr_1)
-        r_foot_b.add("geom", name="left_foot4", **front_foot_attr_2)
+        l_foot_b = xml_handle.find("body", "left_ankle_link")
+        l_foot_b.add("geom", name="left_foot1", **back_foot_attr)
+        l_foot_b.add("geom", name="left_foot2", **front_foot_attr)
+
+        # back_foot_attr_1 = dict(type="sphere", pos=[-0.03, 0.01, -0.06], size=[0.001],
+        #                         rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        # back_foot_attr_2 = dict(type="sphere", pos=[-0.03, -0.01, -0.06], size=[0.001],
+        #                         rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        # front_foot_attr_1 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
+        #                          rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        # front_foot_attr_2 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
+        #                          rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        #
+        # r_foot_b = xml_handle.find("body", "right_ankle_link")
+        # r_foot_b.add("geom", name="right_foot1", **back_foot_attr_1)
+        # r_foot_b.add("geom", name="right_foot2", **back_foot_attr_2)
+        # r_foot_b.add("geom", name="right_foot3", **front_foot_attr_1)
+        # r_foot_b.add("geom", name="right_foot4", **front_foot_attr_2)
+        #
+        # r_foot_b = xml_handle.find("body", "left_ankle_link")
+        # r_foot_b.add("geom", name="left_foot1", **back_foot_attr_1)
+        # r_foot_b.add("geom", name="left_foot2", **back_foot_attr_2)
+        # r_foot_b.add("geom", name="left_foot3", **front_foot_attr_1)
+        # r_foot_b.add("geom", name="left_foot4", **front_foot_attr_2)
 
         # --- 2. disable all contacts in the collision geom class ---
         default = xml_handle.find_all("default")
