@@ -237,6 +237,9 @@ class MujocoViewer:
                 mujoco.mjtVisFlag.mjVIS_CONTACTFORCE]
             self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONSTRAINT] = not self._scene_option.flags[
                 mujoco.mjtVisFlag.mjVIS_CONSTRAINT]
+            self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTSPLIT] = not self._scene_option.flags[
+                mujoco.mjtVisFlag.mjVIS_CONTACTSPLIT]
+
 
         if key == glfw.KEY_T:
             self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = not self._scene_option.flags[

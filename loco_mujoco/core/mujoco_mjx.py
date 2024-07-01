@@ -10,7 +10,7 @@ import jax.numpy as jnp
 from jax import random
 
 from loco_mujoco.core.mujoco_base import Mujoco, ObservationType
-from loco_mujoco.core.utils import  MujocoViewer
+from loco_mujoco.core.utils import MujocoViewer, VideoRecorder
 
 
 @struct.dataclass
@@ -180,9 +180,14 @@ class Mjx(Mujoco):
         # return data.replace(xpos=xpos, xquat=xquat, cvel=cvel, qpos=qpos,
         #                     qvel=qvel, site_xpos=site_xpos, site_xmat=site_xmat)
 
-    def mjx_render_trajectory(self, trajectory, record=False):
+    def mjx_render_trajectory(self, trajectory, record=False, **recorder_params):
 
         assert len(trajectory) > 0, "Mjx render got provided with an empty trajectory."
+
+        if record:
+            recorder = VideoRecorder(**recorder_params)
+        else:
+            recorder = None
 
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
@@ -196,7 +201,12 @@ class Mjx(Mujoco):
             for state in trajectory:
                 self._data.qpos, self._data.qvel = state.data.qpos[i, :], state.data.qvel[i, :]
                 mujoco.mj_forward(self._model, self._data)
-                self._viewer.render(self._data, record)
+                im = self._viewer.render(self._data, record)
+                if recorder:
+                    recorder(im)
+
+        if recorder:
+            recorder.stop()
 
     def _process_collision_groups(self, collision_groups):
         if collision_groups is not None and len(collision_groups) > 0:

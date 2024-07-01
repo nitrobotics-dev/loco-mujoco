@@ -8,6 +8,7 @@ dist/
 .DS_Store
 loco_mujoco/datasets/
 mushroom_rl_recordings/
+LocoMuJoCo_recordings/
 record_all/
 _build/
 wandb/

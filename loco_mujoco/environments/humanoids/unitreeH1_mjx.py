@@ -62,7 +62,7 @@ class MjxUnitreeH1(UnitreeH1):
                                 rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
         front_foot_attr_1 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
                                  rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        front_foot_attr_2 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
+        front_foot_attr_2 = dict(type="sphere", pos=[0.14, -0.03, -0.06], size=[0.001],
                                  rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
 
         r_foot_b = xml_handle.find("body", "right_ankle_link")
