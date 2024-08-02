@@ -107,6 +107,7 @@ class LogWrapper(GymnaxWrapper):
 
 class BraxGymnaxWrapper:
     def __init__(self, env_name):
+        MODEL_OPTION = dict(iterations=100, ls_iterations=50)
         env = LocoEnv.make(env_name)
         # env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         # env = AutoResetWrapper(env)
@@ -802,7 +803,7 @@ config = {
     "VF_COEF": 0.5,
     "MAX_GRAD_NORM": 0.5,
     "ACTIVATION": "tanh",
-    "ENV_NAME": "MjxUnitreeH1.walk",
+    "ENV_NAME": "MjxUnitreeG1.run",
     "ANNEAL_LR": False,
     "NORMALIZE_ENV": True,
     "DEBUG": True,
@@ -875,6 +876,7 @@ if mode == "train":
 
 # add the wrappers
 else:
+
     import time
     env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
     env = LogWrapper(env)
@@ -884,18 +886,23 @@ else:
         #env = NormalizeVecObservation(env)
         env = NormalizeVecReward(env, config["GAMMA"])
 
-    train_state = load_train_state("ckpts/20240623_095853", env.info.action_space.shape[0])
-
+    # train_state = load_train_state("ckpts/20240628_081753", env.info.action_space.shape[0])   # best running g1 so far
+    #train_state = load_train_state("ckpts/20240628_022009", env.info.action_space.shape[0])    # best running h1 so far
+    # train_state = load_train_state("ckpts/20240630_233746", env.info.action_space.shape[0]) # h1 best walking so far with capsule
+    # train_state = load_train_state("ckpts/20240630_235305", env.info.action_space.shape[0]) # even better h1 walking? difference only in vf_coef
+    train_state = load_train_state("ckpts/20240701_070239", env.info.action_space.shape[0])
+    train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*-20
     key = jax.random.key(0)
-    keys = jax.random.split(key, env.info.n_envs + 1)
+    NENVS = 100
+    keys = jax.random.split(key, NENVS + 1)
     key, env_keys = keys[0], keys[1:]
 
     # jit and vmap all functions needed
-    # rng_reset = jax.jit(jax.vmap(env.mjx_reset))
-    # rng_step = jax.jit(jax.vmap(env.mjx_step))
+    rng_reset = jax.jit(env.reset)
+    rng_step = jax.jit(env.step)
 
     # reset env
-    obs, state = env.reset(env_keys, None)
+    obs, state = rng_reset(env_keys, None)
 
 
     # optionally collect rollouts for rendering
@@ -905,21 +912,23 @@ else:
     previous_time = time.time()
     LOGGING_FREQUENCY = 100000
 
+    for i in range(300):
 
-    for i in range(1000):
-
-        keys = jax.random.split(key, env.info.n_envs + 1)
+        keys = jax.random.split(key, NENVS + 1)
         key, action_keys = keys[0], keys[1:]
 
         # SELECT ACTION
         rng, _rng = jax.random.split(rng)
+
         y, updates = train_state.apply_fn({'params': train_state.params,
                                            'run_stats': train_state.run_stats},
                                           obs, mutable=["run_stats"])
+        train_state = train_state.replace(run_stats=updates['run_stats'])  # update stats
         pi, _ = y
+
         action = pi.sample(seed=_rng)
 
-        obs, state, reward, done, info = env.step(None, state, action)
+        obs, state, reward, done, info = rng_step(None, state, action)
 
         rollout.append(state.env_state.env_state)
 
@@ -931,5 +940,5 @@ else:
 
     # Simulate and display video.
     env = env._env
-    env.mjx_render_trajectory(rollout, record=True)
+    env.mjx_render_trajectory(rollout, record=False)
 
