@@ -48,10 +48,13 @@ class Mjx(Mujoco):
         # reset dones
         state = state.replace(done=jnp.zeros_like(state.done, dtype=bool))
 
+        # modify the observation and the data if needed (does nothing by default)
+        cur_obs, data, cur_info = self._step_init(state.observation, data, state.info)
+
         # preprocess action
         action = self._mjx_preprocess_action(action, data)
 
-        # modify data *before* step if needed
+        # modify data *before* step if needed (does nothing by default)
         data = self._mjx_simulation_pre_step(data)
 
         # step in the environment using the action
@@ -60,17 +63,17 @@ class Mjx(Mujoco):
         step_fn = lambda _, x: mjx.step(self.sys, x)
         data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
 
-        # modify data *after* step if needed
+        # modify data *after* step if needed (does nothing by default)
         data = self._mjx_simulation_post_step(data)
 
         # create the observation
         cur_obs = self._mjx_create_observation(data)
 
-        # modify the observation and the data if needed
-        cur_obs, data = self._mjx_step_finalize(cur_obs, data)
+        # modify the observation and the data if needed (does nothing by default)
+        cur_obs, data, cur_info = self._mjx_step_finalize(cur_obs, data, cur_info)
 
         # create info
-        cur_info = self._mjx_update_info_dictionary(state.info, cur_obs, data)
+        cur_info = self._mjx_update_info_dictionary(cur_info, cur_obs, data)
 
         # check if the next obs is an absorbing state
         absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data)
@@ -116,7 +119,11 @@ class Mjx(Mujoco):
         return state.replace(data=data, observation=new_obs, final_observation=final_obs)
 
     def _mjx_create_observation(self, data):
-        return self._create_observation_compat(data, jnp)
+        # get the base observation defined in observation_spec
+        base_obs = self._obs_from_spec_compat(data, jnp)
+        # get goal from data (if defined in goal_spec)
+        base_goal = self._goal_from_spec_compat(data, jnp)
+        return jnp.concatenate([base_obs, base_goal])
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
         info = {"cur_step_in_episode": 1,
@@ -144,11 +151,17 @@ class Mjx(Mujoco):
     def _mjx_preprocess_action(self, action, data):
         return action
 
-    def _mjx_step_finalize(self, obs, data):
+    def _mjx_step_init(self, obs, data, info):
         """
         Allows information to be accessed at the end of a step.
         """
-        return obs, data
+        return obs, data, info
+
+    def _mjx_step_finalize(self, obs, data, info):
+        """
+        Allows information to be accessed at the end of a step.
+        """
+        return obs, data, info
 
     def _mjx_set_sim_state(self, data, sample):
 

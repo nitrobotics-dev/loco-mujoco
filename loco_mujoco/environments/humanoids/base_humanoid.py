@@ -9,6 +9,7 @@ from dm_control import mjcf
 
 import loco_mujoco
 from loco_mujoco.environments import LocoEnv
+from loco_mujoco.utils import info_property
 
 
 class BaseHumanoid(LocoEnv):
@@ -179,7 +180,8 @@ class BaseHumanoid(LocoEnv):
         else:
             return (pelvis_condition or lumbar_condition)
 
-    def _get_grf_size(self):
+    @info_property
+    def grf_size(self):
         """
         Returns the size of the ground force vector.
 

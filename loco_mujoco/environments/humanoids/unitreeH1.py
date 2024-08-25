@@ -10,6 +10,7 @@ from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
+from loco_mujoco.utils import info_property
 
 
 class UnitreeH1(BaseRobotHumanoid):
@@ -313,14 +314,18 @@ class UnitreeH1(BaseRobotHumanoid):
 
         return grf
 
-    @staticmethod
-    def _get_grf_size():
+    @info_property
+    def grf_size(self):
         """
         Returns the size of the ground force vector.
 
         """
 
         return 6
+
+    @info_property
+    def upper_body_xml_name(self):
+        return "torso_link"
 
     def _get_xml_modifications(self):
         """
@@ -430,27 +435,27 @@ class UnitreeH1(BaseRobotHumanoid):
         """
         check_validity_task_mode_dataset(UnitreeH1.__name__, task, None, dataset_type,
                                          *UnitreeH1.valid_task_confs.get_all())
-        if dataset_type == "real":
-            if task == "run":
-                path = "datasets/humanoids/real/05-run_UnitreeH1.npz"
-            else:
-                path = "datasets/humanoids/real/02-constspeed_UnitreeH1.npz"
-        elif dataset_type == "perfect":
-            if "use_foot_forces" in kwargs.keys():
-                assert kwargs["use_foot_forces"] is False
-            if "disable_arms" in kwargs.keys():
-                assert kwargs["disable_arms"] is True
-            if "disable_back_joint" in kwargs.keys():
-                assert kwargs["disable_back_joint"] is False
-            if "hold_weight" in kwargs.keys():
-                assert kwargs["hold_weight"] is False
+        # if dataset_type == "real":
+        #     if task == "run":
+        #         path = "datasets/humanoids/real/05-run_UnitreeH1.npz"
+        #     else:
+        #         path = "datasets/humanoids/real/02-constspeed_UnitreeH1.npz"
+        # elif dataset_type == "perfect":
+        #     if "use_foot_forces" in kwargs.keys():
+        #         assert kwargs["use_foot_forces"] is False
+        #     if "disable_arms" in kwargs.keys():
+        #         assert kwargs["disable_arms"] is True
+        #     if "disable_back_joint" in kwargs.keys():
+        #         assert kwargs["disable_back_joint"] is False
+        #     if "hold_weight" in kwargs.keys():
+        #         assert kwargs["hold_weight"] is False
+        #
+        #     if task == "run":
+        #         path = "datasets/humanoids/perfect/unitreeh1_run/perfect_expert_dataset_det.npz"
+        #     else:
+        #         path = "datasets/humanoids/perfect/unitreeh1_walk/perfect_expert_dataset_det.npz"
 
-            if task == "run":
-                path = "datasets/humanoids/perfect/unitreeh1_run/perfect_expert_dataset_det.npz"
-            else:
-                path = "datasets/humanoids/perfect/unitreeh1_walk/perfect_expert_dataset_det.npz"
-
-        return BaseRobotHumanoid.generate(cls, path, task, dataset_type,
+        return BaseRobotHumanoid.generate(cls, task, dataset_type,
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod

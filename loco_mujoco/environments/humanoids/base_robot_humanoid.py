@@ -2,6 +2,7 @@ import os.path
 import warnings
 from pathlib import Path
 from copy import deepcopy
+import numpy as np
 
 # from mushroom_rl.utils.running_stats import *
 
@@ -57,7 +58,7 @@ class BaseRobotHumanoid(LocoEnv):
                                                                  % (self._hidable_obs,)
 
         pos_dim, vel_dim = self._len_qpos_qvel()
-        force_dim = self._get_grf_size()
+        force_dim = self.grf_size
 
         mask = []
         if "positions" not in obs_to_hide:
@@ -141,120 +142,3 @@ class BaseRobotHumanoid(LocoEnv):
         color = blue_rgba + ((red_rgba - blue_rgba) * interpolation_var)
 
         return color
-
-    @staticmethod
-    def generate(env, path, task="walk", dataset_type="real", debug=False,
-                 clip_trajectory_to_joint_ranges=False, **kwargs):
-        """
-        Returns an environment corresponding to the specified task.
-
-        Args:
-            env (class): Humanoid class, either HumanoidTorque or HumanoidMuscle.
-            path (str): Path to the dataset.
-            task (str): Main task to solve. Either "walk" or "carry". The latter is walking while carrying
-            an unknown weight, which makes the task partially observable.
-            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
-            reference trajectory. This data does not perfectly match the kinematics
-            and dynamics of this environment, hence it is more challenging. "perfect" uses
-            a perfect dataset.
-            debug (bool): If True, the smaller test datasets are used for debugging purposes.
-            clip_trajectory_to_joint_ranges (bool): If True, trajectory is clipped to joint ranges.
-
-        Returns:
-            An MDP of the Robot.
-
-        """
-        
-        if "reward_type" in kwargs.keys():
-            reward_type = kwargs["reward_type"]
-            del kwargs["reward_type"]
-        else:
-            reward_type = "target_velocity"
-
-        # Generate the MDP
-        if task == "walk":
-            if "reward_params" in kwargs.keys():
-                reward_params = kwargs["reward_params"]
-                del kwargs["reward_params"]
-            else:
-                reward_params = dict(target_velocity=1.25)
-            
-            mdp = env(reward_type=reward_type, reward_params=reward_params, **kwargs)
-        
-        elif task == "carry":
-            if "reward_params" in kwargs.keys():
-                reward_params = kwargs["reward_params"]
-                del kwargs["reward_params"]
-            else:
-                reward_params = dict(target_velocity=1.25)
-            
-            mdp = env(hold_weight=True, reward_type=reward_type, reward_params=reward_params, **kwargs)
-            
-        elif task == "run":
-            if "reward_params" in kwargs.keys():
-                reward_params = kwargs["reward_params"]
-                del kwargs["reward_params"]
-            else:
-                reward_params = dict(target_velocity=2.5)
-                
-            mdp = env(reward_type=reward_type, reward_params=reward_params, **kwargs)
-
-        # Load the trajectory
-        env_freq = 1 / mdp._timestep  # hz
-        desired_contr_freq = 1 / mdp.dt  # hz
-        n_substeps = env_freq // desired_contr_freq
-
-        if dataset_type == "real":
-            traj_data_freq = 500  # hz
-            use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
-            if debug or use_mini_dataset:
-                if use_mini_dataset:
-                    warnings.warn("Datasets not found, falling back to test datasets. Please download and install "
-                                  "the datasets to use this environment for imitation learning!")
-                path = path.split("/")
-                path.insert(3, "mini_datasets")
-                path = "/".join(path)
-
-            traj_params = dict(traj_path=Path(loco_mujoco.__file__).resolve().parent / path,
-                               traj_dt=(1 / traj_data_freq),
-                               control_dt=(1 / desired_contr_freq),
-                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
-
-        elif dataset_type == "perfect":
-            traj_data_freq = 100  # hz
-            traj_files = mdp.load_dataset_and_get_traj_files(path, traj_data_freq)
-            traj_params = dict(traj_files=traj_files,
-                               traj_dt=(1 / traj_data_freq),
-                               control_dt=(1 / desired_contr_freq),
-                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
-
-        elif dataset_type == "preference":
-            traj_data_freq = 100  # hz
-            infos = []
-            all_paths = next(os.walk(Path(loco_mujoco.__file__).resolve().parent / path), (None, None, []))[2]
-            for i, p in enumerate(all_paths):
-                traj_files = mdp.load_dataset_and_get_traj_files(path + p, traj_data_freq)
-                if i == 0:
-                    all_traj_files = traj_files
-                else:
-                    for key in traj_files.keys():
-                        if key == "split_points":
-                            all_traj_files[key] = np.concatenate([all_traj_files[key],
-                                                                  traj_files[key][1:] + all_traj_files[key][-1]])
-                        else:
-                            all_traj_files[key] = np.concatenate([all_traj_files[key], traj_files[key]])
-                info = p.split(".")[0]
-                info = info.split("_")[-2]
-                n_traj = len(traj_files["split_points"]) - 1
-                infos += [info] * n_traj
-
-            traj_params = dict(traj_files=all_traj_files,
-                               traj_dt=(1 / traj_data_freq),
-                               traj_info = infos,
-                               control_dt=(1 / desired_contr_freq),
-                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
-
-
-        mdp.load_trajectory(traj_params, warn=False)
-
-        return mdp

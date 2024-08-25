@@ -81,9 +81,8 @@ class Trajectory:
 
         #  Extract trajectory from files. This returns a list of np.arrays. The length of the
         #  list is the number of observations. Each np.array has the shape
-        #  (n_trajectories, n_samples, (dim_observation)). If dim_observation is one
-        #  the shape of the array is just (n_trajectories, n_samples).
-        self.trajectories = self._extract_trajectory_from_files()
+        #  (n_trajectories, n_samples, dim_observation).
+        self.trajectories, self.keys2ind = self._extract_trajectory_from_files()
 
         if traj_info is not None:
             assert len(traj_info) == self.number_of_trajectories, "The number of trajectory infos/labels need " \
@@ -158,14 +157,31 @@ class Trajectory:
         The trajectory is then split to multiple trajectories using the split points.
 
         Returns:
-            A list of np.arrays. The length of the list is the number of observations.
-            Each np.array has the shape (n_trajectories, n_samples, (dim_observation)).
-            If dim_observation is one the shape of the array is just (n_trajectories, n_samples).
+            A list of np.arrays. The length of the list equals the number of keys.
+            Each np.array has the shape (n_trajectories, n_samples, dim_observation).
+            Additionally, a dictionary is returned that maps the keys to the indices in the trajectories.
 
         """
 
-        # load data of relevant keys
-        trajectories = [self._trajectory_files[key] for key in self.keys]
+        # self.keys += ["test"]
+        # self._trajectory_files["test"] = np.zeros((109000, ))
+
+        # load data of relevant keys and create store the  indices of the keys in trajectories
+        trajectories = []
+        keys_indices = []
+        cur_ind = 0
+        for key in self.keys:
+            data = self._trajectory_files[key]
+            if len(data.shape) == 1:
+                data = np.expand_dims(data, axis=-1)
+            else:
+                data = np.array(data)
+            trajectories.append(data)
+            if cur_ind == 0:
+                keys_indices.append(np.arange(0, data.shape[-1]))
+            else:
+                keys_indices.append(np.arange(cur_ind, cur_ind + data.shape[-1]))
+            cur_ind += data.shape[-1]
 
         # check that all observations have equal lengths
         len_obs = np.array([len(obs) for obs in trajectories])
@@ -179,9 +195,12 @@ class Trajectory:
             len_trajectories = np.array([len(traj) for traj in trajectories[i]])
             assert np.all(len_trajectories == len_trajectories[0]), "Only trajectories of equal length " \
                                                                     "are currently supported."
+
             trajectories[i] = np.array(trajectories[i])
 
-        return trajectories
+        keys2ind = dict(zip(self.keys, keys_indices))
+
+        return trajectories, keys2ind
 
     def _interpolate_trajectories(self, map_funct, re_map_funct, map_params, re_map_params):
         """
@@ -211,12 +230,13 @@ class Trajectory:
                                 endpoint=True)
 
             # preprocess trajectory
-            traj = map_funct(traj) if map_params is None else map_funct(traj, **map_params)
+            traj, orig_shape = map_funct(traj) if map_params is None else map_funct(traj, **map_params)
 
             new_traj = interpolate.interp1d(x, traj, kind="cubic", axis=1)(x_new)
 
             # postprocess trajectory
-            new_traj = re_map_funct(new_traj) if re_map_params is None else re_map_funct(new_traj, **re_map_params)
+            new_traj = re_map_funct(new_traj, orig_shape) if re_map_params is None \
+                else re_map_funct(new_traj, orig_shape, **re_map_params)
 
             new_trajs.append(new_traj)
 
@@ -236,7 +256,10 @@ class Trajectory:
         self.split_points = np.array(self.split_points)
 
     def get_jax_trajectory(self):
-        return jnp.array(deepcopy(self.trajectories))
+        """
+        Returns the trajectories as a jax array. The shape is (dim_observation, n_trajectories, n_samples).
+        """
+        return jnp.transpose(jnp.concatenate(deepcopy(self.trajectories), axis=-1), axes=(2, 0, 1))
 
     # def reset_trajectory_OLD(self, substep_no=None, traj_no=None):
     #     """

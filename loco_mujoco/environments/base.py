@@ -1,5 +1,5 @@
 import os
-
+import yaml
 import warnings
 from pathlib import Path
 from copy import deepcopy
@@ -15,11 +15,12 @@ import mujoco
 from dm_control import mjcf
 
 import loco_mujoco
+from loco_mujoco.core.mujoco_base import GoalType
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState
 from loco_mujoco.core.utils import Box, VideoRecorder
 from loco_mujoco.utils import Trajectory
-from loco_mujoco.utils import NoReward, CustomReward,\
-    TargetVelocityReward, PosReward, DomainRandomizationHandler
+from loco_mujoco.utils import GoalInterface, RewardInterface, DomainRandomizationHandler
+from loco_mujoco.utils import info_property
 
 
 @struct.dataclass
@@ -36,8 +37,8 @@ class LocoEnv(Mjx):
 
     def __init__(self, xml_handles, action_spec, observation_spec, collision_groups=None, enable_mjx=False,
                  n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type=None, reward_params=None,
-                 traj_params=None, random_start=True, fixed_start_conf=None, timestep=0.001,
-                 use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
+                 goal_type=None, goal_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
+                 timestep=0.001, use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
                  domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
                  model_option_conf=None, **viewer_params):
         """
@@ -122,10 +123,13 @@ class LocoEnv(Mjx):
         # todo: xml_handles are currently not supported to be lists
         xml_handles = xml_handles[0]
 
+        # add sites for goal to xml_handle
+        xml_handles, self._goal = self._setup_goal(xml_handles, goal_type, goal_params)
+
         if enable_mjx:
             # call parent (Mjx) constructor
             super(LocoEnv, self).__init__(n_envs, xml_file=xml_handles, actuation_spec=action_spec,
-                                          observation_spec=observation_spec, gamma=gamma,
+                                          observation_spec=observation_spec, goal_spec=self._goal.spec, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
                                           n_intermediate_steps=n_intermediate_steps,
                                           timestep=timestep, collision_groups=collision_groups,
@@ -135,14 +139,14 @@ class LocoEnv(Mjx):
             assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
             super(Mjx, self).__init__(xml_file=xml_handles, actuation_spec=action_spec,
-                                      observation_spec=observation_spec, gamma=gamma,
+                                      observation_spec=observation_spec, goal_spec=self._goal.spec, gamma=gamma,
                                       horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
                                       timestep=timestep, collision_groups=collision_groups,
                                       default_camera_mode=default_camera_mode,
                                       model_option_conf=model_option_conf, **viewer_params)
 
         # specify reward function
-        self._reward_function = self._get_reward_function(reward_type, reward_params)
+        self._reward_function = self._setup_reward(reward_type, reward_params)
 
         # optionally use foot forces in the observation space
         self._use_foot_forces = use_foot_forces
@@ -171,6 +175,8 @@ class LocoEnv(Mjx):
         else:
             self.trajectories = None
             self._trajectory_loaded = True
+            if not self._goal.requires_trajectory:
+                self._goal.initialize(self._goal_dict)
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
@@ -204,6 +210,9 @@ class LocoEnv(Mjx):
                                        **traj_params)
         self._jax_trajectory = self.trajectories.get_jax_trajectory()
         self._trajectory_loaded = True
+
+        # setup trajectory information in goal class if needed
+        self._goal.initialize(self._goal_dict, self.trajectories)
 
     def _reward(self, state, action, next_state, absorbing, info, model, data):
         """
@@ -266,6 +275,22 @@ class LocoEnv(Mjx):
     def _mjx_is_absorbing(self, obs, info, data):
         return jax.lax.cond(self._use_absorbing_states, lambda o, i, d: self._mjx_has_fallen(o, i, d),
                             lambda o, i, d: jnp.array(False), obs, info, data)
+
+    def _step_finalize(self, obs, data, info):
+        """
+        Update goal in Mujoco data structure if needed.
+
+        """
+        data = self._goal.set_data(data, backend=np, trajectory=self._jax_trajectory, traj_state=info["TrajState"])
+        return obs, data, info
+
+    def _mjx_step_finalize(self, obs, data, info):
+        """
+        Update goal in Mujoco data structure if needed.
+
+        """
+        data = self._goal.set_data(data, backend=jnp, trajectory=self._jax_trajectory, traj_state=info["TrajState"])
+        return obs, data, info
 
     def get_kinematic_obs_mask(self):
         """
@@ -572,8 +597,8 @@ class LocoEnv(Mjx):
                              self.info.observation_space.high[2:])
 
         if self._use_foot_forces:
-            grf_low, grf_high = (-np.ones((self._get_grf_size(),)) * np.inf,
-                                 np.ones((self._get_grf_size(),)) * np.inf)
+            grf_low, grf_high = (-np.ones((self.grf_size,)) * np.inf,
+                                 np.ones((self.grf_size,)) * np.inf)
             return (np.concatenate([sim_low, grf_low]),
                     np.concatenate([sim_high, grf_high]))
         else:
@@ -773,7 +798,7 @@ class LocoEnv(Mjx):
 
         """
 
-        mean_grf = RunningAveragedWindow(shape=(self._get_grf_size(),), window_size=self._n_intermediate_steps)
+        mean_grf = RunningAveragedWindow(shape=(self.grf_size,), window_size=self._n_intermediate_steps)
 
         return mean_grf
 
@@ -791,7 +816,7 @@ class LocoEnv(Mjx):
 
         return grf
 
-    def _get_reward_function(self, reward_type, reward_params):
+    def _setup_reward(self, reward_type, reward_params):
         """
         Constructs a reward function.
 
@@ -804,24 +829,47 @@ class LocoEnv(Mjx):
 
         """
 
-        if reward_type == "custom":
-            reward_func = CustomReward(**reward_params)
-        elif reward_type == "target_velocity":
-            x_vel_idx = self.get_obs_idx("dq_pelvis_tx")
-            assert len(x_vel_idx) == 1
-            x_vel_idx = x_vel_idx[0]
-            reward_func = TargetVelocityReward(x_vel_idx=x_vel_idx, **reward_params)
-        elif reward_type == "x_pos":
-            x_idx = self.get_obs_idx("q_pelvis_tx")
-            assert len(x_idx) == 1
-            x_idx = x_idx[0]
-            reward_func = PosReward(pos_idx=x_idx)
-        elif reward_type is None:
-            reward_func = NoReward()
-        else:
-            raise NotImplementedError("The specified reward has not been implemented: %s" % reward_type)
+        reward_cls = RewardInterface.registered_rewards[reward_type]
+        reward = reward_cls() if reward_params is None else reward_cls(self._obs_dict, self._goal_dict, **reward_params)
 
-        return reward_func
+        return reward
+
+    def _get_all_info_properties(self):
+        """
+        Returns all info properties of the environment. (decorated with @info_property)
+
+        """
+        info_props = {}
+        for attr_name in dir(self):
+            attr_value = getattr(self.__class__, attr_name, None)
+            if isinstance(attr_value, property) and getattr(attr_value.fget, '_is_info_property', False):
+                info_props[attr_name] = getattr(self, attr_name)
+        return info_props
+
+    # def _get_goal(self, goal_type, goal_params):
+    #     """
+    #     Constructs a goal function.
+    #
+    #     Args:
+    #         goal_type (string): Name of the goal.
+    #         goal_params (dict): Parameters of the goal function.
+    #
+    #     Returns:
+    #         Goal function.
+    #
+    #     """
+    #     if goal_type == "no_goal" or goal_type is None:
+    #         goal = NoGoal()
+    #     elif goal_type == "goal_arrow":
+    #         data_goal_site_ind = [value.data_type_ind for value in self._goal_dict.values()]
+    #         goal = GoalTrajArrow(data_goal_site_ind)
+    #     elif goal_type == "goal_traj":
+    #         # todo: access the correct goal_params
+    #         goal = GoalTrajArrow(**goal_params)
+    #     else:
+    #         raise NotImplementedError("The specified goal is not supported: %s" % goal_type)
+    #
+    #     return goal
 
     def _get_joint_pos(self):
         """
@@ -932,13 +980,143 @@ class LocoEnv(Mjx):
             raise ValueError("Either use a random start or set a fixed initial start, but not both.")
 
     @staticmethod
-    def _get_grf_size():
+    def generate(env_cls, task="walk", dataset_type="real", debug=False,
+                 clip_trajectory_to_joint_ranges=False, **kwargs):
+        """
+        Returns an environment corresponding to the specified task.
+
+        Args:
+            env_cls: Class of the chosen environment.
+            task (str): Main task to solve. Either "walk" or "carry". The latter is walking while carrying
+            an unknown weight, which makes the task partially observable.
+            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
+            reference trajectory. This data does not perfectly match the kinematics
+            and dynamics of this environment, hence it is more challenging. "perfect" uses
+            a perfect dataset.
+            debug (bool): If True, the smaller test datasets are used for debugging purposes.
+            clip_trajectory_to_joint_ranges (bool): If True, trajectory is clipped to joint ranges.
+
+        Returns:
+            An environment of specified class and task.
+
+        """
+
+        # load correct task configuration
+        config_key = ".".join((env_cls.__name__, task, dataset_type))
+        task_config, dataset_path = env_cls.get_task_config_and_dataset_path(config_key, **kwargs)
+
+        # create the environment
+        env = env_cls(**task_config)
+
+        # load the trajectory
+        traj_params = env.get_traj_params(env, dataset_path, dataset_type, debug, clip_trajectory_to_joint_ranges)
+        env.load_trajectory(traj_params, warn=False)
+
+        return env
+
+    @info_property
+    def grf_size(self):
         """
         Returns the size of the ground force vector.
 
         """
 
         return 12
+
+    @info_property
+    def upper_body_xml_name(self):
+        raise NotImplementedError
+
+    @staticmethod
+    def get_task_config_and_dataset_path(config_key, **kwargs):
+
+        config_file_path = Path(loco_mujoco.__file__).resolve().parent / "tasks/tasks.yaml"
+
+        with open(config_file_path, 'r') as file:
+            all_configs = yaml.safe_load(file)
+
+        # get task-specific configuration
+        try:
+            task_config = all_configs[config_key]
+        except KeyError:
+            raise KeyError("The specified task configuration could not be found: %s" % config_key)
+
+        # overwrite the task_config with the kwargs
+        for key, value in task_config.items():
+            if key in kwargs.keys():
+                task_config[key] = kwargs[key]
+                del kwargs[key]  # delete from kwargs to avoid passing a kwarg twice
+
+        # add rest of kwargs to task_config
+        task_config |= kwargs
+
+        # get the dataset path and delete it from the task_config
+        dataset_path = task_config["dataset_path"]
+        del task_config["dataset_path"]
+
+        return task_config, dataset_path
+
+    @staticmethod
+    def get_traj_params(mdp, path, dataset_type, debug, clip_trajectory_to_joint_ranges):
+
+        path = Path(loco_mujoco.__file__).resolve().parent / path
+
+        # Load the trajectory
+        env_freq = 1 / mdp._timestep  # hz
+        desired_contr_freq = 1 / mdp.dt  # hz
+        n_substeps = env_freq // desired_contr_freq
+
+        if dataset_type == "real":
+            traj_data_freq = 500  # hz
+            use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
+            if debug or use_mini_dataset:
+                if use_mini_dataset:
+                    warnings.warn("Datasets not found, falling back to test datasets. Please download and install "
+                                  "the datasets to use this environment for imitation learning!")
+                path = path.split("/")
+                path.insert(3, "mini_datasets")
+                path = "/".join(path)
+
+            traj_params = dict(traj_path=Path(loco_mujoco.__file__).resolve().parent / path,
+                               traj_dt=(1 / traj_data_freq),
+                               control_dt=(1 / desired_contr_freq),
+                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
+
+        elif dataset_type == "perfect":
+            traj_data_freq = 100  # hz
+            traj_files = mdp.load_dataset_and_get_traj_files(path, traj_data_freq)
+            traj_params = dict(traj_files=traj_files,
+                               traj_dt=(1 / traj_data_freq),
+                               control_dt=(1 / desired_contr_freq),
+                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
+
+        # elif dataset_type == "preference":
+        #     traj_data_freq = 100  # hz
+        #     infos = []
+        #     all_paths = next(os.walk(Path(loco_mujoco.__file__).resolve().parent / path), (None, None, []))[2]
+        #     for i, p in enumerate(all_paths):
+        #         traj_files = mdp.load_dataset_and_get_traj_files(path + p, traj_data_freq)
+        #         if i == 0:
+        #             all_traj_files = traj_files
+        #         else:
+        #             for key in traj_files.keys():
+        #                 if key == "split_points":
+        #                     all_traj_files[key] = np.concatenate([all_traj_files[key],
+        #                                                           traj_files[key][1:] + all_traj_files[key][-1]])
+        #                 else:
+        #                     all_traj_files[key] = np.concatenate([all_traj_files[key], traj_files[key]])
+        #         info = p.split(".")[0]
+        #         info = info.split("_")[-2]
+        #         n_traj = len(traj_files["split_points"]) - 1
+        #         infos += [info] * n_traj
+        #
+        #     traj_params = dict(traj_files=all_traj_files,
+        #                        traj_dt=(1 / traj_data_freq),
+        #                        traj_info = infos,
+        #                        control_dt=(1 / desired_contr_freq),
+        #                        clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
+
+        return traj_params
 
     @classmethod
     def sample_from_trajectories(cls, key, trajectories, traj_no, subtraj_step_no):
@@ -1013,38 +1191,65 @@ class LocoEnv(Mjx):
         overwritten, it just converts the list of np.arrays to a np.array.
 
         Args:
-            traj (list): List of np.arrays containing each observations. Each np.array
-                has the shape (n_trajectories, n_samples, (dim_observation)). If dim_observation
-                is one the shape of the array is just (n_trajectories, n_samples).
+            traj (list): List of np.arrays containing each observation. Each np.array
+                has the shape (n_trajectories, n_samples, dim_observation).
             interpolate_map_params: Set of parameters needed by the individual environments.
 
         Returns:
-            A np.array with shape (n_observations, n_trajectories, n_samples). dim_observation
-            has to be one.
+            A np.array with shape (n_observations, n_samples) and a list of shapes of the original
+            array for backwards conversion.
 
         """
-
-        return np.array(traj)
+        orig_shape = [t.shape for t in traj]
+        return np.concatenate(traj, axis=-1).T, orig_shape
 
     @staticmethod
-    def _interpolate_remap(traj, **interpolate_remap_params):
+    def _interpolate_remap(traj, orig_shape, **interpolate_remap_params):
         """
         The corresponding backwards transformation to _interpolation_map. If this function is
         not overwritten, it just converts the np.array to a list of np.arrays.
 
         Args:
-            traj (np.array): Trajectory as np.array with shape (n_observations, n_trajectories, n_samples).
-            dim_observation is one.
+            traj (np.array): Trajectory as np.array with shape (D, n_samples).
+                D is the dimensionality of the concatenated elements at a certain time in the trajectory.
+            orig_shape: List of shapes of the original arrays before concatenation.
+                The shapes are (n_samples, dim_observation). Note that the sum of all dim_observation in the list
+                equals D.
             interpolate_remap_params: Set of parameters needed by the individual environments.
 
         Returns:
-            List of np.arrays containing each observations. Each np.array has the shape
+            List of np.arrays containing each observation. Each np.array has the shape
             (n_trajectories, n_samples, (dim_observation)). If dim_observation
             is one the shape of the array is just (n_trajectories, n_samples).
 
         """
+        out = []
+        start_ind = 0
+        for i, shape in enumerate(orig_shape):
+            end_ind = start_ind + shape[1]
+            out.append(traj[start_ind:end_ind, :].T)
+            start_ind = end_ind
 
-        return [obs for obs in traj]
+        return out
+
+    def _setup_goal(self, xml_handle, goal_type, goal_params):
+
+        # collect all info properties of the env (dict all @info_properties decorated function returns)
+        info_props = self._get_all_info_properties()
+
+        # get the goal
+        goal_cls = GoalInterface.registered_goals[goal_type]
+        goal = goal_cls(info_props=info_props) if goal_params is None \
+            else goal_cls(info_props=info_props, **goal_params)
+
+        # apply the modification to the xml needed
+        xml_handle = goal.apply_xml_modifications(xml_handle, self.root_body_name)
+
+        return xml_handle, goal
+
+    @property
+    def root_body_name(self):
+        return "pelvis"
 
     @staticmethod
     def _delete_from_xml_handle(xml_handle, joints_to_remove, motors_to_remove, equ_constraints):

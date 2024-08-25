@@ -622,7 +622,7 @@ class UnitreeA1(LocoEnv):
     @staticmethod
     def generate(task="simple", dataset_type="real", debug=False, **kwargs):
         """
-        Returns a Unitree environment corresponding to the specified task.
+        Returns an Unitree environment corresponding to the specified task.
 
         Args:
             task (str): Main task to solve. Either "simple" or "hard". "simple" is a straight walking

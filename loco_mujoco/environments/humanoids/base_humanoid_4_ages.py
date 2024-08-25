@@ -207,7 +207,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
 
         pos_dim = len(self._get_joint_pos()) - 2
         vel_dim = len(self._get_joint_vel())
-        force_dim = self._get_grf_size()
+        force_dim = self.grf_size
         env_id_dim = len(self._get_env_id_map(0, self.n_all_models))
 
         mask = []

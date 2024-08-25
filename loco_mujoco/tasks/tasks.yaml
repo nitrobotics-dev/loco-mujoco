@@ -1,0 +1,58 @@
+UnitreeH1.walk.real:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 1.25
+    vel_obs_dict_key: dq_pelvis_tx
+  dataset_path: datasets/humanoids/real/02-constspeed_UnitreeH1.npz
+
+UnitreeH1.walk.perfect:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 1.25
+    vel_obs_dict_key: dq_pelvis_tx
+  mandatory:
+    disable_arms: true
+    disable_back_joint: false
+    hold_weight: false
+    use_foot_forces: false
+  dataset_path: loco_mujoco/dataset/UnitreeH1_walk_perfect
+
+UnitreeH1.run.real:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 2.5
+    vel_obs_dict_key: dq_pelvis_tx
+  dataset_path: datasets/humanoids/real/05-run_UnitreeH1.npz
+
+UnitreeH1.run.perfect:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 2.5
+    vel_obs_dict_key: dq_pelvis_tx
+  mandatory:
+    disable_arms: true
+    disable_back_joint: false
+    hold_weight: false
+    use_foot_forces: false
+  dataset_path: loco_mujoco/dataset/UnitreeH1_walk_perfect
+
+MjxUnitreeH1.walk.real:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 1.25
+    vel_obs_dict_key: dq_pelvis_tx
+  dataset_path: datasets/humanoids/real/02-constspeed_UnitreeH1.npz
+
+MjxUnitreeH1.run.real:
+  goal_type: no_goal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 2.5
+    vel_obs_dict_key: dq_pelvis_tx
+  dataset_path: datasets/humanoids/real/05-run_UnitreeH1.npz
+

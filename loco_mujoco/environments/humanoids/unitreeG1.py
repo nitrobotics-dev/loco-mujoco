@@ -10,6 +10,7 @@ from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
+from loco_mujoco.utils import info_property
 
 
 class UnitreeG1(BaseRobotHumanoid):
@@ -316,8 +317,8 @@ class UnitreeG1(BaseRobotHumanoid):
 
         return grf
 
-    @staticmethod
-    def _get_grf_size():
+    @info_property
+    def grf_size(self):
         """
         Returns:
             The size of the ground force vector.

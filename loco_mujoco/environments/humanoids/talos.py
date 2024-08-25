@@ -8,6 +8,7 @@ from dm_control import mjcf
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
+from loco_mujoco.utils import info_property
 
 
 class Talos(BaseRobotHumanoid):
@@ -416,8 +417,8 @@ class Talos(BaseRobotHumanoid):
 
         return grf
 
-    @staticmethod
-    def _get_grf_size():
+    @info_property
+    def grf_size(self):
         """
         Returns the size of the ground force vector.
 
