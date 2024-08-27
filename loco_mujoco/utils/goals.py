@@ -47,8 +47,32 @@ class GoalInterface(ABC):
         return data
 
     def apply_xml_modifications(self, xml_handle, root_body_name):
-        self.apply_xml_modifications(xml_handle, root_body_name)
         return xml_handle
+
+    def set_attr_data_compat(self, data, backend, attr, arr, ind):
+        """
+        Setter for different attributes in data that is compatible with Mujoco and MJX data structures.
+
+
+        Args:
+            data: The data structure to modify.
+            backend (str): The backend to use for the modification (either numpy or jax-numpy).
+            attr (str): The attribute to modify.
+            arr (object): The array to set.
+            ind (list(ind)): The index to set.
+
+
+        Returns:
+            The modified data structure.
+
+        """
+        if backend == np:
+            getattr(data, attr)[ind] = arr
+        elif backend == jnp:
+            data = data.replace(**{attr: getattr(data, attr).at[ind].set(arr)})
+        else:
+            raise NotImplementedError
+        return data
 
     @property
     def spec(self):
@@ -149,7 +173,12 @@ class GoalTrajArrow(GoalInterface):
         # get the goal from the trajectory
         traj_goal = trajectory[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no]
         # set the goal in the userdata
-        data.userdata[self._data_goal_userdata_ind] = traj_goal
+        # if backend == np:
+        #     data.userdata[self._data_goal_userdata_ind] = traj_goal
+        # elif backend == jnp:
+        #     data = data.replace(userdata=data.userdata.at[self._data_goal_userdata_ind].set(traj_goal))
+        #
+        data = self.set_attr_data_compat(data, backend, "userdata", traj_goal, self._data_goal_userdata_ind)
         # set the visual data
         if self.visualize_goal:
             data = self.set_visual_data(data, backend, traj_goal)

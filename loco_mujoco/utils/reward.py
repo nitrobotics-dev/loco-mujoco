@@ -136,7 +136,7 @@ class TargetVelocityReward(RewardInterface):
         pass
 
     def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
-        x_vel = state[self._x_vel_idx]
+        x_vel = backend.squeeze(state[self._x_vel_idx])
         return backend.exp(-backend.square(x_vel - self._target_vel))
 
 

@@ -1025,15 +1025,27 @@ class LocoEnv(Mjx):
 
     @info_property
     def upper_body_xml_name(self):
-        raise NotImplementedError
+        raise NotImplementedError(f"Please implement the upper_body_xml_name property "
+                                  f"in the {type(self).__name__} environment.")
 
     @staticmethod
     def get_task_config_and_dataset_path(config_key, **kwargs):
 
-        config_file_path = Path(loco_mujoco.__file__).resolve().parent / "tasks/tasks.yaml"
+        def load_all_yaml_at_path(path):
+            all_files = os.listdir(path)
+            yaml_files = [path  / f for f in all_files if f.endswith(".yaml")]
+            all_configs = dict()
+            for config_file_path in yaml_files:
+                with open(config_file_path, 'r') as file:
+                    one_config = yaml.safe_load(file)
+                    assert list(one_config.keys()) not in list(all_configs.keys())
+                    all_configs |= one_config
+            return all_configs
 
-        with open(config_file_path, 'r') as file:
-            all_configs = yaml.safe_load(file)
+        config_file_path = Path(loco_mujoco.__file__).resolve().parent / "tasks/"
+
+        # load all configurations
+        all_configs = load_all_yaml_at_path(config_file_path)
 
         # get task-specific configuration
         try:
@@ -1059,8 +1071,6 @@ class LocoEnv(Mjx):
     @staticmethod
     def get_traj_params(mdp, path, dataset_type, debug, clip_trajectory_to_joint_ranges):
 
-        path = Path(loco_mujoco.__file__).resolve().parent / path
-
         # Load the trajectory
         env_freq = 1 / mdp._timestep  # hz
         desired_contr_freq = 1 / mdp.dt  # hz
@@ -1077,6 +1087,7 @@ class LocoEnv(Mjx):
                 path.insert(3, "mini_datasets")
                 path = "/".join(path)
 
+            path = Path(loco_mujoco.__file__).resolve().parent / path
             traj_params = dict(traj_path=Path(loco_mujoco.__file__).resolve().parent / path,
                                traj_dt=(1 / traj_data_freq),
                                control_dt=(1 / desired_contr_freq),

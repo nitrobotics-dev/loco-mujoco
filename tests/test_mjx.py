@@ -97,3 +97,7 @@ def test_mjx_simto_mujoco():
             print("Running ", task_name, " with fixed start.")
             test_one_task(task_name, random_start=False, n_steps=n_steps, fixed_start_conf=(0, 0),
                           n_substeps=n_substeps, model_option_conf=MODEL_OPTION, horizon=short_horizon)
+
+
+if __name__ == '__main__':
+    test_mjx_simto_mujoco()

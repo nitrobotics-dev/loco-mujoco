@@ -5,7 +5,7 @@ from loco_mujoco import LocoEnv
 
 
 # create the environment and task
-env = LocoEnv.make("MjxUnitreeH1.run", goal_type="goal_traj_arrow", goal_params=dict(visualize_goal=False))
+env = LocoEnv.make("MjxUnitreeH1.walk")
 
 # get the dataset for the chosen environment and task
 expert_data = env.create_dataset()

@@ -440,7 +440,6 @@ class UnitreeG1(BaseRobotHumanoid):
 
         return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
 
-
     @classmethod
     def generate(cls, task="walk", dataset_type="real", **kwargs):
         """
@@ -458,17 +457,10 @@ class UnitreeG1(BaseRobotHumanoid):
             Returns an environment corresponding to the specified task.
 
         """
-
         check_validity_task_mode_dataset(UnitreeG1.__name__, task, None, dataset_type,
                                          *UnitreeG1.valid_task_confs.get_all())
 
-        if dataset_type == "real":
-            if task == "run":
-                path = "datasets/humanoids/real/05-run_UnitreeG1.npz"
-            else:
-                path = "datasets/humanoids/real/02-constspeed_UnitreeG1.npz"
-
-        return BaseRobotHumanoid.generate(cls, path, task, dataset_type,
+        return BaseRobotHumanoid.generate(cls, task, dataset_type,
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod
@@ -499,6 +491,10 @@ class UnitreeG1(BaseRobotHumanoid):
     @staticmethod
     def _modify_xml_for_mjx(xml_handle):
         raise NotImplementedError
+
+    @info_property
+    def upper_body_xml_name(self):
+        return "torso_link"
 
     def _get_observation_specification(self):
         """
