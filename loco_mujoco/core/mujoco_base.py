@@ -80,11 +80,6 @@ class GoalEntry:
     goal_type: GoalType
 
 
-@struct.dataclass
-class AdditionalInfo:
-
-
-
 class Mujoco:
     """
         This is the base class for all Mujoco environments, CPU and MjX.
