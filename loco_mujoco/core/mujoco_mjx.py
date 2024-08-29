@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 from jax import random
 
-from loco_mujoco.core.mujoco_base import Mujoco, ObservationType
+from loco_mujoco.core.mujoco_base import Mujoco, ObservationType, AdditionalCarry
 from loco_mujoco.core.utils import MujocoViewer, VideoRecorder
 
 
@@ -20,9 +20,15 @@ class MjxState:
     reward: float
     absorbing: bool
     done: bool
+    additional_carry: Any
+    info: Dict[str, Any] = struct.field(default_factory=dict)
+
+
+@struct.dataclass
+class MjxAdditionalCarry(AdditionalCarry):
     final_observation: jax.Array
     first_data: mjx.Data
-    info: Dict[str, Any] = struct.field(default_factory=dict)
+    final_info: Dict[str, Any]
 
 
 class Mjx(Mujoco):
@@ -44,18 +50,19 @@ class Mjx(Mujoco):
     def mjx_step(self, state: MjxState, action: jax.Array):
 
         data = state.data
+        carry = state.additional_carry
 
         # reset dones
         state = state.replace(done=jnp.zeros_like(state.done, dtype=bool))
 
         # modify the observation and the data if needed (does nothing by default)
-        cur_obs, data, cur_info = self._step_init(state.observation, data, state.info)
+        cur_obs, data, cur_info, carry = self._step_init(state.observation, data, state.info, carry)
 
         # preprocess action
-        action = self._mjx_preprocess_action(action, data)
+        action = self._mjx_preprocess_action(action, data, carry)
 
         # modify data *before* step if needed (does nothing by default)
-        data = self._mjx_simulation_pre_step(data)
+        data, carry = self._mjx_simulation_pre_step(data, carry)
 
         # step in the environment using the action
         ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(action)
@@ -64,29 +71,29 @@ class Mjx(Mujoco):
         data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
 
         # modify data *after* step if needed (does nothing by default)
-        data = self._mjx_simulation_post_step(data)
+        data, carry = self._mjx_simulation_post_step(data, carry)
 
         # create the observation
-        cur_obs = self._mjx_create_observation(data)
+        cur_obs = self._mjx_create_observation(data, carry)
 
         # modify the observation and the data if needed (does nothing by default)
-        cur_obs, data, cur_info = self._mjx_step_finalize(cur_obs, data, cur_info)
+        cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, data, cur_info, carry)
 
         # create info
-        cur_info = self._mjx_update_info_dictionary(cur_info, cur_obs, data)
+        cur_info = self._mjx_update_info_dictionary(cur_info, cur_obs, data, carry)
 
         # check if the next obs is an absorbing state
-        absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data)
+        absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data, carry)
 
         # calculate the reward
-        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data)
+        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
 
         # check if done
-        done = jnp.greater_equal(state.info["cur_step_in_episode"], self.info.horizon)
+        done = jnp.greater_equal(carry.cur_step_in_episode, self.info.horizon)
         done = jnp.logical_or(done, absorbing)
 
         state = state.replace(data=data, observation=cur_obs, reward=reward,
-                              absorbing=absorbing, done=done, info=cur_info)
+                              absorbing=absorbing, done=done, info=cur_info, additional_carry=carry)
 
         # reset states that are done
         state = self._mjx_reset_in_step(state)
@@ -99,26 +106,28 @@ class Mjx(Mujoco):
         mujoco.mj_resetData(self._model, self._data)
         data = mjx.put_data(self._model, self._data)
 
-        obs = self._mjx_create_observation(data)
+        carry = self._init_additional_carry(key, data)
+
+        obs = self._mjx_create_observation(data, carry)
         reward = 0.0
         absorbing = jnp.array(False, dtype=bool)
         done = jnp.array(False, dtype=bool)
         info = self._mjx_reset_info_dictionary(obs, data, subkey)
-        info["key"] = key
 
         return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
-                        first_data=data, final_observation=jnp.zeros_like(obs), info=info)
+                        info=info, additional_carry=carry)
 
     def _mjx_reset_in_step(self, state: MjxState):
-
-        data = jax.lax.cond(state.done, lambda: state.first_data, lambda: state.data)
+        carry = state.additional_carry
+        data = jax.lax.cond(state.done, lambda: carry.first_data, lambda: state.data)
         final_obs = jnp.where(state.done, state.observation, jnp.zeros_like(state.observation))
-        state.info["cur_step_in_episode"] = jnp.where(state.done, 1, state.info["cur_step_in_episode"] + 1)
-        new_obs = self._mjx_create_observation(data)
+        carry = carry.replace(cur_step_in_episode=jnp.where(state.done, 1, carry.cur_step_in_episode + 1),
+                              final_observation=final_obs)
+        new_obs = self._mjx_create_observation(data, carry)
 
-        return state.replace(data=data, observation=new_obs, final_observation=final_obs)
+        return state.replace(data=data, observation=new_obs, additional_carry=carry)
 
-    def _mjx_create_observation(self, data):
+    def _mjx_create_observation(self, data, carry):
         # get the base observation defined in observation_spec
         base_obs = self._obs_from_spec_compat(data, jnp)
         # get goal from data (if defined in goal_spec)
@@ -126,42 +135,38 @@ class Mjx(Mujoco):
         return jnp.concatenate([base_obs, base_goal])
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
-        info = {"cur_step_in_episode": 1,
-                "final_observation": jnp.zeros_like(obs),
-                "final_info": {"cur_step_in_episode": 1},
-                }
-        return info
+        return {}
 
-    def _mjx_update_info_dictionary(self, info, obs, data):
+    def _mjx_update_info_dictionary(self, info, obs, data, carry):
         return info
 
     @partial(jax.jit, static_argnums=(0, 6))
     def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data):
         return 0.0
 
-    def _mjx_is_absorbing(self, obs, info, data):
+    def _mjx_is_absorbing(self, obs, info, data, carry):
         return False
 
-    def _mjx_simulation_pre_step(self, data):
-        return data
+    def _mjx_simulation_pre_step(self, data, carry):
+        return data, carry
 
-    def _mjx_simulation_post_step(self, data):
-        return data
+    def _mjx_simulation_post_step(self, data, carry):
+        return data, carry
 
-    def _mjx_preprocess_action(self, action, data):
+    def _mjx_preprocess_action(self, action, data, carry):
         return action
 
-    def _mjx_step_init(self, obs, data, info):
+    def _mjx_step_init(self, obs, data, info, carry):
         """
         Allows information to be accessed at the end of a step.
         """
-        return obs, data, info
+        return obs, data, info, carry
 
-    def _mjx_step_finalize(self, obs, data, info):
+    def _mjx_step_finalize(self, obs, data, info, carry):
         """
         Allows information to be accessed at the end of a step.
         """
-        return obs, data, info
+        return obs, data, info, carry
 
     def _mjx_set_sim_state(self, data, sample):
 
@@ -221,6 +226,11 @@ class Mjx(Mujoco):
         if recorder:
             recorder.stop()
 
+    def _init_additional_carry(self, key, data):
+        return MjxAdditionalCarry(key=key, cur_step_in_episode=1,
+                                  final_observation=jnp.zeros(self.info.observation_space.shape),
+                                  first_data=data, final_info={})
+
     def _process_collision_groups(self, collision_groups):
         if collision_groups is not None and len(collision_groups) > 0:
             raise ValueError("Collisions groups are currently not supported in Mjx.")
@@ -232,101 +242,3 @@ class Mjx(Mujoco):
     @property
     def mjx_env(self):
         return True
-
-
-# if __name__ == "__main__":
-#
-#
-#     observation_spec = [("b_pelvis", "pelvis", ObservationType.BODY_POS),
-#                         ("q_pelvis_tx", "pelvis_tx", ObservationType.JOINT_POS),
-#                         ("q_l_arm_shy", "l_arm_shy", ObservationType.JOINT_POS),
-#                         ("q_l_arm_shx", "l_arm_shx", ObservationType.JOINT_POS),
-#                         ("q_l_arm_shz", "l_arm_shz", ObservationType.JOINT_POS),
-#                         ("q_left_elbow", "left_elbow", ObservationType.JOINT_POS),
-#                         ("q_r_arm_shy", "r_arm_shy", ObservationType.JOINT_POS)]
-#
-#     action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
-#                    "l_arm_shz_actuator", "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
-#                    "r_arm_shz_actuator", "right_elbow_actuator", "hip_flexion_r_actuator",
-#                    "hip_adduction_r_actuator", "hip_rotation_r_actuator", "knee_angle_r_actuator",
-#                    "ankle_angle_r_actuator", "hip_flexion_l_actuator", "hip_adduction_l_actuator",
-#                    "hip_rotation_l_actuator", "knee_angle_l_actuator", "ankle_angle_l_actuator"]
-#
-#     env = Mjx(xml_file="/home/moore/PycharmProjects/MjxTest/data/unitree_h1/h1.xml",
-#               actuation_spec=action_spec,
-#               observation_spec=observation_spec,
-#               horizon=1000,
-#               n_envs=4000,
-#               gamma=0.99)
-#
-#     action_dim = env.info.action_space.shape[0]
-#
-#     # env.reset()
-#     # env.render()
-#     #
-#     # while True:
-#     #     for i in range(500):
-#     #         env.step(np.random.randn(action_dim))
-#     #         env.render()
-#     #     env.reset()
-#     #
-#     # exit()
-#
-#     LOGGING_FREQUENCY = 100000
-#
-#     def sample():
-#         key = random.PRNGKey(758493)  # Random seed is explicit in JAX
-#         action = random.uniform(key, shape=(env.info.n_envs, env.info.action_space.shape[0]))
-#         return action
-#
-#
-#     sample_X = jax.jit(sample)
-#     ###
-#     import time
-#
-#     previous_time = time.time()
-#     step = 0
-#     ###
-#
-#     keys = jax.random.PRNGKey(165416)  # Random seed is explicit in JAX
-#     keys = jax.random.split(keys, env.info.n_envs + 1)
-#     keys, env_keys = keys[0], keys[1:]
-#
-#     state = env.mjx_reset(env_keys)
-#     i = 0
-#     #rollout = []
-#     while True:
-#         # action = np.random.uniform(env.action_space.low, env.action_space.high, size=(env.nr_envs, env.action_space.shape[0]))
-#         key = random.PRNGKey(758493)  # Random seed is explicit in JAX
-#         action = random.uniform(key, shape=(env.n_envs, env.info.action_space.shape[0]))
-#         #action = sample_X()
-#         state = env.mjx_step(state, action)
-#
-#         #rollout.append(state)
-#
-#         #print(i)
-#         i += 1
-#         # print(observation)
-#
-#         ###
-#         step += env.info.n_envs
-#         if step % LOGGING_FREQUENCY == 0:
-#             current_time = time.time()
-#             print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second")
-#             previous_time = current_time
-        ###
-
-    # # Simulate and display video.
-    # frames = env.render(rollout, camera="track")
-    #
-    # import cv2
-    # fps = 1.0/env.dt  # Set frames per second
-    # delay = int(1000 / fps)  # Calculate delay between frames in milliseconds
-    #
-    # # Display the video
-    # for frame in frames:
-    #     cv2.imshow('Video', frame)
-    #     if cv2.waitKey(delay) & 0xFF == ord('q'):
-    #         break
-    #
-    # cv2.destroyAllWindows()

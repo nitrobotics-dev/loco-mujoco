@@ -80,6 +80,12 @@ class GoalEntry:
     goal_type: GoalType
 
 
+@struct.dataclass
+class AdditionalCarry:
+    key: jax.Array
+    cur_step_in_episode: int
+
+
 class Mujoco:
     """
         This is the base class for all Mujoco environments, CPU and MjX.
@@ -111,6 +117,7 @@ class Mujoco:
         self._viewer = None
         self._obs = None
         self._info = None
+        self._additional_carry = None
         self._cur_step_in_episode = 0
 
         # create a dictionary of ObservationEntry for each observation specified in observation_spec
@@ -147,21 +154,22 @@ class Mujoco:
     def reset(self, key):
         key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
-        self._obs = self._create_observation(self._data)
+        # todo: replace all cur_step_in_episode to use additional info!
+        self._additional_carry = self._init_additional_carry(key, self._data)
+        self._obs = self._create_observation(self._data, self._additional_carry)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
-        self._info["key"] = key
-        self._cur_step_in_episode = 1
         return self._obs
 
     def step(self, action):
         cur_obs = self._obs.copy()
         cur_info = self._info.copy()
+        carry = self._additional_carry
 
         # preprocess action (does nothing by default)
-        action = self._preprocess_action(action, self._data)
+        action = self._preprocess_action(action, self._data, carry)
 
-        # modify obs and data, before stepping in the env (does nothing by default) todo: maybe delete
-        cur_obs, self._data, cur_info = self._step_init(cur_obs, self._data, cur_info)
+        # modify obs and data, before stepping in the env (does nothing by default)
+        cur_obs, self._data, cur_info, carry = self._step_init(cur_obs, self._data, cur_info, carry)
 
         ctrl_action = None
 
@@ -172,39 +180,40 @@ class Mujoco:
                 self._data.ctrl[self._action_indices] = ctrl_action
 
             # modify data during simulation, before main step (does nothing by default)
-            self._data = self._simulation_pre_step(self._data)
+            self._data, carry = self._simulation_pre_step(self._data, carry)
 
             # main mujoco step, runs the sim for n_substeps
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
             # modify data during simulation, after main step (does nothing by default)
-            self._data = self._simulation_post_step(self._data)
+            self._data, carry = self._simulation_post_step(self._data, carry)
 
             # recompute the action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
-                cur_obs = self._create_observation(self._data)
+                cur_obs = self._create_observation(self._data, carry)
 
         # create the final observation
         if not self._recompute_action_per_step:
-            cur_obs = self._create_observation(self._data)
+            cur_obs = self._create_observation(self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
-        cur_obs, self._data, cur_info = self._step_finalize(cur_obs, self._data, cur_info)
+        cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._data, cur_info, carry)
 
         # update info (does nothing by default)
-        cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data)
+        cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data, carry)
 
         # check if the current state is an absorbing state
-        absorbing = self._is_absorbing(cur_obs, cur_info, self._data)
+        absorbing = self._is_absorbing(cur_obs, cur_info, self._data, carry)
 
         # calculate the reward
-        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data)
+        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data, carry)
 
         # calculate flag indicating whether this is the last obs before resetting
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
 
         self._obs = cur_obs
         self._cur_step_in_episode += 1
+        self._additional_carry = carry
 
         return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
@@ -230,7 +239,7 @@ class Mujoco:
     def get_all_observation_keys(self):
         return list(self._obs_dict.keys()) + list(self._goal_dict.keys())
 
-    def _is_absorbing(self, obs, info, data):
+    def _is_absorbing(self, obs, info, data, carry):
         """
         Check whether the given state is an absorbing state or not.
 
@@ -243,22 +252,22 @@ class Mujoco:
         """
         return False
 
-    def _step_init(self, obs, data, info):
-        return obs, data, info
+    def _step_init(self, obs, data, info, carry):
+        return obs, data, info, carry
 
-    def _step_finalize(self, obs, data, info):
+    def _step_finalize(self, obs, data, info, carry):
         """
         Allows information to be accessed at the end of a step.
         """
-        return obs, data, info
+        return obs, data, info, carry
 
     def _reset_info_dictionary(self, obs, data, key):
         return {}
 
-    def _update_info_dictionary(self, info, obs, data):
+    def _update_info_dictionary(self, info, obs, data, carry):
         return info
 
-    def _preprocess_action(self, action, data):
+    def _preprocess_action(self, action, data, carry):
         """
         Compute a transformation of the action provided to the
         environment.
@@ -287,7 +296,7 @@ class Mujoco:
         """
         return action
 
-    def _simulation_pre_step(self, data):
+    def _simulation_pre_step(self, data, carry):
         """
         Allows information to be accessed and changed at every intermediate step
         before taking a step in the mujoco simulation.
@@ -299,16 +308,16 @@ class Mujoco:
         self.sim.data.xfrc_applied[self.sim.model._body_name2id["torso"],:] = force + torque
 
         """
-        return data
+        return data, carry
 
-    def _simulation_post_step(self, data):
+    def _simulation_post_step(self, data, carry):
         """
         Allows information to be accessed at every intermediate step
         after taking a step in the mujoco simulation.
         Can be useful to average forces over all intermediate steps.
 
         """
-        return data
+        return data, carry
 
     def load_model(self, xml_file):
         """
@@ -489,10 +498,10 @@ class Mujoco:
         self._site_goal_pos_range = jnp.arange(ranges[7], ranges[8])
         self._userdata_goal_range = jnp.arange(ranges[8], ranges[9])
 
-    def _reward(self, obs, action, next_obs, absorbing, info, model, data):
+    def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
         return 0.0
 
-    def _create_observation(self, data):
+    def _create_observation(self, data, carry):
         # get the base observation defined in observation_spec
         base_obs = self._obs_from_spec_compat(data, np)
         # get goal from data (if defined in goal_spec)
@@ -554,6 +563,9 @@ class Mujoco:
         obs_max = np.concatenate([np.array(entry.obs_max) for entry in self._obs_dict.values()])
         return obs_min, obs_max
 
+    def _init_additional_carry(self, key, data):
+        return AdditionalCarry(key=key, cur_step_in_episode=1)
+
     @staticmethod
     def _modify_model(model, option_config):
         if option_config is not None:
@@ -609,6 +621,26 @@ class Mujoco:
 
         return np.array(low), np.array(high)
 
+    def _get_collision_force(self, group1, group2):
+        """
+        Returns the collision force and torques between the specified groups.
+
+        Args:
+            group1 (string): A name referring to an entry contained in the
+                collision_groups list handed to the constructor;
+            group2 (string): A name referring to an entry contained in the
+                collision_groups list handed to the constructor.
+
+        Returns:
+            A 6D vector specifying the collision forces/torques[3D force + 3D torque]
+            between the given groups. Vector of 0's in case there was no collision.
+            http://mujoco.org/book/programming.html#siContact
+
+        """
+        # todo: implement this
+        c_array = np.zeros(6, dtype=np.float64)
+        return c_array
+
     @property
     def xml_handle(self):
         """ Returns the XML handle of the environment. This will raise an error if the environment contains more
@@ -636,6 +668,9 @@ class Mujoco:
     @property
     def mdp_info(self):
         return self._mdp_info
+
+    def init_additional_carry(self, key, data,  **kwargs):
+        return AdditionalCarry(key=key, cur_step_in_episode=1)
 
     @staticmethod
     def user_warning_raise_exception(warning):
