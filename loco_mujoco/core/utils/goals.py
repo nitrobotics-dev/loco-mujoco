@@ -1,43 +1,43 @@
 from copy import deepcopy
-from abc import ABC, abstractmethod
 
 import numpy as np
 import jax.numpy as jnp
 
-from loco_mujoco.core.mujoco_base import GoalType
+from loco_mujoco.core.utils.observation_types import Obs
 
 
-class GoalInterface(ABC):
+class Goal(Obs):
 
-    registered_goals = dict()
+    registered = dict()
 
     def __init__(self, info_props, visualize_goal=False):
+        self.initialized_traj = False
         self.initialized = False
         self._info_props = info_props
         if visualize_goal:
             assert self.has_visual, (f"{self.__name__} does not support visualization. "
                                      f"Please set visualize_goal to False.")
         self.visualize_goal = visualize_goal
+        super().__init__(obs_name=self.__class__.__name__)
 
-    @staticmethod
-    @abstractmethod
-    def get_name():
+    def init_from_mj(self, model, data, current_obs_size):
+        raise NotImplementedError
+
+    @classmethod
+    def get_obs(cls, model, data, ind, backend):
+        raise NotImplementedError
+
+    def init_from_traj(self, trajectories=None):
         pass
 
     @property
-    @abstractmethod
     def has_visual(self):
-        pass
-
-    @abstractmethod
-    def initialize(self, goal_dict, trajectories=None):
-        pass
+        raise NotImplementedError
 
     @property
     def requires_trajectory(self):
         return False
 
-    @abstractmethod
     def reset(self, data, backend, trajectory=None, traj_state=None):
         assert self.initialized
         return data
@@ -84,9 +84,12 @@ class GoalInterface(ABC):
         return xml_handle
 
     @property
-    @abstractmethod
     def size_user_data(self):
-        pass
+        raise NotImplementedError
+
+    @property
+    def dim(self):
+        return self.size_user_data
 
     @classmethod
     def register(cls):
@@ -94,10 +97,10 @@ class GoalInterface(ABC):
         Register a goal in the goal list.
 
         """
-        env_name = cls.get_name()
+        env_name = cls.__name__
 
-        if env_name not in GoalInterface.registered_goals:
-            GoalInterface.registered_goals[env_name] = cls
+        if env_name not in Goal.registered:
+            Goal.registered[env_name] = cls
 
     @staticmethod
     def list_registered():
@@ -108,17 +111,24 @@ class GoalInterface(ABC):
              The list of the registered goals.
 
         """
-        return list(GoalInterface.registered_goals.keys())
+        return list(Goal.registered.keys())
 
 
-class NoGoal(GoalInterface):
+class NoGoal(Goal):
 
-    def initialize(self, goal_dict, trajectories=None):
+    def init_from_mj(self, model, data, current_obs_size):
         self.initialized = True
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.data_type_ind = np.array([])
+        self.obs_ind = np.array([])
+        return [], []
 
-    @staticmethod
-    def get_name():
-        return "no_goal"
+    def init_from_traj(self, trajectories=None):
+        self.initialized_traj = True
+
+    @classmethod
+    def get_obs(cls, model, data, ind, backend):
+        return backend.array([])
 
     @property
     def has_visual(self):
@@ -132,7 +142,7 @@ class NoGoal(GoalInterface):
         return 0
 
 
-class GoalTrajArrow(GoalInterface):
+class GoalTrajArrow(Goal):
 
     _site_name_keypoint_1 = "goal_visual_k1"
     _site_name_keypoint_2 = "goal_visual_k2"
@@ -141,25 +151,33 @@ class GoalTrajArrow(GoalInterface):
     _arrow_to_goal_ratio = 0.3
 
     def __init__(self, info_props, **kwargs):
-        self._data_goal_userdata_ind = None
         self._traj_goal_ind = None
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
 
         super().__init__(info_props, **kwargs)
 
-    @staticmethod
-    def get_name():
-        return "goal_traj_arrow"
+    def init_from_mj(self, model, data, current_obs_size):
+        self.initialized = True
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        # todo: This will only work if userdata contains only a single goal and no other info.
+        data_type_ind = [i for i in range(data.userdata.size)]
+        obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
+        self.data_type_ind = np.array(data_type_ind)
+        self.obs_ind = np.array(obs_ind)
+        return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, trajectories=None):
+        assert trajectories is not None
+        self._traj_goal_ind = np.concatenate([ind for k, ind in trajectories.keys2ind.items() if k == "VEL_2D"])
+        self.initialized_traj = True
+
+    @classmethod
+    def get_obs(cls, model, data, ind, backend):
+        return backend.ravel(data.userdata[ind])
 
     @property
     def has_visual(self):
         return True
-
-    def initialize(self, goal_dict, trajectories=None):
-        assert trajectories is not None
-        self._traj_goal_ind = np.concatenate([ind for k, ind in trajectories.keys2ind.items() if k == "VEL_2D"])
-        self._data_goal_userdata_ind = goal_dict[self._name_goal_dict].data_type_ind
-        self.initialized = True
 
     @property
     def requires_trajectory(self):
@@ -173,12 +191,7 @@ class GoalTrajArrow(GoalInterface):
         # get the goal from the trajectory
         traj_goal = trajectory[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no]
         # set the goal in the userdata
-        # if backend == np:
-        #     data.userdata[self._data_goal_userdata_ind] = traj_goal
-        # elif backend == jnp:
-        #     data = data.replace(userdata=data.userdata.at[self._data_goal_userdata_ind].set(traj_goal))
-        #
-        data = self.set_attr_data_compat(data, backend, "userdata", traj_goal, self._data_goal_userdata_ind)
+        data = self.set_attr_data_compat(data, backend, "userdata", traj_goal, self.data_type_ind)
         # set the visual data
         if self.visualize_goal:
             data = self.set_visual_data(data, backend, traj_goal)
@@ -207,11 +220,6 @@ class GoalTrajArrow(GoalInterface):
             root.add("site", name=self._site_name_keypoint_1, pos=k1_pos, size=[0.05], **point_properties)
             root.add("site", name=self._site_name_keypoint_2, pos=k2_pos, size=[0.03], **point_properties)
         return xml_handle
-
-    @property
-    def spec(self):
-        goal_spec = [(self._name_goal_dict, None, GoalType.VEL_2D, None, None)]     # userdata does not have xml_name
-        return goal_spec
 
     @property
     def size_user_data(self):

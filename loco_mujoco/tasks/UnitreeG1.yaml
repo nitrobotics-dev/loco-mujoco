@@ -1,5 +1,5 @@
 UnitreeG1.walk.real:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 1.25
@@ -7,7 +7,7 @@ UnitreeG1.walk.real:
   dataset_path: datasets/humanoids/real/02-constspeed_UnitreeG1.npz
 
 UnitreeG1.walk.perfect:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 1.25
@@ -20,7 +20,7 @@ UnitreeG1.walk.perfect:
   dataset_path: loco_mujoco/dataset/UnitreeG1_walk_perfect
 
 UnitreeG1.run.real:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 2.5
@@ -28,7 +28,7 @@ UnitreeG1.run.real:
   dataset_path: datasets/humanoids/real/05-run_UnitreeG1.npz
 
 UnitreeG1.run.perfect:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 2.5
@@ -41,7 +41,7 @@ UnitreeG1.run.perfect:
   dataset_path: loco_mujoco/dataset/UnitreeG1_walk_perfect
 
 MjxUnitreeG1.walk.real:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 1.25
@@ -49,7 +49,7 @@ MjxUnitreeG1.walk.real:
   dataset_path: datasets/humanoids/real/02-constspeed_UnitreeG1.npz
 
 MjxUnitreeG1.run.real:
-  goal_type: no_goal
+  goal_type: NoGoal
   reward_type: target_velocity
   reward_params:
     target_velocity: 2.5

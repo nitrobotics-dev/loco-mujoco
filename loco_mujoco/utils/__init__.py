@@ -1,5 +1,5 @@
 from .reward import *
-from .goals import *
+from loco_mujoco.core.utils.goals import *
 from .trajectory import *
 from .checks import *
 from .video import video2gif
@@ -8,11 +8,6 @@ from .decorators import *
 from .running_stats import *
 from .dataset import download_all_datasets, download_real_datasets, download_perfect_datasets
 from .speed_test import mjx_speed_test
-
-
-# register all goals
-NoGoal.register()
-GoalTrajArrow.register()
 
 # register all rewards
 NoReward.register()

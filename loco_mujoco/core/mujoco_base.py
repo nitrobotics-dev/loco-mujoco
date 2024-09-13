@@ -12,72 +12,7 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer
-
-
-class ObservationType(Enum):
-    """
-    An enum indicating the type of data that should be added to the observation
-    of the environment, can be joint/body/site positions, rotations, and velocities.
-
-    The observations have the following returns:
-        BODY_POS: (3, ) x, y, z position of the body
-        BODY_ROT: (4, ) quaternion of the body
-        BODY_VEL: (6, ) first angular velocity around x, y, z. Then linear velocity for x, y, z
-        JOINT_POS: (1, ) rotation of the joint OR (7, ) position, quaternion of a free joint
-        JOINT_VEL: (1, ) velocity of the joint OR (6, ) FIRST linear then angular velocity !different to BODY_VEL!
-        SITE_POS: (3, ) x, y, z position of the site
-        SITE_ROT: (9, ) rotation matrix of the site
-        GOAL_2D_VEL: (3, ) desired goal velocity in x, y plane. First 2 dims, are cos sine transformations of the
-            desired angle, and the last dim is the magnitude
-    """
-    __order__ = "BODY_POS BODY_ROT BODY_VEL JOINT_POS JOINT_VEL SITE_POS SITE_ROT"
-    BODY_POS = 0
-    BODY_ROT = 1
-    BODY_VEL = 2
-    JOINT_POS = 3
-    JOINT_VEL = 4
-    SITE_POS = 5
-    SITE_ROT = 6
-
-
-class GoalType(Enum):
-    """
-    An enum indicating the type of data that should be used to define the goal of the environment.
-    This class can be extended in the future.
-
-    The goals have the following returns:
-        SITE_POS: (3, ) x, y, z position of the site
-        VEL_2D: (2, ) desired goal velocity in x, y plane.
-
-    """
-
-    __order__ = "SITE_POS VEL_2D"
-    SITE_POS = 0
-    VEL_2D = 1
-
-
-@dataclass
-class ObservationEntry:
-    obs_ind: jnp.array
-    xml_name: str
-    data_type_ind: int
-    dim: int
-    obs_min: Optional[List[float]]
-    obs_max: Optional[List[float]]
-    obs_type: ObservationType
-    mj_type: mujoco.mjtObj
-
-
-@dataclass
-class GoalEntry:
-    obs_ind: jnp.array
-    xml_name: str
-    data_type_ind: int
-    dim: int
-    goal_min: Optional[List[float]]
-    goal_max: Optional[List[float]]
-    goal_type: GoalType
+from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, ObservationType, ObservationIndexContainer
 
 
 @struct.dataclass
@@ -94,7 +29,7 @@ class Mujoco:
 
     _registered_envs = dict()
 
-    def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, goal_spec=None,
+    def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, goal=None,
                  n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1,
                  collision_groups=None, model_option_conf=None, **viewer_params):
 
@@ -120,8 +55,15 @@ class Mujoco:
         self._additional_carry = None
         self._cur_step_in_episode = 0
 
-        # create a dictionary of ObservationEntry for each observation specified in observation_spec
-        self._build_obs_and_goal_dict(observation_spec, goal_spec, self._model, self._data)
+        # set goal
+        self._goal = goal
+
+        # read the observation space, create a dictionary of observations and goals containing information
+        # about each observation's type, indices, min and max values, etc. Additionally, create two dataclasses
+        # containing the indices in the datastructure for each observation type (data_indices) and the indices for
+        # each observation type in the observation array (obs_indices).
+        self.obs_dict, self._data_indices, self._obs_indices = (
+            self._setup_observations(observation_spec, goal, self._model, self._data))
 
         # define observation space bounding box
         observation_space = Box(*self._get_obs_limits())
@@ -237,7 +179,8 @@ class Mujoco:
         return action
 
     def get_all_observation_keys(self):
-        return list(self._obs_dict.keys()) + list(self._goal_dict.keys())
+        from loco_mujoco.utils import Goal
+        return [k for k, elem in self.obs_dict.items() if not issubclass(elem.__class__, Goal)]
 
     def _is_absorbing(self, obs, info, data, carry):
         """
@@ -346,202 +289,157 @@ class Mujoco:
 
         return model
 
-    def _build_obs_and_goal_dict(self, observation_spec, goal_spec, model, data):
+    @staticmethod
+    def _setup_observations(observation_spec, goal, model, data):
+        """
+        Sets up the observation space for the environment. It generates a dictionary containing all the observation
+        types and their corresponding information, as well as two dataclasses containing the indices in the
+        Mujoco datastructure for each observation type (data_indices) and the indices for each observation type
+        in the observation array (obs_indices). Goals are equally treated as observation types.
 
+        Args:
+            observation_spec (list): A list of observation types.
+            goal (Goal): A goal class.
+            model: Mujoco model.
+            data: Mujoco data structure.
+
+        Returns:
+            A dictionary containing all the observation types and their corresponding information, as well as two
+            dataclasses containing the indices in the Mujoco datastructure for each observation type (data_indices)
+            and the indices for each observation type in the observation array (obs_indices).
+
+        """
+
+        # this dict will contain all the observation types and their corresponding information
         obs_dict = dict()
-        goal_dict = dict()
-        self._data_body_xpos_ind = []
-        self._data_body_xquat_ind = []
-        self._data_body_cvel_ind = []
-        self._data_joint_qpos_ind = []
-        self._data_joint_qvel_ind = []
-        self._data_site_xpos_ind = []
-        self._data_site_xmat_ind = []
-        self._data_site_goal_pos = []
-        self._data_userdata_goal = []
 
-        jnt_name2id = dict()
-        jnt_name2type = dict()
-        for i in range(model.njnt):
-            j = model.joint(i)
-            jnt_name2id[j.name] = i
-            jnt_name2type[j.name] = j.type[0]   # right now not used
+        # these containers will be used to store the indices of the different observation
+        # types in the data structure and in the observation array.
+        data_ind = ObservationIndexContainer()
+        obs_ind = ObservationIndexContainer()
 
         i = 0
-        # add base observations to observation dictionary
+        # calculate the indices for the different observation types
         for obs in observation_spec:
-            observation_name, xml_name, obs_type = obs
-            if obs_type == ObservationType.BODY_POS:
-                mj_type = mujoco.mjtObj.mjOBJ_BODY
-                dim = len(data.body(xml_name).xpos)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.body(xml_name).id
-                self._data_body_xpos_ind.append(data_type_ind)
-            elif obs_type == ObservationType.BODY_VEL:
-                mj_type = mujoco.mjtObj.mjOBJ_BODY
-                dim = len(data.body(xml_name).cvel)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.body(xml_name).id
-                self._data_body_cvel_ind.append(data_type_ind)
-            elif obs_type == ObservationType.BODY_ROT:
-                mj_type = mujoco.mjtObj.mjOBJ_BODY
-                dim = len(data.body(xml_name).xquat)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.body(xml_name).id
-                self._data_body_xquat_ind.append(data_type_ind)
-            elif obs_type == ObservationType.JOINT_POS:
-                mj_type = mujoco.mjtObj.mjOBJ_JOINT
-                dim = len(data.joint(xml_name).qpos)
-                jh = model.joint(jnt_name2id[xml_name])
-                if dim == 1 and jh.limited:
-                    obs_min, obs_max = [jh.range[0]], [jh.range[1]]
-                else:
-                    # note: free joints do not have limits
-                    obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.joint(xml_name).id
-                self._data_joint_qpos_ind.append(data_type_ind)
-            elif obs_type == ObservationType.JOINT_VEL:
-                mj_type = mujoco.mjtObj.mjOBJ_JOINT
-                dim = len(data.joint(xml_name).qvel)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.joint(xml_name).id
-                self._data_joint_qvel_ind.append(data_type_ind)
-            elif obs_type == ObservationType.SITE_POS:
-                mj_type = mujoco.mjtObj.mjOBJ_SITE
-                dim = len(data.site(xml_name).xpos)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.site(xml_name).id
-                self._data_site_xpos_ind.append(data_type_ind)
-            elif obs_type == ObservationType.SITE_ROT:
-                # Sites don't have rotation quaternion for some reason...
-                # x_mat is rotation matrix with shape (9, )
-                mj_type = mujoco.mjtObj.mjOBJ_SITE
-                dim = len(data.site(xml_name).xmat)
-                obs_min, obs_max = [-np.inf] * dim, [np.inf] * dim
-                data_type_ind = data.site(xml_name).id
-                self._data_site_xmat_ind.append(data_type_ind)
+            # initialize the observation type and get all relevant data indices
+            d_ind, o_ind = obs.init_from_mj(model, data, i)
+            # add the indices to the corresponding observation type data indices for fast observation retrieval
+            # during the create_observation function
+            if isinstance(obs, ObservationType.BodyPos):
+                data_ind.body_xpos.extend(d_ind)
+                obs_ind.body_xpos.extend(o_ind)
+            elif isinstance(obs, ObservationType.BodyVel):
+                data_ind.body_cvel.extend(d_ind)
+                obs_ind.body_cvel.extend(o_ind)
+            elif isinstance(obs, ObservationType.BodyRot):
+                data_ind.body_xquat.extend(d_ind)
+                obs_ind.body_xquat.extend(o_ind)
+            elif isinstance(obs, ObservationType.JointPos):
+                data_ind.joint_qpos.extend(d_ind)
+                obs_ind.joint_qpos.extend(o_ind)
+            elif isinstance(obs, ObservationType.JointVel):
+                data_ind.joint_qvel.extend(d_ind)
+                obs_ind.joint_qvel.extend(o_ind)
+            elif isinstance(obs, ObservationType.FreeJointPos):
+                data_ind.free_joint_qpos.extend(d_ind)
+                obs_ind.free_joint_qpos.extend(o_ind)
+            elif isinstance(obs, ObservationType.FreeJointVel):
+                data_ind.free_joint_qvel.extend(d_ind)
+                obs_ind.free_joint_qvel.extend(o_ind)
+            elif isinstance(obs, ObservationType.SitePos):
+                data_ind.site_xpos.extend(d_ind)
+                obs_ind.site_xpos.extend(o_ind)
+            elif isinstance(obs, ObservationType.SiteRot):
+                data_ind.site_xmat.extend(d_ind)
+                obs_ind.site_xmat.extend(o_ind)
+            elif isinstance(obs, ObservationType.Force):
+                data_ind.forces.extend(d_ind)
+                obs_ind.forces.extend(o_ind)
             else:
                 raise ValueError
 
-            obs_ind = [j for j in range(i, i + dim)]
-            i += dim
-            if observation_name in obs_dict.keys():
-                raise KeyError("Duplicate keys are not allowed. Key: ", observation_name)
+            i += obs.dim
+            if obs.name in obs_dict.keys():
+                raise KeyError("Duplicate keys are not allowed. Key: ", obs.name)
 
-            obs_dict[observation_name] = ObservationEntry(jnp.array(obs_ind),
-                                                          xml_name, data_type_ind,
-                                                          dim, obs_min, obs_max, obs_type, mj_type)
-        # add goals to goal dictionary
-        if goal_spec is not None:
-            for goal in goal_spec:
-                goal_name, xml_name, goal_type, goal_min, goal_max = goal
-                if goal_type == GoalType.SITE_POS:
-                    dim = len(data.site(xml_name).xpos)
-                    if goal_min is None:
-                        goal_min = [-np.inf] * dim
-                    if goal_max is None:
-                        goal_max = [np.inf] * dim
-                    assert len(goal_min) == dim and len(goal_max) == dim, "Goal min and max need to be same length."
-                    goal_type_ind = data.site(xml_name).id
-                    self._data_site_goal_pos.append(goal_type_ind)
-                elif goal_type == GoalType.VEL_2D:
-                    dim = 2
-                    if goal_min is None:
-                        goal_min = [-np.inf] * dim
-                    if goal_max is None:
-                        goal_max = [np.inf] * dim
-                    assert len(goal_min) == dim and len(goal_max) == dim, "Goal min and max need to be same length."
-                    goal_type_ind = np.arange(len(data.userdata))
-                    self._data_userdata_goal.append(goal_type_ind)
-                else:
-                    raise ValueError
+            obs_dict[obs.name] = obs
 
-                obs_ind = [j for j in range(i, i + dim)]
-                i += dim
-                if goal_name in goal_dict.keys() or goal_name in obs_dict.keys():
-                    raise KeyError("Duplicate keys are not allowed. Key: ", goal_name)
+        # add goal class to observation dict
+        # todo: only single goals are supported, maybe change this in future
+        if goal is not None:
+            d_ind, o_ind = goal.init_from_mj(model, data, i)
+            data_ind.goal.extend(d_ind)
 
-                goal_dict[goal_name] = GoalEntry(jnp.array(obs_ind), xml_name, goal_type_ind,
-                                                 dim, goal_min, goal_max, goal_type)
+        if goal.name in obs_dict.keys():
+            raise KeyError("Duplicate keys are not allowed. Key: ", goal.name)
 
-        # create a read-only dict (obs_dict is used inside jitted functions, so we want to prohibit modifications to it)
-        self._obs_dict = types.MappingProxyType(obs_dict)
-        self._goal_dict = types.MappingProxyType(goal_dict)
+        obs_dict[goal.name] = goal
 
-        ranges = [0, len(self._data_body_xpos_ind)]
-        ranges.append(len(self._data_body_xquat_ind) + ranges[-1])
-        ranges.append(len(self._data_body_cvel_ind) + ranges[-1])
-        ranges.append(len(self._data_joint_qpos_ind) + ranges[-1])
-        ranges.append(len(self._data_joint_qvel_ind) + ranges[-1])
-        ranges.append(len(self._data_site_xpos_ind) + ranges[-1])
-        ranges.append(len(self._data_site_xmat_ind) + ranges[-1])
-        ranges.append(len(self._data_site_goal_pos) + ranges[-1])
-        ranges.append(len(self._data_userdata_goal) + ranges[-1])
+        # create a read-only dict (obs_dict is used inside jitted functions, so we want
+        # to prohibit modifications to it)
+        obs_dict = types.MappingProxyType(obs_dict)
 
-        self._data_body_xpos_ind = jnp.array(self._data_body_xpos_ind, dtype=int)
-        self._data_body_xquat_ind = jnp.array(self._data_body_xquat_ind, dtype=int)
-        self._data_body_cvel_ind = jnp.array(self._data_body_cvel_ind, dtype=int)
-        self._data_joint_qpos_ind = jnp.array(self._data_joint_qpos_ind, dtype=int)
-        self._data_joint_qvel_ind = jnp.array(self._data_joint_qvel_ind, dtype=int)
-        self._data_site_xpos_ind = jnp.array(self._data_site_xpos_ind, dtype=int)
-        self._data_site_xmat_ind = jnp.array(self._data_site_xmat_ind, dtype=int)
-        self._data_site_goal_pos = jnp.array(self._data_site_goal_pos, dtype=int)
-        self._data_userdata_goal = jnp.array(self._data_userdata_goal, dtype=int)
+        # convert all lists to numpy arrays
+        data_ind.convert_to_numpy()
+        obs_ind.convert_to_numpy()
 
-        self._body_xpos_range = jnp.arange(ranges[0], ranges[1])
-        self._body_xquat_range = jnp.arange(ranges[1], ranges[2])
-        self._body_cvel_range = jnp.arange(ranges[2], ranges[3])
-        self._joint_qpos_range = jnp.arange(ranges[3], ranges[4])
-        self._joint_qvel_range = jnp.arange(ranges[4], ranges[5])
-        self._site_xpos_range = jnp.arange(ranges[5], ranges[6])
-        self._site_xmat_range = jnp.arange(ranges[6], ranges[7])
-        self._site_goal_pos_range = jnp.arange(ranges[7], ranges[8])
-        self._userdata_goal_range = jnp.arange(ranges[8], ranges[9])
+        return obs_dict, data_ind, obs_ind
 
     def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
         return 0.0
 
     def _create_observation(self, data, carry):
-        # get the base observation defined in observation_spec
-        base_obs = self._obs_from_spec_compat(data, np)
-        # get goal from data (if defined in goal_spec)
-        base_goal = self._goal_from_spec_compat(data, np)
-        return np.concatenate([base_obs, base_goal])
+        # get the base observation defined in observation_spec and the goal
+        obs = self._create_observation_compat(data, np)
+        return self._order_observation(obs)
 
-    def _obs_from_spec_compat(self, data, backend):
-
-        obs = backend.concatenate(
-            [backend.ravel(data.xpos[self._data_body_xpos_ind]),
-             backend.ravel(data.xquat[self._data_body_xquat_ind]),
-             backend.ravel(data.cvel[self._data_body_cvel_ind]),
-             backend.ravel(data.qpos[self._data_joint_qpos_ind]),
-             backend.ravel(data.qvel[self._data_joint_qvel_ind]),
-             backend.ravel(data.site_xpos[self._data_site_xpos_ind]),
-             backend.ravel(data.site_xmat[self._data_site_xmat_ind])])
-
+    def _order_observation(self, obs):
+        """
+        order the indices to match the order in observation_spec + goal
+        """
+        obs[self._obs_indices.concatenated_indices] = obs
         return obs
 
-    def _goal_from_spec_compat(self, data, backend):
-        goal = backend.concatenate([backend.ravel(data.xpos[self._data_site_goal_pos]),
-                                    backend.ravel(data.userdata[self._data_userdata_goal])])
-        return goal
+    def _create_observation_compat(self, data, backend):
+        """
+        Creates the observation array by concatenating the observation extracted from all observation types.
+        """
+
+        # extract the observations from all observation types in the Mujoco Datastructure
+        obs = backend.concatenate(
+            [ObservationType.BodyPos.get_obs(None, data, self._data_indices.body_xpos, backend),
+             ObservationType.BodyRot.get_obs(None, data, self._data_indices.body_xquat, backend),
+             ObservationType.BodyVel.get_obs(None, data, self._data_indices.body_cvel, backend),
+             ObservationType.FreeJointPos.get_obs(None, data, self._data_indices.free_joint_qpos, backend),
+             ObservationType.FreeJointVel.get_obs(None, data, self._data_indices.free_joint_qvel, backend),
+             ObservationType.JointPos.get_obs(None, data, self._data_indices.joint_qpos, backend),
+             ObservationType.JointVel.get_obs(None, data, self._data_indices.joint_qvel, backend),
+             ObservationType.SitePos.get_obs(None, data, self._data_indices.site_xpos, backend),
+             ObservationType.SiteRot.get_obs(None, data, self._data_indices.site_xmat, backend),
+             self._goal.get_obs(None, data, self._data_indices.goal, backend)])
+
+        return obs
 
     def _set_sim_state(self, data, sample):
 
         # set the body pos
-        data.xpos[self._data_body_xpos_ind, :] = sample[self._body_xpos_range].reshape(-1, 3)
+        data.xpos[self._data_indices.body_xpos, :] = sample[self._obs_indices.body_xpos].reshape(-1, 3)
         # set the body orientation
-        data.xquat[self._data_body_xquat_ind, :] = sample[self._body_xquat_range].reshape(-1, 4)
+        data.xquat[self._data_indices.body_xquat, :] = sample[self._obs_indices.body_xquat].reshape(-1, 4)
         # set the body velocity
-        data.cvel[self._data_body_cvel_ind, :] = sample[self._body_cvel_range].reshape(-1, 6)
+        data.cvel[self._data_indices.body_cvel, :] = sample[self._obs_indices.body_cvel].reshape(-1, 6)
+        # set the free joint positions
+        data.qpos[self._data_indices.free_joint_qpos] = sample[self._obs_indices.free_joint_qpos]
+        # set the free joint velocities
+        data.qvel[self._data_indices.free_joint_qvel] = sample[self._obs_indices.free_joint_qvel]
         # set the joint positions
-        data.qpos[self._data_joint_qpos_ind] = sample[self._joint_qpos_range]
+        data.qpos[self._data_indices.joint_qpos] = sample[self._obs_indices.joint_qpos]
         # set the joint velocities
-        data.qvel[self._data_joint_qvel_ind] = sample[self._joint_qvel_range]
+        data.qvel[self._data_indices.joint_qvel] = sample[self._obs_indices.joint_qvel]
         # set the site positions
-        data.site_xpos[self._data_site_xpos_ind, :] = sample[self._site_xpos_range].reshape(-1, 3)
+        data.site_xpos[self._data_indices.site_xpos, :] = sample[self._obs_indices.site_xpos].reshape(-1, 3)
         # set the site rotation
-        data.site_xmat[self._data_site_xmat_ind, :] = sample[self._site_xmat_range].reshape(-1, 9)
+        data.site_xmat[self._data_indices.site_xmat, :] = sample[self._obs_indices.site_xmat].reshape(-1, 9)
 
         return data
 
@@ -559,8 +457,8 @@ class Mujoco:
         return processed_collision_groups
 
     def _get_obs_limits(self):
-        obs_min = np.concatenate([np.array(entry.obs_min) for entry in self._obs_dict.values()])
-        obs_max = np.concatenate([np.array(entry.obs_max) for entry in self._obs_dict.values()])
+        obs_min = np.concatenate([np.array(entry.min) for entry in self.obs_dict.values()])
+        obs_max = np.concatenate([np.array(entry.max) for entry in self.obs_dict.values()])
         return obs_min, obs_max
 
     def _init_additional_carry(self, key, data):
@@ -633,7 +531,7 @@ class Mujoco:
 
         Returns:
             A 6D vector specifying the collision forces/torques[3D force + 3D torque]
-            between the given groups. Vector of 0's in case there was no collision.
+            between the given groups. Vector of 0's git statusin case there was no collision.
             http://mujoco.org/book/programming.html#siContact
 
         """

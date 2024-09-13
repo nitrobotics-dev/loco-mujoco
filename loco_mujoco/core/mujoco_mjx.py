@@ -128,11 +128,13 @@ class Mjx(Mujoco):
         return state.replace(data=data, observation=new_obs, additional_carry=carry)
 
     def _mjx_create_observation(self, data, carry):
-        # get the base observation defined in observation_spec
-        base_obs = self._obs_from_spec_compat(data, jnp)
-        # get goal from data (if defined in goal_spec)
-        base_goal = self._goal_from_spec_compat(data, jnp)
-        return jnp.concatenate([base_obs, base_goal])
+        # get the base observation defined in observation_spec and the goal
+        obs = self._create_observation_compat(data, jnp)
+        return self._mjx_order_observation(obs)
+
+    def _mjx_order_observation(self, obs):
+        obs = obs.at[self._obs_indices.concatenated_indices].set(obs)
+        return obs
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
         return {}
@@ -170,33 +172,19 @@ class Mjx(Mujoco):
 
     def _mjx_set_sim_state(self, data, sample):
 
+        # set the free joint data (can not set qpos twice in replace)
+        data = data.replace(
+            qpos=data.qpos.at[self._data_indices.free_joint_qpos].set(sample[self._obs_indices.free_joint_qpos]),
+            qvel=data.qvel.at[self._data_indices.free_joint_qvel].set(sample[self._obs_indices.free_joint_qvel]))
+
         return data.replace(
-            xpos=data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3)),
-            xquat=data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4)),
-            cvel=data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6)),
-            qpos=data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range]),
-            qvel=data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range]),
-            site_xpos=data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3)),
-            site_xmat=data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9)))
-
-
-        # # set the body pos
-        # xpos = data.xpos.at[self._data_body_xpos_ind, :].set(sample[self._body_xpos_range].reshape(-1, 3))
-        # # set the body orientation
-        # xquat = data.xquat.at[self._data_body_xquat_ind, :].set(sample[self._body_xquat_range].reshape(-1, 4))
-        # # set the body velocity
-        # cvel = data.cvel.at[self._data_body_cvel_ind, :].set(sample[self._body_cvel_range].reshape(-1, 6))
-        # # set the joint positions
-        # qpos = data.qpos.at[self._data_joint_qpos_ind].set(sample[self._joint_qpos_range])
-        # # set the joint velocities
-        # qvel = data.qvel.at[self._data_joint_qvel_ind].set(sample[self._joint_qvel_range])
-        # # set the site positions
-        # site_xpos = data.site_xpos.at[self._data_site_xpos_ind, :].set(sample[self._site_xpos_range].reshape(-1, 3))
-        # # set the site rotation
-        # site_xmat = data.site_xmat.at[self._data_site_xmat_ind, :].set(sample[self._site_xmat_range].reshape(-1, 9))
-        #
-        # return data.replace(xpos=xpos, xquat=xquat, cvel=cvel, qpos=qpos,
-        #                     qvel=qvel, site_xpos=site_xpos, site_xmat=site_xmat)
+            xpos=data.xpos.at[self._data_indices.body_xpos].set(sample[self._obs_indices.body_xpos].reshape(-1, 3)),
+            xquat=data.xquat.at[self._data_indices.body_xquat].set(sample[self._obs_indices.body_xquat].reshape(-1, 4)),
+            cvel=data.cvel.at[self._data_indices.body_cvel].set(sample[self._obs_indices.body_cvel].reshape(-1, 6)),
+            qpos=data.qpos.at[self._data_indices.joint_qpos].set(sample[self._obs_indices.joint_qpos]),
+            qvel=data.qvel.at[self._data_indices.joint_qvel].set(sample[self._obs_indices.joint_qvel]),
+            site_xpos=data.site_xpos.at[self._data_indices.site_xpos].set(sample[self._obs_indices.site_xpos].reshape(-1, 3)),
+            site_xmat=data.site_xmat.at[self._data_indices.site_xmat].set(sample[self._obs_indices.site_xmat].reshape(-1, 9)))
 
     def mjx_render_trajectory(self, trajectory, record=False, **recorder_params):
 

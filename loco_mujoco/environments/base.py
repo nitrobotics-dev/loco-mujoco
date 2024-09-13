@@ -15,11 +15,10 @@ import mujoco
 from dm_control import mjcf
 
 import loco_mujoco
-from loco_mujoco.core.mujoco_base import GoalType
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
 from loco_mujoco.core.utils import Box, VideoRecorder
 from loco_mujoco.utils import Trajectory
-from loco_mujoco.utils import GoalInterface, RewardInterface, DomainRandomizationHandler
+from loco_mujoco.utils import Goal, Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
 
 
@@ -78,7 +77,7 @@ class LocoEnv(Mjx):
             reward_type (string): Type of reward function to be used.
             reward_params (dict): Dictionary of parameters corresponding to
                 the chosen reward function;
-            traj_params (dict): Dictionrary of parameters to construct trajectories.
+            traj_params (dict): Dictionary of parameters to construct trajectories.
             random_start (bool): If True, a random sample from the trajectories
                 is chosen at the beginning of each time step and initializes the
                 simulation according to that. This requires traj_params to be passed!
@@ -130,12 +129,12 @@ class LocoEnv(Mjx):
         xml_handles = xml_handles[0]
 
         # add sites for goal to xml_handle
-        xml_handles, self._goal = self._setup_goal(xml_handles, goal_type, goal_params)
+        xml_handles, goal = self._setup_goal(xml_handles, goal_type, goal_params)
 
         if enable_mjx:
             # call parent (Mjx) constructor
             super(LocoEnv, self).__init__(n_envs, xml_file=xml_handles, actuation_spec=action_spec,
-                                          observation_spec=observation_spec, goal_spec=self._goal.spec, gamma=gamma,
+                                          observation_spec=observation_spec, goal=goal, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
                                           n_intermediate_steps=n_intermediate_steps,
                                           timestep=timestep, collision_groups=collision_groups,
@@ -145,7 +144,7 @@ class LocoEnv(Mjx):
             assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
             super(Mjx, self).__init__(xml_file=xml_handles, actuation_spec=action_spec,
-                                      observation_spec=observation_spec, goal_spec=self._goal.spec, gamma=gamma,
+                                      observation_spec=observation_spec, goal=goal, gamma=gamma,
                                       horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
                                       timestep=timestep, collision_groups=collision_groups,
                                       default_camera_mode=default_camera_mode,
@@ -180,8 +179,6 @@ class LocoEnv(Mjx):
         else:
             self.trajectories = None
             self._trajectory_loaded = True
-            if not self._goal.requires_trajectory:
-                self._goal.initialize(self._goal_dict)
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
@@ -206,7 +203,7 @@ class LocoEnv(Mjx):
         self.trajectories = Trajectory(keys=self.get_all_observation_keys(),
                                        low=self.info.observation_space.low,
                                        high=self.info.observation_space.high,
-                                       joint_pos_idx=self._joint_qpos_range,
+                                       joint_pos_idx=self._obs_indices.joint_qpos,
                                        interpolate_map=self._interpolate_map,
                                        interpolate_remap=self._interpolate_remap,
                                        interpolate_map_params=self._get_interpolate_map_params(),
@@ -217,7 +214,7 @@ class LocoEnv(Mjx):
         self._trajectory_loaded = True
 
         # setup trajectory information in goal class if needed
-        self._goal.initialize(self._goal_dict, self.trajectories)
+        self._goal.init_from_traj(self.trajectories)
 
     def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
         """
@@ -314,7 +311,7 @@ class LocoEnv(Mjx):
         """
 
         # shift by 2 to account for deleted x and y
-        idx = self._obs_dict[key].obs_ind
+        idx = self.obs_dict[key].obs_ind
         idx = [i-2 for i in idx]
 
         return idx
@@ -409,14 +406,14 @@ class LocoEnv(Mjx):
 
                 self._set_sim_state(self._data, np.array(sample))
 
-                self._simulation_pre_step(self._data)
+                self._simulation_pre_step(self._data, self._additional_carry)
                 mujoco.mj_forward(self._model, self._data)
-                self._simulation_post_step(self._data)
+                self._simulation_post_step(self._data, self._additional_carry)
 
                 sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self._jax_trajectory,
                                                                              traj_no, subtraj_step_no)
 
-                obs = self._create_observation(self._data)
+                obs = self._create_observation(self._data, self._additional_carry)
 
                 if self._has_fallen(obs, {}, self._data):
                     print("Has fallen!")
@@ -845,8 +842,8 @@ class LocoEnv(Mjx):
 
         """
 
-        reward_cls = RewardInterface.registered_rewards[reward_type]
-        reward = reward_cls() if reward_params is None else reward_cls(self._obs_dict, self._goal_dict, **reward_params)
+        reward_cls = Reward.registered[reward_type]
+        reward = reward_cls() if reward_params is None else reward_cls(self.obs_dict, **reward_params)
 
         return reward
 
@@ -874,7 +871,7 @@ class LocoEnv(Mjx):
     #         Goal function.
     #
     #     """
-    #     if goal_type == "no_goal" or goal_type is None:
+    #     if goal_type == "NoGoal" or goal_type is None:
     #         goal = NoGoal()
     #     elif goal_type == "goal_arrow":
     #         data_goal_site_ind = [value.data_type_ind for value in self._goal_dict.values()]
@@ -903,6 +900,7 @@ class LocoEnv(Mjx):
 
         return self.obs_helper.get_joint_vel_from_obs(self.obs_helper._build_obs(self._data))
 
+    # todo: check static argnames
     @partial(jax.jit, static_argnames=['self', 'key'])
     def _get_from_obs(self, obs, key):
         """
@@ -919,7 +917,7 @@ class LocoEnv(Mjx):
         """
 
         # account for removed x, y
-        idx = self._obs_dict[key].obs_ind - 2
+        idx = self.obs_dict[key].obs_ind - 2
         return obs[idx]
 
     def _get_idx(self, keys):
@@ -1265,7 +1263,7 @@ class LocoEnv(Mjx):
         info_props = self._get_all_info_properties()
 
         # get the goal
-        goal_cls = GoalInterface.registered_goals[goal_type]
+        goal_cls = Goal.registered[goal_type]
         goal = goal_cls(info_props=info_props) if goal_params is None \
             else goal_cls(info_props=info_props, **goal_params)
 
@@ -1419,9 +1417,9 @@ class ValidTaskConf:
             if self.non_combinable is not None:
                 for nc in self.non_combinable:
                     bad_t, bad_m, bad_dt = nc
-                    if not((t == bad_t or bad_t is None) and
-                           (m == bad_m or bad_m is None) and
-                           (dt == bad_dt or bad_dt is None)):
+                    if not ((t == bad_t or bad_t is None) and
+                            (m == bad_m or bad_m is None) and
+                            (dt == bad_dt or bad_dt is None)):
                         confs.append(conf)
             else:
                 confs.append(conf)

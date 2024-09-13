@@ -61,4 +61,9 @@ if __name__ == "__main__":
     dataset = adapt_mocap(path_mat, joint_conf=joint_conf, unavailable_keys=unavailable_keys, rename_map=rename_map,
                           discard_first=28500, discard_last=12500)
 
+    # add goal
+    n_points = dataset["q_pelvis_tx"].shape[0]
+    dataset["VEL_2D"] = np.zeros((n_points, 2))
+    dataset["VEL_2D"][:, 0] = 2.5
+
     np.savez(file=target_path, **dataset)

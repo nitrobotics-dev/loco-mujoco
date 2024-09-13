@@ -1,32 +1,27 @@
 import numpy as np
-from abc import ABC, abstractmethod
 
 from loco_mujoco.utils.math import mat2angle_xy
 
 
-class RewardInterface(ABC):
+class Reward:
     """
     Interface to specify a reward function.
 
     """
 
-    registered_rewards = dict()
+    registered = dict()
 
-    def __init__(self, obs_dict, goal_dict):
+    def __init__(self, obs_dict):
         self._obs_dict = obs_dict
-        self._goal_dict = goal_dict
         self.initialized = False
 
     @staticmethod
-    @abstractmethod
     def get_name():
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def reset(self, data, backend, trajectory, traj_state):
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def __call__(self, state, action, next_state, absorbing, info, model, data, backend):
         """
         Compute the reward.
@@ -50,8 +45,8 @@ class RewardInterface(ABC):
         """
         env_name = cls.get_name()
 
-        if env_name not in RewardInterface.registered_rewards:
-            RewardInterface.registered_rewards[env_name] = cls
+        if env_name not in Reward.registered:
+            Reward.registered[env_name] = cls
 
     @staticmethod
     def list_registered():
@@ -62,10 +57,10 @@ class RewardInterface(ABC):
              The list of the registered rewards.
 
         """
-        return list(RewardInterface.registered_rewards.keys())
+        return list(Reward.registered.keys())
 
 
-class NoReward(RewardInterface):
+class NoReward(Reward):
     """
     A reward function that returns always 0.
 
@@ -82,11 +77,11 @@ class NoReward(RewardInterface):
         return 0
 
 
-class PosReward(RewardInterface):
+class PosReward(Reward):
 
-    def __init__(self, obs_dict, goal_dict, pos_idx):
+    def __init__(self, obs_dict, pos_idx):
         self._pos_idx = pos_idx
-        super().__init__(obs_dict, goal_dict)
+        super().__init__(obs_dict)
 
     @staticmethod
     def get_name():
@@ -100,11 +95,11 @@ class PosReward(RewardInterface):
         return pos
 
 
-class CustomReward(RewardInterface):
+class CustomReward(Reward):
 
-    def __init__(self, obs_dict, goal_dict, reward_callback=None):
+    def __init__(self, obs_dict, reward_callback=None):
         self._reward_callback = reward_callback
-        super().__init__(obs_dict, goal_dict)
+        super().__init__(obs_dict)
 
     @staticmethod
     def get_name():
@@ -120,13 +115,13 @@ class CustomReward(RewardInterface):
             return 0
 
 
-class TargetVelocityReward(RewardInterface):
+class TargetVelocityReward(Reward):
 
-    def __init__(self, obs_dict, goal_dict, target_velocity, vel_obs_dict_key):
+    def __init__(self, obs_dict, target_velocity, vel_obs_dict_key):
         self._target_vel = target_velocity
         self._vel_obs_dict_key = vel_obs_dict_key
         self._x_vel_idx = obs_dict[vel_obs_dict_key].obs_ind
-        super().__init__(obs_dict, goal_dict)
+        super().__init__(obs_dict)
 
     @staticmethod
     def get_name():
@@ -140,7 +135,7 @@ class TargetVelocityReward(RewardInterface):
         return backend.exp(-backend.square(x_vel - self._target_vel))
 
 
-class MultiTargetVelocityReward(RewardInterface):
+class MultiTargetVelocityReward(Reward):
 
     def __init__(self, target_velocity, x_vel_idx, env_id_len, scalings):
         self._target_vel = target_velocity
@@ -164,7 +159,7 @@ class MultiTargetVelocityReward(RewardInterface):
         return backend.exp(- backend.square(x_vel - target_vel))
 
 
-class VelocityVectorReward(RewardInterface):
+class VelocityVectorReward(Reward):
 
     def __init__(self, x_vel_idx, y_vel_idx, angle_idx, goal_vel_idx):
         self._x_vel_idx = x_vel_idx

@@ -104,7 +104,7 @@ class BaseRobotHumanoid(LocoEnv):
 
         return low, high
 
-    def _create_observation(self, obs):
+    def _create_observation(self, obs, carry):
         """
         Creates a full vector of observations.
 
@@ -117,7 +117,7 @@ class BaseRobotHumanoid(LocoEnv):
 
         """
 
-        obs = super(BaseRobotHumanoid, self)._create_observation(obs)
+        obs = super(BaseRobotHumanoid, self)._create_observation(obs, carry)
         if self._hold_weight:
             weight_mass = deepcopy(self._model.body("weight").mass)
             obs = np.concatenate([obs, weight_mass])
