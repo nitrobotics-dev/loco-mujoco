@@ -213,15 +213,17 @@ class LocoEnv(Mjx):
         self._jax_trajectory = self.trajectories.get_jax_trajectory()
         self._trajectory_loaded = True
 
-        # setup trajectory information in goal class if needed
+        # setup trajectory information in goal and reward if needed
         self._goal.init_from_traj(self.trajectories)
+        self._reward_function.init_from_traj(self.trajectories)
 
     def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
         """
         Calls the reward function of the environment.
 
         """
-        return self._reward_function(state, action, next_state, absorbing, info, model, data, np)
+        return self._reward_function(state, action, next_state, absorbing, info, model, data,
+                                     carry, np, self._jax_trajectory)
 
     @partial(jax.jit, static_argnums=(0, 6))
     def _mjx_reward(self, state, action, next_state, absorbing, info, model, data, carry):
@@ -229,7 +231,8 @@ class LocoEnv(Mjx):
         Calls the reward function of the environment.
 
         """
-        return self._reward_function(state, action, next_state, absorbing, info, model, data, jnp)
+        return self._reward_function(state, action, next_state, absorbing, info, model, data,
+                                     carry, jnp, self._jax_trajectory)
 
     def setup(self, data, key):
         """
@@ -240,10 +243,6 @@ class LocoEnv(Mjx):
             obs (np.array): Observation to initialize the environment from;
 
         """
-
-        # todo: think about how to handle reward resets
-        #self._reward_function.reset_state()
-
 
         if self.trajectories is not None:
             if self._random_start:
@@ -639,11 +638,14 @@ class LocoEnv(Mjx):
         self._check_reset_configuration()
 
         if self._random_start or self._use_fixed_start:
-            # init simulation from trajectory state
+            # init simulation from trajectory state (traj state has been reset in init_additional_carry)
             sample = self._get_init_state_from_trajectory(carry.traj_state)      # get sample from trajectory state
             self._set_sim_state(self._data, sample)
 
         self._obs = self._create_observation(self._data, carry)
+
+        # todo: think whether a reset of the reward function is needed in future, right now it is not.
+        # self._reward_function.reset(self._data, carry, np, self._jax_trajectory)
         return self._obs
 
     def mjx_reset(self, key):
@@ -655,12 +657,15 @@ class LocoEnv(Mjx):
         jax.debug.callback(self._check_reset_configuration)
 
         if self._random_start or self._use_fixed_start:
-            # init simulation from trajectory state
+            # init simulation from trajectory state (traj state has been reset in init_additional_carry)
             sample = self._get_init_state_from_trajectory(carry.traj_state)      # get sample from trajectory state
             data = self._mjx_set_sim_state(mjx_state.data, sample)
 
             mjx_state = mjx_state.replace(data=data, observation=self._mjx_create_observation(data, carry),
                                           additional_carry=carry)
+
+        # todo: think whether a reset of the reward function is needed in future, right now it is not.
+        # self._reward_function.reset(data, carry, jnp, self._jax_trajectory)
 
         return mjx_state
 
@@ -841,11 +846,30 @@ class LocoEnv(Mjx):
             Reward function.
 
         """
+        # collect all info properties of the env (dict all @info_properties decorated function returns)
+        info_props = self._get_all_info_properties()
 
         reward_cls = Reward.registered[reward_type]
-        reward = reward_cls() if reward_params is None else reward_cls(self.obs_dict, **reward_params)
+        reward = reward_cls(self.obs_dict, info_props=info_props) if reward_params is None \
+            else reward_cls(self.obs_dict, info_props=info_props, **reward_params)
 
         return reward
+
+    def _setup_goal(self, xml_handle, goal_type, goal_params):
+
+        # collect all info properties of the env (dict all @info_properties decorated function returns)
+        info_props = self._get_all_info_properties()
+
+        # get the goal
+        goal_cls = Goal.registered[goal_type]
+        goal = goal_cls(info_props=info_props) if goal_params is None \
+            else goal_cls(info_props=info_props, **goal_params)
+
+        # apply the modification to the xml needed
+        xml_handle = goal.apply_xml_modifications(xml_handle, self.root_body_name)
+
+        return xml_handle, goal
+
 
     def _get_all_info_properties(self):
         """
@@ -1067,6 +1091,12 @@ class LocoEnv(Mjx):
         except KeyError:
             raise KeyError("The specified task configuration could not be found: %s" % config_key)
 
+        if "reward_type" in kwargs.keys() and "reward_params" not in kwargs.keys():
+            try:
+                del task_config["reward_params"]
+            except:
+                pass
+
         # overwrite the task_config with the kwargs
         for key, value in task_config.items():
             if key in kwargs.keys():
@@ -1256,21 +1286,6 @@ class LocoEnv(Mjx):
             start_ind = end_ind
 
         return out
-
-    def _setup_goal(self, xml_handle, goal_type, goal_params):
-
-        # collect all info properties of the env (dict all @info_properties decorated function returns)
-        info_props = self._get_all_info_properties()
-
-        # get the goal
-        goal_cls = Goal.registered[goal_type]
-        goal = goal_cls(info_props=info_props) if goal_params is None \
-            else goal_cls(info_props=info_props, **goal_params)
-
-        # apply the modification to the xml needed
-        xml_handle = goal.apply_xml_modifications(xml_handle, self.root_body_name)
-
-        return xml_handle, goal
 
     @property
     def root_body_name(self):

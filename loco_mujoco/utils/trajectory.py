@@ -83,6 +83,8 @@ class Trajectory:
         #  list is the number of observations. Each np.array has the shape
         #  (n_trajectories, n_samples, dim_observation).
         self.trajectories, self.keys2ind = self._extract_trajectory_from_files()
+        self.qpos_ind = jnp.squeeze(jnp.array([self.keys2ind[k] for k in keys if k.startswith("q_")]))
+        self.qvel_ind = jnp.squeeze(jnp.array([self.keys2ind[k] for k in keys if k.startswith("dq_")]))
 
         if traj_info is not None:
             assert len(traj_info) == self.number_of_trajectories, "The number of trajectory infos/labels need " \

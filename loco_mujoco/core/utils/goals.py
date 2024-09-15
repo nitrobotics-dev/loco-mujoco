@@ -3,7 +3,7 @@ from copy import deepcopy
 import numpy as np
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils.observation_types import Obs
+from loco_mujoco.core.utils.observations import Obs
 
 
 class Goal(Obs):

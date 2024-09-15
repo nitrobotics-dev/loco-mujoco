@@ -108,7 +108,8 @@ class LogWrapper(GymnaxWrapper):
 class BraxGymnaxWrapper:
     def __init__(self, env_name):
         MODEL_OPTION = dict(iterations=100, ls_iterations=50)
-        env = LocoEnv.make(env_name)
+        # todo: added mimic reward
+        env = LocoEnv.make(env_name, reward_type="mimic_qpos")
         # env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         # env = AutoResetWrapper(env)
         self._env = env
@@ -121,7 +122,7 @@ class BraxGymnaxWrapper:
 
     def step(self, key, state, action, params=None):
         next_state = self._env.mjx_step(state, action)
-        next_obs = jnp.where(next_state.done, next_state.final_observation, next_state.observation)
+        next_obs = jnp.where(next_state.done, next_state.additional_carry.final_observation, next_state.observation)
         return next_obs, next_state, next_state.reward, next_state.done, {}
 
     def observation_space(self, params):
@@ -362,7 +363,8 @@ class ActorCritic(nn.Module):
         actor_mean = nn.Dense(
             self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
         )(actor_mean)
-        actor_logtstd = self.param("log_std", nn.initializers.constant(jnp.log(self.init_std)),
+        # todo: made the std a fixed parameter
+        actor_logtstd = self.param("log_std", nn.initializers.constant(jax.lax.stop_gradient(jnp.log(self.init_std))),
                                    (self.action_dim,))
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
 
@@ -533,13 +535,14 @@ def make_train(config):
                         transition.obs
                     )
 
-                    # predict reward with discriminator
-                    logits, _ = discriminator.apply({'params': disc_train_state.params,
-                                                     'run_stats': disc_train_state.run_stats},
-                                                    obs, mutable=["run_stats"])
-
-                    plcy_prob = nn.sigmoid(logits)
-                    reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-6))
+                    # todo: deactivated discriminator for now to use mimic reward
+                    # # predict reward with discriminator
+                    # logits, _ = discriminator.apply({'params': disc_train_state.params,
+                    #                                  'run_stats': disc_train_state.run_stats},
+                    #                                 obs, mutable=["run_stats"])
+                    #
+                    # plcy_prob = nn.sigmoid(logits)
+                    # reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-6))
 
                     delta = reward + config["GAMMA"] * next_value * (1 - done) - value
                     gae = (
@@ -709,16 +712,18 @@ def make_train(config):
                 grad_fn = jax.value_and_grad(_discrim_loss, has_aux=True)
                 (total_loss, disc_train_state), grads =\
                     grad_fn(disc_train_state.params, disc_train_state, inputs, targets)
-                disc_train_state = disc_train_state.apply_gradients(grads=grads)
+
+                # TODO: discabled DISCRIM TRAINING!
+                #disc_train_state = disc_train_state.apply_gradients(grads=grads)
 
                 runner_state = (disc_train_state, traj_batch, rng)
                 return runner_state, None
 
             counter = ((train_state.step + 1) // config["NUM_MINIBATCHES"] ) // config["UPDATE_EPOCHS"]
 
-            (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
-                _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=config["N_DISC_EPOCHS"]
-            )
+            # (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
+            #     _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=config["N_DISC_EPOCHS"]
+            # )
 
             # disc_train_state, discrim_probs_plcy, discrim_probs_exp, rng =\
             #     jax.lax.cond(counter % config["TRAIN_DISC_INTERVAL"] == 0,
@@ -785,7 +790,7 @@ config = {
     "LR": 1e-4,
     "DISC_LR": 5e-5,
     "NUM_ENVS": 2048,
-    "NUM_STEPS": 10, #10
+    "NUM_STEPS": 50, #10
     "TOTAL_TIMESTEPS": 10e7,
     "UPDATE_EPOCHS": 4,    #4
     "TRAIN_DISC_INTERVAL": 3,
@@ -795,7 +800,7 @@ config = {
     "GAMMA": 0.99,
     "GAE_LAMBDA": 0.95,
     "CLIP_EPS": 0.2,
-    "INIT_STD": 1.0,
+    "INIT_STD": 0.1,
     "DPO_ALPHA": 2.0,
     "DPO_BETA": 0.6,
     "ENT_COEF": 0.0, # 0.0
@@ -803,7 +808,7 @@ config = {
     "VF_COEF": 0.5,
     "MAX_GRAD_NORM": 0.5,
     "ACTIVATION": "tanh",
-    "ENV_NAME": "MjxUnitreeG1.run",
+    "ENV_NAME": "MjxUnitreeH1.walk",
     "ANNEAL_LR": False,
     "NORMALIZE_ENV": True,
     "DEBUG": True,
@@ -818,7 +823,7 @@ rng = jax.random.PRNGKey(30)
 #
 
 
-mode = "eval"
+mode = "train"
 if mode == "train":
     wandb.login()
     wandb.init(
@@ -890,7 +895,7 @@ else:
     #train_state = load_train_state("ckpts/20240628_022009", env.info.action_space.shape[0])    # best running h1 so far
     # train_state = load_train_state("ckpts/20240630_233746", env.info.action_space.shape[0]) # h1 best walking so far with capsule
     # train_state = load_train_state("ckpts/20240630_235305", env.info.action_space.shape[0]) # even better h1 walking? difference only in vf_coef
-    train_state = load_train_state("ckpts/20240701_070239", env.info.action_space.shape[0])
+    train_state = load_train_state("ckpts/20240915_181503", env.info.action_space.shape[0])
     train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*-20
     key = jax.random.key(0)
     NENVS = 100

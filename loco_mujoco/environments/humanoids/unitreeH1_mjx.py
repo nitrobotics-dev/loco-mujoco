@@ -92,3 +92,16 @@ class MjxUnitreeH1(UnitreeH1):
     def _mjx_has_fallen(self, obs, info, data):
         pelvis_cond, _, _, _, _ = self._has_fallen_compat(obs, info, data, jnp)
         return pelvis_cond
+
+    # def _mjx_is_done(self, obs, absorbing, info, data, carry):
+    #     done = super()._mjx_is_done(obs, absorbing, info, data, carry)
+    #
+    #     # calculate dist to current traj state
+    #     traj_sample = jnp.ravel(self._jax_trajectory[:, carry.traj_state.traj_no, :])
+    #     # todo: remove -2 once the observation space does not include xy anymore
+    #     qpos_traj = jnp.squeeze(traj_sample[self.trajectories.qpos_ind[2:]])
+    #     qpos_obs = obs[self._obs_indices.joint_qpos[2:]-2]
+    #     dist = jnp.linalg.norm(qpos_obs - qpos_traj)
+    #     too_far_away = jnp.greater_equal(dist, 0.8)
+    #     done = jnp.logical_or(done, too_far_away)
+    #     return done

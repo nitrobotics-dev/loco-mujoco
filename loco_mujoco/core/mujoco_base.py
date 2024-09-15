@@ -151,7 +151,7 @@ class Mujoco:
         reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data, carry)
 
         # calculate flag indicating whether this is the last obs before resetting
-        done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
+        done = self._is_done(cur_obs, absorbing, cur_info, self._data, carry)
 
         self._obs = cur_obs
         self._cur_step_in_episode += 1
@@ -194,6 +194,10 @@ class Mujoco:
 
         """
         return False
+
+    def _is_done(self, obs, absorbing, info, data, carry):
+        done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
+        return done
 
     def _step_init(self, obs, data, info, carry):
         return obs, data, info, carry

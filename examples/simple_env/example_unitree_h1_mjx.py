@@ -3,7 +3,7 @@ import time
 from loco_mujoco import LocoEnv
 
 
-env = LocoEnv.make("MjxUnitreeH1.run", n_envs=4000, goal_type="NoGoal")
+env = LocoEnv.make("MjxUnitreeH1.run", n_envs=4000, goal_type="NoGoal", reward_type="mimic_qpos")
 
 # optionally replay trajectory
 #env.play_trajectory(n_episodes=10)

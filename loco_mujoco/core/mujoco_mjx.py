@@ -89,8 +89,7 @@ class Mjx(Mujoco):
         reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
 
         # check if done
-        done = jnp.greater_equal(carry.cur_step_in_episode, self.info.horizon)
-        done = jnp.logical_or(done, absorbing)
+        done = self._mjx_is_done(cur_obs, absorbing, cur_info, data, carry)
 
         state = state.replace(data=data, observation=cur_obs, reward=reward,
                               absorbing=absorbing, done=done, info=cur_info, additional_carry=carry)
@@ -148,6 +147,11 @@ class Mjx(Mujoco):
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
         return False
+
+    def _mjx_is_done(self, obs, absorbing, info, data, carry):
+        done = jnp.greater_equal(carry.cur_step_in_episode, self.info.horizon)
+        done = jnp.logical_or(done, absorbing)
+        return done
 
     def _mjx_simulation_pre_step(self, data, carry):
         return data, carry
