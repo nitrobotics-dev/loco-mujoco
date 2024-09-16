@@ -190,6 +190,15 @@ class Mjx(Mujoco):
             site_xpos=data.site_xpos.at[self._data_indices.site_xpos].set(sample[self._obs_indices.site_xpos].reshape(-1, 3)),
             site_xmat=data.site_xmat.at[self._data_indices.site_xmat].set(sample[self._obs_indices.site_xmat].reshape(-1, 9)))
 
+    def mjx_render(self, state, record=False):
+        """
+        Renders all environments in parallel.
+        """
+        if self._viewer is None:
+            self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
+
+        return self._viewer.parallel_render(state, record)
+
     def mjx_render_trajectory(self, trajectory, record=False, **recorder_params):
 
         assert len(trajectory) > 0, "Mjx render got provided with an empty trajectory."
