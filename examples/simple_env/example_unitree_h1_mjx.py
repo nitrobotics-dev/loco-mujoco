@@ -3,7 +3,7 @@ import time
 from loco_mujoco import LocoEnv
 
 
-env = LocoEnv.make("MjxUnitreeH1.run", n_envs=4000, goal_type="NoGoal")
+env = LocoEnv.make("MjxUnitreeH1.run", n_envs=100, goal_type="NoGoal")
 
 # optionally replay trajectory
 #env.play_trajectory(n_episodes=10)
@@ -26,12 +26,15 @@ rollout = []
 step = 0
 previous_time = time.time()
 LOGGING_FREQUENCY = 100000
-while True:
+i = 0
+while i < 100000:
 
     keys = jax.random.split(key, env.info.n_envs + 1)
     key, action_keys = keys[0], keys[1:]
     action = rng_sample_uni_action(action_keys)
     state = rng_step(state, action)
+
+    env.mjx_render(state)
 
     #rollout.append(state)
 
@@ -40,6 +43,8 @@ while True:
         current_time = time.time()
         print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
         previous_time = current_time
+
+    i+=1
 
 # Simulate and display video.
 env.mjx_render_trajectory(rollout)

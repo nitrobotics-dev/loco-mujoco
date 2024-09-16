@@ -118,7 +118,7 @@ class MujocoViewer:
         # Disable v_sync, so swap_buffers does not block
         # glfw.swap_interval(0)
 
-        self._scene = mujoco.MjvScene(self._model, 1000)
+        self._scene = mujoco.MjvScene(self._model, 100000)
         self._scene_option = mujoco.MjvOption()
         self._camera = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(model, self._camera)
@@ -147,6 +147,10 @@ class MujocoViewer:
             for group_id, _ in enumerate(self._scene_option.geomgroup):
                 if group_id not in geom_group_visualization_on_startup:
                     self._scene_option.geomgroup[group_id] = False
+
+        # things for parallel rendering
+        self._offsets_for_parallel_render = None
+        self._datas_for_parallel_render = None
 
     def load_new_model(self, model):
         """
@@ -239,7 +243,6 @@ class MujocoViewer:
                 mujoco.mjtVisFlag.mjVIS_CONSTRAINT]
             self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTSPLIT] = not self._scene_option.flags[
                 mujoco.mjtVisFlag.mjVIS_CONTACTSPLIT]
-
 
         if key == glfw.KEY_T:
             self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = not self._scene_option.flags[
@@ -395,6 +398,117 @@ class MujocoViewer:
             self._loop_count += self.dt / (self._time_per_render * self._run_speed_factor)
         while self._loop_count > 0:
             render_inner_loop(self)
+            self._set_camera()
+            self._loop_count -= 1
+
+        if record:
+            return self.read_pixels()
+
+    def parallel_render(self, mjx_state, record, offset=2.0):
+        """
+        Main rendering function.
+
+        Args:
+            datas: List of Mjx state.
+            record (bool): If true, frames are returned during rendering.
+
+        Returns:
+            If record is True, frames are returned during rendering, else None.
+
+        """
+
+        def generate_square_positions(center_x, center_y, num_envs, offset):
+            positions = []
+            # Determine the size of the square grid
+            grid_size = int((num_envs - 1) ** 0.5) + 1
+
+            # Calculate starting coordinates to center the grid around (center_x, center_y)
+            half_grid = grid_size // 2
+
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    # Calculate the coordinates for the current position using the specified offset
+                    x = center_x + (i - half_grid) * offset
+                    y = center_y + (j - half_grid) * offset
+                    positions.append((x, y))
+
+                    # Stop if we have reached the number of environments
+                    if len(positions) == num_envs:
+                        return positions
+
+            return positions
+
+        n_envs = mjx_state.data.qpos.shape[0]
+        if self._offsets_for_parallel_render is None or n_envs > len(self._offsets_for_parallel_render):
+            self._offsets_for_parallel_render = generate_square_positions(0.0, 0.0, n_envs, offset)
+        if self._datas_for_parallel_render is None or n_envs > len(self._datas_for_parallel_render):
+            self._datas_for_parallel_render = [mujoco.MjData(self._model) for i in range(n_envs)]
+
+        def render_all_inner_loop(self):
+
+            render_start = time.time()
+
+            for i in range(n_envs):
+                data = self._datas_for_parallel_render[i]
+                offset = self._offsets_for_parallel_render[i]
+                data.qpos, data.qvel = mjx_state.data.qpos[i, :], mjx_state.data.qvel[i, :]
+                data.qpos[0] = offset[0]
+                data.qpos[1] = offset[1]
+                mujoco.mj_forward(self._model, data)
+
+                if i == 0 and not self._headless:
+                    self._create_overlay()
+
+                if i == 0:
+                    mujoco.mjv_updateScene(self._model, data, self._scene_option, None, self._camera,
+                                           mujoco.mjtCatBit.mjCAT_ALL,
+                                           self._scene)
+                else:
+                    mujoco.mjv_addGeoms(self._model, data, self._scene_option, mujoco.MjvPerturb(),
+                                        mujoco.mjtCatBit.mjCAT_DYNAMIC, self._scene)
+
+            if not self._headless:
+                self._viewport.width, self._viewport.height = glfw.get_window_size(self._window)
+
+            mujoco.mjr_render(self._viewport, self._scene, self._context)
+
+            for gridpos, [t1, t2] in self._overlay.items():
+
+                if self._hide_menu:
+                    continue
+
+                mujoco.mjr_overlay(
+                    mujoco.mjtFont.mjFONT_SHADOW,
+                    gridpos,
+                    self._viewport,
+                    t1,
+                    t2,
+                    self._context)
+
+            if self.custom_render_callback is not None:
+                self.custom_render_callback(self._viewport, self._context)
+
+            if not self._headless:
+                glfw.swap_buffers(self._window)
+                glfw.poll_events()
+                if glfw.window_should_close(self._window):
+                    self.stop()
+                    exit(0)
+
+            self.frames += 1
+            self._overlay.clear()
+            self._time_per_render = 0.9 * self._time_per_render + 0.1 * (time.time() - render_start)
+
+        if self._paused:
+            while self._paused:
+                render_all_inner_loop(self)
+
+        if record:
+            self._loop_count = 1
+        else:
+            self._loop_count += self.dt / (self._time_per_render * self._run_speed_factor)
+        while self._loop_count > 0:
+            render_all_inner_loop(self)
             self._set_camera()
             self._loop_count -= 1
 
