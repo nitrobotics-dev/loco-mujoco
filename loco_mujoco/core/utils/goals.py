@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from loco_mujoco.core.utils.observations import Obs
@@ -80,7 +81,7 @@ class Goal(Obs):
 
     def allocate_user_data(self, xml_handle):
         if self.size_user_data > 0:
-            xml_handle.size.nuserdata = 2
+            xml_handle.size.nuserdata = self.size_user_data
         return xml_handle
 
     @property
@@ -224,6 +225,69 @@ class GoalTrajArrow(Goal):
     @property
     def size_user_data(self):
         return 2
+
+
+class GoalTrajJointQposQVel(Goal):
+
+    def __init__(self, info_props, **kwargs):
+        self._traj_goal_ind = None
+        # todo: implement n_step_lookahead (requires dynamic slicing in jax)
+        self.n_step_lookahead = 1
+        super().__init__(info_props, **kwargs)
+
+        self._size_user_data = None
+
+    def init_from_mj(self, model, data, current_obs_size):
+        self.initialized = True
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        # todo: This will only work if userdata contains only a single goal and no other info.
+        data_type_ind = [i for i in range(data.userdata.size)]
+        obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
+        self.data_type_ind = np.array(data_type_ind)
+        self.obs_ind = np.array(obs_ind)
+        return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def apply_xml_modifications(self, xml_handle, root_body_name):
+        n_joints = len(xml_handle.find_all("joint"))
+        self._size_user_data = (2 * n_joints - 2) * self.n_step_lookahead
+        self.allocate_user_data(xml_handle)
+        return xml_handle
+
+    def init_from_traj(self, trajectories=None):
+        assert trajectories is not None
+        self._traj_goal_ind = np.concatenate([ind for k, ind in trajectories.keys2ind.items()
+                                              if (k.startswith("q_") or k.startswith("dq_"))][2:]) # add all except xy
+        assert len(self._traj_goal_ind) == self.dim // self.n_step_lookahead
+        self.initialized_traj = True
+
+    @classmethod
+    def get_obs(cls, model, data, ind, backend):
+        return backend.ravel(data.userdata[ind])
+
+    @property
+    def has_visual(self):
+        return False
+
+    @property
+    def requires_trajectory(self):
+        return True
+
+    def reset(self, data, backend, trajectory=None, traj_state=None):
+        return self.set_data(data, backend, trajectory, traj_state)
+
+    def set_data(self, data, backend, trajectory=None, traj_state=None):
+        assert self._traj_goal_ind is not None
+        # get the goal from the trajectory
+        traj_goal = trajectory[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no].ravel()
+        # set the goal in the userdata
+        data = self.set_attr_data_compat(data, backend, "userdata", traj_goal, self.data_type_ind)
+        return data
+
+    @property
+    def size_user_data(self):
+        if self._size_user_data is None:
+            raise NotImplementedError
+        return self._size_user_data
 
 
 class GoalDirectionVelocity:

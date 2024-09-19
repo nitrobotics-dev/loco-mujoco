@@ -1,3 +1,4 @@
+import jax.debug
 import numpy as np
 
 from loco_mujoco.core import ObservationType
@@ -181,14 +182,21 @@ class VelocityVectorReward(Reward):
 
 class MimicQPosReward(Reward):
 
-    def __init__(self, obs_dict, **kwargs):
+    def __init__(self, obs_dict, qpos_weight=10.0, qvel_weight=1.0,  **kwargs):
         super().__init__(obs_dict, **kwargs)
+
+        self._qpos_weight = qpos_weight
+        self._qvel_weight = qvel_weight
 
         # to be defined in init_from_traj
         self._obs_qpos_ind = None
         self._obs_qvel_ind = None
         self._traj_qpos_ind = None
         self._traj_qvel_ind = None
+        self._mean_qpos = None
+        self._mean_qvel = None
+        self._std_qpos = None
+        self._std_qvel = None
 
     @staticmethod
     def get_name():
@@ -203,13 +211,32 @@ class MimicQPosReward(Reward):
         self._traj_qpos_ind = trajectories.qpos_ind[2:]
         self._traj_qvel_ind = trajectories.qvel_ind
 
+        # setup standardizer
+        jax_traj = trajectories.get_jax_trajectory()
+        self._mean_qpos = np.mean(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._mean_qvel = np.mean(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+        self._std_qpos = np.std(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._std_qvel = np.std(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+
     def __call__(self, state, action, next_state, absorbing, info, model, data, carry, backend, trajectory=None):
         traj_sample = backend.ravel(trajectory[:, carry.traj_state.traj_no, carry.traj_state.subtraj_step_no])
-        qpos_obs = state[self._obs_qpos_ind]
-        qvel_obs = state[self._obs_qvel_ind]
+        qpos_obs = next_state[self._obs_qpos_ind]
+        qvel_obs = next_state[self._obs_qvel_ind]
         qpos_traj = backend.squeeze(traj_sample[self._traj_qpos_ind])
         qvel_traj = backend.squeeze(traj_sample[self._traj_qvel_ind])
-        qpos_dist = backend.exp(-5.0*backend.linalg.norm(qpos_obs - qpos_traj))
-        qvel_dist = backend.exp(-0.1*backend.linalg.norm(qvel_obs - qvel_traj))
-        return qpos_dist + qvel_dist
+
+        # standardize
+        qpos_obs = (qpos_obs - self._mean_qpos) / self._std_qpos
+        qvel_obs = (qvel_obs - self._mean_qvel) / self._std_qvel
+        qpos_traj = (qpos_traj - self._mean_qpos) / self._std_qpos
+        qvel_traj = (qvel_traj - self._mean_qvel) / self._std_qvel
+
+        # calculate distances
+        qpos_dist = backend.mean(backend.abs(qpos_obs - qpos_traj))
+        qvel_dist = backend.mean(backend.abs(qvel_obs - qvel_traj))
+
+        qpos_reward = backend.exp(-self._qpos_weight*qpos_dist)
+        qvel_reward = backend.exp(-self._qvel_weight*qvel_dist)
+
+        return qpos_reward + qvel_reward
 

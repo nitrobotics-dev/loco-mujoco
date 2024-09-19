@@ -98,6 +98,7 @@ class Mujoco:
         mujoco.mj_resetData(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
         self._additional_carry = self._init_additional_carry(key, self._data)
+        self._data = self._reset_init_data(self._data, self._additional_carry)
         self._obs = self._create_observation(self._data, self._additional_carry)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         return self._obs
@@ -130,7 +131,7 @@ class Mujoco:
             # modify data during simulation, after main step (does nothing by default)
             self._data, carry = self._simulation_post_step(self._data, carry)
 
-            # recompute the action at each intermediate step (not executed by default)
+            # recompute thef action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
                 cur_obs = self._create_observation(self._data, carry)
 
@@ -198,6 +199,9 @@ class Mujoco:
     def _is_done(self, obs, absorbing, info, data, carry):
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
         return done
+
+    def _reset_init_data(self, data, carry):
+        return data
 
     def _step_init(self, obs, data, info, carry):
         return obs, data, info, carry
@@ -373,6 +377,7 @@ class Mujoco:
         if goal is not None:
             d_ind, o_ind = goal.init_from_mj(model, data, i)
             data_ind.goal.extend(d_ind)
+            obs_ind.forces.extend(o_ind)
 
         if goal.name in obs_dict.keys():
             raise KeyError("Duplicate keys are not allowed. Key: ", goal.name)

@@ -2,6 +2,9 @@ import os
 
 import jax
 import jax.numpy as jnp
+import loco_mujoco.core
+from loco_mujoco.environments.base import TrajState
+
 import wandb
 import chex
 import numpy as np
@@ -106,10 +109,9 @@ class LogWrapper(GymnaxWrapper):
         return obs, state, reward, done, info
 
 class BraxGymnaxWrapper:
-    def __init__(self, env_name):
+    def __init__(self, env_name, **env_params):
         MODEL_OPTION = dict(iterations=100, ls_iterations=50)
-        # todo: added mimic reward
-        env = LocoEnv.make(env_name, reward_type="mimic_qpos")
+        env = LocoEnv.make(env_name, reward_type="mimic_qpos", goal_type="GoalTrajJointQposQVel", **env_params)
         # env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         # env = AutoResetWrapper(env)
         self._env = env
@@ -158,6 +160,9 @@ class BraxGymnaxWrapper:
 
     def mjx_render_trajectory(self, trajectory, record=False):
         return self._env.mjx_render_trajectory(trajectory, record)
+
+    def mjx_render(self, state, record=False):
+        return self._env.mjx_render(state, record)
 
 
 class ClipAction(GymnaxWrapper):
@@ -401,6 +406,33 @@ class Discriminator(nn.Module):
         return jnp.squeeze(z)
 
 
+class MetricHandler:
+    def __init__(self, obs_dict, trajectories):
+        self._obs_qpos_ind = np.concatenate([obs.obs_ind for obs in obs_dict.values()
+                                             if isinstance(obs, loco_mujoco.core.ObservationType.JointPos)])[2:] - 2
+        self._obs_qvel_ind = np.concatenate([obs.obs_ind for obs in obs_dict.values()
+                                             if isinstance(obs, loco_mujoco.core.ObservationType.JointVel)]) - 2
+        self._traj_qpos_ind = trajectories.qpos_ind[2:]
+        self._traj_qvel_ind = trajectories.qvel_ind
+
+        # setup standardizer
+        jax_traj = trajectories.get_jax_trajectory()
+        self._mean_qpos = jnp.mean(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._mean_qvel = jnp.mean(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+        self._std_qpos = jnp.std(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._std_qvel = jnp.std(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+
+    def mean_per_joint_pos_error(self, plcy_obs, exp_obs):
+        plcy_qpos = (plcy_obs[:, self._obs_qpos_ind] - self._mean_qpos) / self._std_qpos
+        exp_qpos = (exp_obs[:, self._traj_qpos_ind] - self._mean_qpos) / self._std_qpos
+        return jnp.mean(jnp.abs(plcy_qpos - exp_qpos))
+
+    def mean_per_joint_vel_error(self, plcy_obs, exp_obs):
+        plcy_qvel = (plcy_obs[:, self._obs_qvel_ind] - self._mean_qvel) / self._std_qvel
+        exp_qvel = (exp_obs[:, self._traj_qvel_ind] - self._mean_qvel) / self._std_qvel
+        return jnp.mean(jnp.abs(plcy_qvel - exp_qvel))
+
+
 class Transition(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
@@ -409,6 +441,7 @@ class Transition(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
+    traj_state: TrajState
 
 
 class TrainState(train_state.TrainState):
@@ -422,10 +455,13 @@ def make_train(config):
     config["MINIBATCH_SIZE"] = (
         config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"]
     )
-    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
+    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"], config["REWARD_PARAMS"]), None
 
     expert_dataset = env.create_dataset()
     expert_states = jnp.array(expert_dataset["states"])
+
+    # setup metric handler
+    metric_handler = MetricHandler(env._env.obs_dict, env._env.trajectories)
 
     env = LogWrapper(env)
     env = ClipAction(env)
@@ -509,7 +545,7 @@ def make_train(config):
                 rng_step = jax.random.split(_rng, config["NUM_ENVS"])
                 obsv, env_state, reward, done, info = env.step(rng_step, env_state, action, env_params)
                 transition = Transition(
-                    done, action, value, reward, log_prob, last_obs, info
+                    done, action, value, reward, log_prob, last_obs, info, env_state.env_state.env_state.additional_carry.traj_state
                 )
                 runner_state = (train_state, disc_train_state, env_state, obsv, rng)
                 return runner_state, transition
@@ -735,15 +771,28 @@ def make_train(config):
             #                                               rng)
 
             metric = traj_batch.info
+            plcy_obs = jnp.vstack(traj_batch.obs)
+            exp_traj_ind = traj_batch.traj_state.traj_no
+            exp_subtraj_ind = traj_batch.traj_state.subtraj_step_no
+            # todo: fix these wrappers...
+            exp_obs = env._env._env._env._env._env._jax_trajectory[:, exp_traj_ind, exp_subtraj_ind]
+            exp_obs = np.transpose(exp_obs, (1, 2, 0))
+            exp_obs = jnp.vstack(exp_obs)
+            mpjpe = metric_handler.mean_per_joint_pos_error(plcy_obs, exp_obs)
+            mpjve = metric_handler.mean_per_joint_vel_error(plcy_obs, exp_obs)
+
             if config.get("DEBUG"):
-                def callback(info):
+                def callback(info, mpjpe, mpjve):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
+
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                     wandb.log({"Episodic Return": jnp.mean(return_values)})
+                    wandb.log({"Mean per Join Position Error": mpjpe})
+                    wandb.log({"Mean per Join Velocity Error": mpjve})
 
-                jax.debug.callback(callback, metric)
+                jax.debug.callback(callback, metric, mpjpe, mpjve)
 
             runner_state = (train_state, disc_train_state, env_state, last_obs, rng)
             return runner_state, metric
@@ -790,8 +839,8 @@ config = {
     "LR": 1e-4,
     "DISC_LR": 5e-5,
     "NUM_ENVS": 2048,
-    "NUM_STEPS": 50, #10
-    "TOTAL_TIMESTEPS": 10e7,
+    "NUM_STEPS": 10, #10
+    "TOTAL_TIMESTEPS": 7.5e7,
     "UPDATE_EPOCHS": 4,    #4
     "TRAIN_DISC_INTERVAL": 3,
     "DISC_MINIBATCH_SIZE": 2048,
@@ -800,7 +849,7 @@ config = {
     "GAMMA": 0.99,
     "GAE_LAMBDA": 0.95,
     "CLIP_EPS": 0.2,
-    "INIT_STD": 0.1,
+    "INIT_STD": 0.4,
     "DPO_ALPHA": 2.0,
     "DPO_BETA": 0.6,
     "ENT_COEF": 0.0, # 0.0
@@ -895,10 +944,10 @@ else:
     #train_state = load_train_state("ckpts/20240628_022009", env.info.action_space.shape[0])    # best running h1 so far
     # train_state = load_train_state("ckpts/20240630_233746", env.info.action_space.shape[0]) # h1 best walking so far with capsule
     # train_state = load_train_state("ckpts/20240630_235305", env.info.action_space.shape[0]) # even better h1 walking? difference only in vf_coef
-    train_state = load_train_state("ckpts/20240915_181503", env.info.action_space.shape[0])
-    train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*-20
+    train_state = load_train_state("ckpts/20240919_195608", env.info.action_space.shape[0])
+    #train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*np.log(0.01)
     key = jax.random.key(0)
-    NENVS = 100
+    NENVS = 20
     keys = jax.random.split(key, NENVS + 1)
     key, env_keys = keys[0], keys[1:]
 
@@ -909,15 +958,11 @@ else:
     # reset env
     obs, state = rng_reset(env_keys, None)
 
-
-    # optionally collect rollouts for rendering
-    rollout = []
-
     step = 0
     previous_time = time.time()
     LOGGING_FREQUENCY = 100000
 
-    for i in range(300):
+    while True:
 
         keys = jax.random.split(key, NENVS + 1)
         key, action_keys = keys[0], keys[1:]
@@ -935,7 +980,7 @@ else:
 
         obs, state, reward, done, info = rng_step(None, state, action)
 
-        rollout.append(state.env_state.env_state)
+        env.mjx_render(state.env_state.env_state)
 
         step += env.info.n_envs
         if step % LOGGING_FREQUENCY == 0:
@@ -943,7 +988,4 @@ else:
             print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
             previous_time = current_time
 
-    # Simulate and display video.
-    env = env._env
-    env.mjx_render_trajectory(rollout, record=False)
 

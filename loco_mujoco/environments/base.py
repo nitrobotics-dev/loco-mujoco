@@ -277,23 +277,33 @@ class LocoEnv(Mjx):
         return jax.lax.cond(self._use_absorbing_states, lambda o, i, d: self._mjx_has_fallen(o, i, d),
                             lambda o, i, d: jnp.array(False), obs, info, data)
 
-    def _step_finalize(self, obs, data, info, carry):
+    # def _is_done(self, obs, absorbing, info, data, carry):
+    #     if self._end_episode_on_traj_end:
+    #         traj_
+    # def _mjx_is_done(self, obs, absorbing, info, data, carry):
+
+    def _simulation_post_step(self, data, carry):
         """
-        Update goal in Mujoco data structure if needed.
+        Update trajectory state and goal in Mujoco data structure if needed.
 
         """
+        carry = self._update_trajectory_state(carry)
         data = self._goal.set_data(data, backend=np, trajectory=self._jax_trajectory, traj_state=carry.traj_state)
+
+        # if self._use_foot_forces:
+        #     grf = self._get_ground_forces()
+        #     self.mean_grf.update_state(jnp.array(grf), carry.running_avg_state)
+
+        return data, carry
+
+    def _mjx_simulation_post_step(self, data, carry):
+        """
+        Update trajectory state and goal in Mujoco data structure if needed.
+
+        """
         carry = self._update_trajectory_state(carry)
-        return obs, data, info, carry
-
-    def _mjx_step_finalize(self, obs, data, info, carry):
-        """
-        Update goal in Mujoco data structure if needed.
-
-        """
         data = self._goal.set_data(data, backend=jnp, trajectory=self._jax_trajectory, traj_state=carry.traj_state)
-        carry = self._update_trajectory_state(carry)
-        return obs, data, info, carry
+        return data, carry
 
     def get_kinematic_obs_mask(self):
         """
@@ -693,6 +703,7 @@ class LocoEnv(Mjx):
         cur_step_in_episode = where_done(1, carry.cur_step_in_episode + 1)
         carry = carry.replace(key=key, cur_step_in_episode=cur_step_in_episode,
                               traj_state=traj_state, final_observation=final_obs)
+        data = self._mjx_reset_init_data(data, carry)
         new_obs = self._mjx_create_observation(data, carry)
 
         return state.replace(data=data, observation=new_obs, additional_carry=carry)
@@ -751,18 +762,6 @@ class LocoEnv(Mjx):
         unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
         return unnormalized_action
 
-    def _simulation_post_step(self, data, carry):
-        """
-        Update the ground forces statistics if needed.
-
-        """
-
-        if self._use_foot_forces:
-            grf = self._get_ground_forces()
-            self.mean_grf.update_state(jnp.array(grf), carry.running_avg_state)
-
-        return data, carry
-
     def _init_sim_from_obs(self, obs):
         """
         Initializes the simulation from an observation.
@@ -808,6 +807,14 @@ class LocoEnv(Mjx):
                           )
 
         return carry
+
+    def _reset_init_data(self, data, carry):
+        data = self._goal.set_data(data, backend=np, trajectory=self._jax_trajectory, traj_state=carry.traj_state)
+        return data
+
+    def _mjx_reset_init_data(self, data, carry):
+        data = self._goal.set_data(data, backend=jnp, trajectory=self._jax_trajectory, traj_state=carry.traj_state)
+        return data
 
     def _setup_ground_force_statistics(self):
         """
@@ -869,7 +876,6 @@ class LocoEnv(Mjx):
         xml_handle = goal.apply_xml_modifications(xml_handle, self.root_body_name)
 
         return xml_handle, goal
-
 
     def _get_all_info_properties(self):
         """

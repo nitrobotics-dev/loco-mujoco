@@ -107,6 +107,8 @@ class Mjx(Mujoco):
 
         carry = self._init_additional_carry(key, data)
 
+        data = self._mjx_reset_init_data(data, carry)
+
         obs = self._mjx_create_observation(data, carry)
         reward = 0.0
         absorbing = jnp.array(False, dtype=bool)
@@ -122,6 +124,7 @@ class Mjx(Mujoco):
         final_obs = jnp.where(state.done, state.observation, jnp.zeros_like(state.observation))
         carry = carry.replace(cur_step_in_episode=jnp.where(state.done, 1, carry.cur_step_in_episode + 1),
                               final_observation=final_obs)
+        data = self._mjx_reset_init_data(data, carry)
         new_obs = self._mjx_create_observation(data, carry)
 
         return state.replace(data=data, observation=new_obs, additional_carry=carry)
@@ -161,6 +164,9 @@ class Mjx(Mujoco):
 
     def _mjx_preprocess_action(self, action, data, carry):
         return action
+
+    def _mjx_reset_init_data(self, data, carry):
+        return data
 
     def _mjx_step_init(self, obs, data, info, carry):
         """

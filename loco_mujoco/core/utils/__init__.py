@@ -7,3 +7,4 @@ from .goals import *
 # register all goals
 NoGoal.register()
 GoalTrajArrow.register()
+GoalTrajJointQposQVel.register()
