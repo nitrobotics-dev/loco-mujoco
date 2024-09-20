@@ -506,11 +506,69 @@ class UnitreeG1(BaseRobotHumanoid):
 
         """
 
-        observation_spec = []
-        for prefix in ["q_", "dq_"]:
-            for j in self.xml_handle.find_all("joint"):
-                obs_type = ObservationType.JOINT_POS if prefix == "q_" else ObservationType.JOINT_VEL
-                observation_spec.append((prefix + j.name, j.name, obs_type))
+        observation_spec = [# ------------- JOINT POS -------------
+                            ObservationType.JointPos('q_pelvis_tx', xml_name="pelvis_tx"),
+                            ObservationType.JointPos('q_pelvis_tz', xml_name="pelvis_tz"),
+                            ObservationType.JointPos('q_pelvis_ty', xml_name="pelvis_ty"),
+                            ObservationType.JointPos('q_pelvis_tilt', xml_name="pelvis_tilt"),
+                            ObservationType.JointPos('q_pelvis_list', xml_name="pelvis_list"),
+                            ObservationType.JointPos('q_pelvis_rotation', xml_name="pelvis_rotation"),
+                            ObservationType.JointPos('q_left_hip_pitch_joint', xml_name="left_hip_pitch_joint"),
+                            ObservationType.JointPos('q_left_hip_roll_joint', xml_name="left_hip_roll_joint"),
+                            ObservationType.JointPos('q_left_hip_yaw_joint', xml_name="left_hip_yaw_joint"),
+                            ObservationType.JointPos('q_left_knee_joint', xml_name="left_knee_joint"),
+                            ObservationType.JointPos('q_left_ankle_pitch_joint', xml_name="left_ankle_pitch_joint"),
+                            ObservationType.JointPos('q_left_ankle_roll_joint', xml_name="left_ankle_roll_joint"),
+                            ObservationType.JointPos('q_right_hip_pitch_joint', xml_name="right_hip_pitch_joint"),
+                            ObservationType.JointPos('q_right_hip_roll_joint', xml_name="right_hip_roll_joint"),
+                            ObservationType.JointPos('q_right_hip_yaw_joint', xml_name="right_hip_yaw_joint"),
+                            ObservationType.JointPos('q_right_knee_joint', xml_name="right_knee_joint"),
+                            ObservationType.JointPos('q_right_ankle_pitch_joint', xml_name="right_ankle_pitch_joint"),
+                            ObservationType.JointPos('q_right_ankle_roll_joint', xml_name="right_ankle_roll_joint"),
+                            ObservationType.JointPos('q_torso_joint', xml_name="torso_joint"),
+                            ObservationType.JointPos('q_left_shoulder_pitch_joint', xml_name="left_shoulder_pitch_joint"),
+                            ObservationType.JointPos('q_left_shoulder_roll_joint', xml_name="left_shoulder_roll_joint"),
+                            ObservationType.JointPos('q_left_shoulder_yaw_joint', xml_name="left_shoulder_yaw_joint"),
+                            ObservationType.JointPos('q_left_elbow_pitch_joint', xml_name="left_elbow_pitch_joint"),
+                            ObservationType.JointPos('q_left_elbow_roll_joint', xml_name="left_elbow_roll_joint"),
+                            ObservationType.JointPos('q_right_shoulder_pitch_joint', xml_name="right_shoulder_pitch_joint"),
+                            ObservationType.JointPos('q_right_shoulder_roll_joint', xml_name="right_shoulder_roll_joint"),
+                            ObservationType.JointPos('q_right_shoulder_yaw_joint', xml_name="right_shoulder_yaw_joint"),
+                            ObservationType.JointPos('q_right_elbow_pitch_joint', xml_name="right_elbow_pitch_joint"),
+                            ObservationType.JointPos('q_right_elbow_roll_joint', xml_name="right_elbow_roll_joint"),
+
+                            # ------------- JOINT VEL -------------
+                            ObservationType.JointVel('dq_pelvis_tx', xml_name="pelvis_tx"),
+                            ObservationType.JointVel('dq_pelvis_tz', xml_name="pelvis_tz"),
+                            ObservationType.JointVel('dq_pelvis_ty', xml_name="pelvis_ty"),
+                            ObservationType.JointVel('dq_pelvis_tilt', xml_name="pelvis_tilt"),
+                            ObservationType.JointVel('dq_pelvis_list', xml_name="pelvis_list"),
+                            ObservationType.JointVel('dq_pelvis_rotation', xml_name="pelvis_rotation"),
+                            ObservationType.JointVel('dq_left_hip_pitch_joint', xml_name="left_hip_pitch_joint"),
+                            ObservationType.JointVel('dq_left_hip_roll_joint', xml_name="left_hip_roll_joint"),
+                            ObservationType.JointVel('dq_left_hip_yaw_joint', xml_name="left_hip_yaw_joint"),
+                            ObservationType.JointVel('dq_left_knee_joint', xml_name="left_knee_joint"),
+                            ObservationType.JointVel('dq_left_ankle_pitch_joint', xml_name="left_ankle_pitch_joint"),
+                            ObservationType.JointVel('dq_left_ankle_roll_joint', xml_name="left_ankle_roll_joint"),
+                            ObservationType.JointVel('dq_right_hip_pitch_joint', xml_name="right_hip_pitch_joint"),
+                            ObservationType.JointVel('dq_right_hip_roll_joint', xml_name="right_hip_roll_joint"),
+                            ObservationType.JointVel('dq_right_hip_yaw_joint', xml_name="right_hip_yaw_joint"),
+                            ObservationType.JointVel('dq_right_knee_joint', xml_name="right_knee_joint"),
+                            ObservationType.JointVel('dq_right_ankle_pitch_joint', xml_name="right_ankle_pitch_joint"),
+                            ObservationType.JointVel('dq_right_ankle_roll_joint', xml_name="right_ankle_roll_joint"),
+                            ObservationType.JointVel('dq_torso_joint', xml_name="torso_joint"),
+                            ObservationType.JointVel('dq_left_shoulder_pitch_joint', xml_name="left_shoulder_pitch_joint"),
+                            ObservationType.JointVel('dq_left_shoulder_roll_joint', xml_name="left_shoulder_roll_joint"),
+                            ObservationType.JointVel('dq_left_shoulder_yaw_joint', xml_name="left_shoulder_yaw_joint"),
+                            ObservationType.JointVel('dq_left_elbow_pitch_joint', xml_name="left_elbow_pitch_joint"),
+                            ObservationType.JointVel('dq_left_elbow_roll_joint', xml_name="left_elbow_roll_joint"),
+                            ObservationType.JointVel('dq_right_shoulder_pitch_joint', xml_name="right_shoulder_pitch_joint"),
+                            ObservationType.JointVel('dq_right_shoulder_roll_joint', xml_name="right_shoulder_roll_joint"),
+                            ObservationType.JointVel('dq_right_shoulder_yaw_joint', xml_name="right_shoulder_yaw_joint"),
+                            ObservationType.JointVel('dq_right_elbow_pitch_joint', xml_name="right_elbow_pitch_joint"),
+                            ObservationType.JointVel('dq_right_elbow_roll_joint', xml_name="right_elbow_roll_joint")
+        ]
+
         return observation_spec
 
     def _get_action_specification(self):
