@@ -872,7 +872,7 @@ rng = jax.random.PRNGKey(30)
 #
 
 
-mode = "train"
+mode = "eval"
 if mode == "train":
     wandb.login()
     wandb.init(
@@ -944,7 +944,7 @@ else:
     #train_state = load_train_state("ckpts/20240628_022009", env.info.action_space.shape[0])    # best running h1 so far
     # train_state = load_train_state("ckpts/20240630_233746", env.info.action_space.shape[0]) # h1 best walking so far with capsule
     # train_state = load_train_state("ckpts/20240630_235305", env.info.action_space.shape[0]) # even better h1 walking? difference only in vf_coef
-    train_state = load_train_state("ckpts/20240919_195608", env.info.action_space.shape[0])
+    train_state = load_train_state("ckpts/20240920_133758", env.info.action_space.shape[0])
     #train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*np.log(0.01)
     key = jax.random.key(0)
     NENVS = 20
