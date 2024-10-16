@@ -103,6 +103,7 @@ class Mjx(Mujoco):
         key, subkey = jax.random.split(key)
 
         mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_forward(self._model, self._data)
         data = mjx.put_data(self._model, self._data)
 
         carry = self._init_additional_carry(key, data)
@@ -180,21 +181,32 @@ class Mjx(Mujoco):
         """
         return obs, data, info, carry
 
-    def _mjx_set_sim_state(self, data, sample):
+    def _mjx_set_sim_state_from_traj_data(self, data, traj_data):
+        """
+        Sets the simulation state from the trajectory data.
+        """
+        return data.replace(
+            xpos=traj_data.xpos if traj_data.xpos.size > 0 else data.xpos,
+            xquat=traj_data.xquat if traj_data.xquat.size > 0 else data.xquat,
+            cvel=traj_data.cvel if traj_data.cvel.size > 0 else data.cvel,
+            qpos=traj_data.qpos if traj_data.qpos.size > 0 else data.qpos,
+            qvel=traj_data.qvel if traj_data.qvel.size > 0 else data.qvel)
+
+    def _mjx_set_sim_state_from_obs(self, data, obs):
 
         # set the free joint data (can not set qpos twice in replace)
         data = data.replace(
-            qpos=data.qpos.at[self._data_indices.free_joint_qpos].set(sample[self._obs_indices.free_joint_qpos]),
-            qvel=data.qvel.at[self._data_indices.free_joint_qvel].set(sample[self._obs_indices.free_joint_qvel]))
+            qpos=data.qpos.at[self._data_indices.free_joint_qpos].set(obs[self._obs_indices.free_joint_qpos]),
+            qvel=data.qvel.at[self._data_indices.free_joint_qvel].set(obs[self._obs_indices.free_joint_qvel]))
 
         return data.replace(
-            xpos=data.xpos.at[self._data_indices.body_xpos].set(sample[self._obs_indices.body_xpos].reshape(-1, 3)),
-            xquat=data.xquat.at[self._data_indices.body_xquat].set(sample[self._obs_indices.body_xquat].reshape(-1, 4)),
-            cvel=data.cvel.at[self._data_indices.body_cvel].set(sample[self._obs_indices.body_cvel].reshape(-1, 6)),
-            qpos=data.qpos.at[self._data_indices.joint_qpos].set(sample[self._obs_indices.joint_qpos]),
-            qvel=data.qvel.at[self._data_indices.joint_qvel].set(sample[self._obs_indices.joint_qvel]),
-            site_xpos=data.site_xpos.at[self._data_indices.site_xpos].set(sample[self._obs_indices.site_xpos].reshape(-1, 3)),
-            site_xmat=data.site_xmat.at[self._data_indices.site_xmat].set(sample[self._obs_indices.site_xmat].reshape(-1, 9)))
+            xpos=data.xpos.at[self._data_indices.body_xpos].set(obs[self._obs_indices.body_xpos].reshape(-1, 3)),
+            xquat=data.xquat.at[self._data_indices.body_xquat].set(obs[self._obs_indices.body_xquat].reshape(-1, 4)),
+            cvel=data.cvel.at[self._data_indices.body_cvel].set(obs[self._obs_indices.body_cvel].reshape(-1, 6)),
+            qpos=data.qpos.at[self._data_indices.joint_qpos].set(obs[self._obs_indices.joint_qpos]),
+            qvel=data.qvel.at[self._data_indices.joint_qvel].set(obs[self._obs_indices.joint_qvel]),
+            site_xpos=data.site_xpos.at[self._data_indices.site_xpos].set(obs[self._obs_indices.site_xpos].reshape(-1, 3)),
+            site_xmat=data.site_xmat.at[self._data_indices.site_xmat].set(obs[self._obs_indices.site_xmat].reshape(-1, 9)))
 
     def mjx_render(self, state, record=False):
         """
@@ -237,10 +249,6 @@ class Mjx(Mujoco):
         return MjxAdditionalCarry(key=key, cur_step_in_episode=1,
                                   final_observation=jnp.zeros(self.info.observation_space.shape),
                                   first_data=data, final_info={})
-
-    def _process_collision_groups(self, collision_groups):
-        if collision_groups is not None and len(collision_groups) > 0:
-            raise ValueError("Collisions groups are currently not supported in Mjx.")
 
     @property
     def n_envs(self):

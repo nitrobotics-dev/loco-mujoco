@@ -327,6 +327,14 @@ class UnitreeH1(BaseRobotHumanoid):
     def upper_body_xml_name(self):
         return "torso_link"
 
+    @info_property
+    def sites_for_mimic(self):
+        return ["head_mimic", "upper_body_mimic", "pelvis_mimic",
+                "left_shoulder_mimic", "left_elbow_mimic", "left_hand_mimic",
+                "left_hip_mimic", "left_knee_mimic", "left_foot_mimic",
+                "right_shoulder_mimic", "right_elbow_mimic", "right_hand_mimic",
+                "right_hip_mimic", "right_knee_mimic", "right_foot_mimic"]
+
     def _get_xml_modifications(self):
         """
         Function that specifies which joints, motors and equality constraints

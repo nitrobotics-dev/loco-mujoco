@@ -1,6 +1,4 @@
 from .reward import *
-from loco_mujoco.core.utils.goals import *
-from .trajectory import *
 from .checks import *
 from .video import video2gif
 from .domain_randomization import *
@@ -15,4 +13,4 @@ PosReward.register()
 TargetVelocityReward.register()
 CustomReward.register()
 VelocityVectorReward.register()
-MimicQPosReward.register()
+MimicReward.register()

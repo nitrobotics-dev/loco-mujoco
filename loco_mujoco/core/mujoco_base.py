@@ -12,7 +12,8 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, ObservationType, ObservationIndexContainer
+from loco_mujoco.core.utils import (Box, MDPInfo, MujocoViewer, ObservationType,
+                                    ObservationIndexContainer, ObservationContainer)
 
 
 @struct.dataclass
@@ -27,7 +28,7 @@ class Mujoco:
 
     """
 
-    _registered_envs = dict()
+    registered_envs = dict()
 
     def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, goal=None,
                  n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1,
@@ -62,7 +63,7 @@ class Mujoco:
         # about each observation's type, indices, min and max values, etc. Additionally, create two dataclasses
         # containing the indices in the datastructure for each observation type (data_indices) and the indices for
         # each observation type in the observation array (obs_indices).
-        self.obs_dict, self._data_indices, self._obs_indices = (
+        self.obs_container, self._data_indices, self._obs_indices = (
             self._setup_observations(observation_spec, goal, self._model, self._data))
 
         # define observation space bounding box
@@ -73,9 +74,6 @@ class Mujoco:
 
         # define action space bounding box
         action_space = Box(*self._get_action_limits(self._action_indices, self._model))
-
-        # pre-process the collision groups for faster detection of contacts
-        self.collision_groups = self._process_collision_groups(collision_groups)
 
         # finally, create the MDP information
         self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
@@ -96,6 +94,7 @@ class Mujoco:
     def reset(self, key):
         key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
         self._additional_carry = self._init_additional_carry(key, self._data)
         self._data = self._reset_init_data(self._data, self._additional_carry)
@@ -180,8 +179,8 @@ class Mujoco:
         return action
 
     def get_all_observation_keys(self):
-        from loco_mujoco.utils import Goal
-        return [k for k, elem in self.obs_dict.items() if not issubclass(elem.__class__, Goal)]
+        from loco_mujoco.core.utils import Goal
+        return [k for k, elem in self.obs_container.items() if not issubclass(elem.__class__, Goal)]
 
     def _is_absorbing(self, obs, info, data, carry):
         """
@@ -297,6 +296,32 @@ class Mujoco:
 
         return model
 
+    def set_actuation_spec(self, actuation_spec):
+        """
+        Sets the actuation of the environment to overwrite the default one.
+
+        Args:
+            actuation_spec (list): A list of actuator names.
+
+        """
+        self._action_indices = self.get_action_indices(self._model, self._data, actuation_spec)
+        self._mdp_info.action_space = Box(*self._get_action_limits(self._action_indices, self._model))
+
+    def set_observation_spec(self, observation_spec):
+        """
+        Sets the observation of the environment to overwrite the default one.
+
+        Args:
+            observation_spec (list): A list of observation types.
+
+        """
+        # update the obs_container and the data_indices and obs_indices
+        self.obs_container, self._data_indices, self._obs_indices = (
+            self._setup_observations(observation_spec, self._goal, self._model, self._data))
+
+        # update the observation space
+        self._mdp_info.observation_space = Box(*self._get_obs_limits())
+
     @staticmethod
     def _setup_observations(observation_spec, goal, model, data):
         """
@@ -319,7 +344,7 @@ class Mujoco:
         """
 
         # this dict will contain all the observation types and their corresponding information
-        obs_dict = dict()
+        obs_container = ObservationContainer()
 
         # these containers will be used to store the indices of the different observation
         # types in the data structure and in the observation array.
@@ -367,10 +392,10 @@ class Mujoco:
                 raise ValueError
 
             i += obs.dim
-            if obs.name in obs_dict.keys():
+            if obs.name in obs_container.keys():
                 raise KeyError("Duplicate keys are not allowed. Key: ", obs.name)
 
-            obs_dict[obs.name] = obs
+            obs_container[obs.name] = obs
 
         # add goal class to observation dict
         # todo: only single goals are supported, maybe change this in future
@@ -379,20 +404,16 @@ class Mujoco:
             data_ind.goal.extend(d_ind)
             obs_ind.forces.extend(o_ind)
 
-        if goal.name in obs_dict.keys():
+        if goal.name in obs_container.keys():
             raise KeyError("Duplicate keys are not allowed. Key: ", goal.name)
 
-        obs_dict[goal.name] = goal
-
-        # create a read-only dict (obs_dict is used inside jitted functions, so we want
-        # to prohibit modifications to it)
-        obs_dict = types.MappingProxyType(obs_dict)
+        obs_container[goal.name] = goal
 
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
         obs_ind.convert_to_numpy()
 
-        return obs_dict, data_ind, obs_ind
+        return obs_container, data_ind, obs_ind
 
     def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
         return 0.0
@@ -429,45 +450,68 @@ class Mujoco:
 
         return obs
 
-    def _set_sim_state(self, data, sample):
+    @staticmethod
+    def _set_sim_state_from_traj_data(data, traj_data):
+        """
+        Sets the Mujoco datastructure to the state specified in the trajectory data.
 
+        Args:
+            data: Mujoco data structure.
+            traj_data: Trajectory data.
+
+        """
         # set the body pos
-        data.xpos[self._data_indices.body_xpos, :] = sample[self._obs_indices.body_xpos].reshape(-1, 3)
+        if traj_data.xpos.size > 0:
+            data.xpos = traj_data.xpos
         # set the body orientation
-        data.xquat[self._data_indices.body_xquat, :] = sample[self._obs_indices.body_xquat].reshape(-1, 4)
+        if traj_data.xquat.size > 0:
+            data.xquat = traj_data.xquat
         # set the body velocity
-        data.cvel[self._data_indices.body_cvel, :] = sample[self._obs_indices.body_cvel].reshape(-1, 6)
-        # set the free joint positions
-        data.qpos[self._data_indices.free_joint_qpos] = sample[self._obs_indices.free_joint_qpos]
-        # set the free joint velocities
-        data.qvel[self._data_indices.free_joint_qvel] = sample[self._obs_indices.free_joint_qvel]
+        if traj_data.cvel.size > 0:
+            data.cvel = traj_data.cvel
         # set the joint positions
-        data.qpos[self._data_indices.joint_qpos] = sample[self._obs_indices.joint_qpos]
+        if traj_data.qpos.size > 0:
+            data.qpos = traj_data.qpos
         # set the joint velocities
-        data.qvel[self._data_indices.joint_qvel] = sample[self._obs_indices.joint_qvel]
-        # set the site positions
-        data.site_xpos[self._data_indices.site_xpos, :] = sample[self._obs_indices.site_xpos].reshape(-1, 3)
-        # set the site rotation
-        data.site_xmat[self._data_indices.site_xmat, :] = sample[self._obs_indices.site_xmat].reshape(-1, 9)
+        if traj_data.qvel.size > 0:
+            data.qvel = traj_data.qvel
 
         return data
 
-    def _process_collision_groups(self, collision_groups):
-        processed_collision_groups = {}
-        if collision_groups is not None:
-            for name, geom_names in collision_groups:
-                col_group = list()
-                for geom_name in geom_names:
-                    mj_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, geom_name)
-                    assert mj_id != -1, f"geom \"{geom_name}\" not found! Can't be used for collision-checking."
-                    col_group.append(mj_id)
-                processed_collision_groups[name] = set(col_group)
+    def _set_sim_state_from_obs(self, data, obs):
+        """
+        Sets the Mujoco datastructure to the state specified in the observation.
 
-        return processed_collision_groups
+        Args:
+            data: Mujoco data structure.
+            obs: Observation array.
+
+        """
+
+        # set the body pos
+        data.xpos[self._data_indices.body_xpos, :] = obs[self._obs_indices.body_xpos].reshape(-1, 3)
+        # set the body orientation
+        data.xquat[self._data_indices.body_xquat, :] = obs[self._obs_indices.body_xquat].reshape(-1, 4)
+        # set the body velocity
+        data.cvel[self._data_indices.body_cvel, :] = obs[self._obs_indices.body_cvel].reshape(-1, 6)
+        # set the free joint positions
+        data.qpos[self._data_indices.free_joint_qpos] = obs[self._obs_indices.free_joint_qpos]
+        # set the free joint velocities
+        data.qvel[self._data_indices.free_joint_qvel] = obs[self._obs_indices.free_joint_qvel]
+        # set the joint positions
+        data.qpos[self._data_indices.joint_qpos] = obs[self._obs_indices.joint_qpos]
+        # set the joint velocities
+        data.qvel[self._data_indices.joint_qvel] = obs[self._obs_indices.joint_qvel]
+        # set the site positions
+        data.site_xpos[self._data_indices.site_xpos, :] = obs[self._obs_indices.site_xpos].reshape(-1, 3)
+        # set the site rotation
+        data.site_xmat[self._data_indices.site_xmat, :] = obs[self._obs_indices.site_xmat].reshape(-1, 9)
+
+        return data
 
     def _get_obs_limits(self):
-        obs_min = np.concatenate([np.array(entry.min) for entry in self.obs_dict.values()])
-        obs_max = np.concatenate([np.array(entry.max) for entry in self.obs_dict.values()])
+        obs_min = np.concatenate([np.array(entry.min) for entry in self.obs_container.values()])
+        obs_max = np.concatenate([np.array(entry.max) for entry in self.obs_container.values()])
         return obs_min, obs_max
 
     def _init_additional_carry(self, key, data):
@@ -576,9 +620,6 @@ class Mujoco:
     def mdp_info(self):
         return self._mdp_info
 
-    def init_additional_carry(self, key, data,  **kwargs):
-        return AdditionalCarry(key=key, cur_step_in_episode=1)
-
     @staticmethod
     def user_warning_raise_exception(warning):
         """
@@ -618,8 +659,8 @@ class Mujoco:
         """
         env_name = cls.__name__
 
-        if env_name not in Mujoco._registered_envs:
-            Mujoco._registered_envs[env_name] = cls
+        if env_name not in Mujoco.registered_envs:
+            Mujoco.registered_envs[env_name] = cls
 
     @staticmethod
     def list_registered():
@@ -630,7 +671,7 @@ class Mujoco:
              The list of the registered environments.
 
         """
-        return list(Mujoco._registered_envs.keys())
+        return list(Mujoco.registered_envs.keys())
 
     @staticmethod
     def make(env_name, *args, **kwargs):
@@ -656,7 +697,7 @@ class Mujoco:
             env_name = env_data[0]
             args = env_data[1:] + list(args)
 
-        env = Mujoco._registered_envs[env_name]
+        env = Mujoco.registered_envs[env_name]
 
         if hasattr(env, 'generate'):
             return env.generate(*args, **kwargs)

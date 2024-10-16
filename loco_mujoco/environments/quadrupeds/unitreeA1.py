@@ -12,9 +12,9 @@ import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.utils.reward import VelocityVectorReward
-from loco_mujoco.utils.math import rotate_obs
+from loco_mujoco.core.utils.math import rotate_obs
 from loco_mujoco.core.utils.goals import GoalDirectionVelocity
-from loco_mujoco.utils.math import mat2angle_xy, angle2mat_xy, transform_angle_2pi
+from loco_mujoco.core.utils.math import mat2angle_xy, angle2mat_xy, transform_angle_2pi
 from loco_mujoco.utils.checks import check_validity_task_mode_dataset
 
 
@@ -257,37 +257,37 @@ class UnitreeA1(LocoEnv):
         if obs is not None:
             self._init_sim_from_obs(obs)
         else:
-            if not self.trajectories and self._random_start:
+            if not self.th and self._random_start:
                 raise ValueError("Random start not possible without trajectory data.")
-            elif not self.trajectories and self._init_step_no is not None:
+            elif not self.th and self._init_step_no is not None:
                 raise ValueError("Setting an initial step is not possible without trajectory data.")
             elif self._init_step_no is not None and self._random_start:
                 raise ValueError("Either use a random start or set an initial step, not both.")
 
-            if self.trajectories is not None:
+            if self.th is not None:
                 if self._random_start:
-                    sample = self.trajectories.reset_trajectory()
+                    sample = self.th.reset_trajectory()
                     if self.setup_random_rot:
                         angle = np.random.uniform(0, 2 * np.pi)
                         sample = rotate_obs(sample, angle,  *self._get_relevant_idx_rotation())
                 elif self._init_step_no:
-                    traj_len = self.trajectories.trajectory_length
-                    n_traj = self.trajectories.nnumber_of_trajectories
+                    traj_len = self.th.trajectory_length
+                    n_traj = self.th.nnumber_of_trajectories
                     assert self._init_step_no <= traj_len * n_traj
                     substep_no = int(self._init_step_no % traj_len)
                     traj_no = int(self._init_step_no / traj_len)
-                    sample = self.trajectories.reset_trajectory(substep_no, traj_no)
+                    sample = self.th.reset_trajectory(substep_no, traj_no)
                 else:
                     # sample random trajectory and use the first sample
-                    sample = self.trajectories.reset_trajectory(substep_no=0)
+                    sample = self.th.reset_trajectory(substep_no=0)
                     if self.setup_random_rot:
                         angle = np.random.uniform(0, 2 * np.pi)
                         sample = rotate_obs(sample, angle,  *self._get_relevant_idx_rotation())
 
                 # set the goal
-                rot_mat = self.trajectories.get_from_sample(sample, "dir_arrow")
+                rot_mat = self.th.get_from_sample(sample, "dir_arrow")
                 angle = mat2angle_xy(rot_mat)
-                desired_vel = self.trajectories.get_from_sample(sample, "goal_speed")
+                desired_vel = self.th.get_from_sample(sample, "goal_speed")
                 self._goal.set_goal(angle, desired_vel)
 
                 # set the state of the simulation
@@ -325,13 +325,13 @@ class UnitreeA1(LocoEnv):
             if ignore_keys is None:
                 ignore_keys = ["q_trunk_tx", "q_trunk_ty"]
 
-            if self.trajectories is not None:
+            if self.th is not None:
                 rot_mat_idx_arrow = self._get_idx("dir_arrow")
                 state_callback_params = dict(rot_mat_idx_arrow=rot_mat_idx_arrow,
                                              goal_velocity_idx=self._goal_velocity_idx)
-                dataset = self.trajectories.create_dataset(ignore_keys=ignore_keys,
-                                                           state_callback=self._modify_observation_callback,
-                                                           state_callback_params=state_callback_params)
+                dataset = self.th.create_dataset(ignore_keys=ignore_keys,
+                                                 state_callback=self._modify_observation_callback,
+                                                 state_callback_params=state_callback_params)
             else:
                 raise ValueError("No trajectory was passed to the environment. "
                                  "To create a dataset pass a trajectory first.")

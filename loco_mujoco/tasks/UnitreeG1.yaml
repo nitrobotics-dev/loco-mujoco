@@ -4,7 +4,7 @@ UnitreeG1.walk.real:
   reward_params:
     target_velocity: 1.25
     vel_obs_dict_key: dq_pelvis_tx
-  dataset_path: datasets/humanoids/real/02-constspeed_UnitreeG1.npz
+  dataset_path: datasets/humanoids/real/UnitreeG1/walk.npz
 
 UnitreeG1.walk.perfect:
   goal_type: NoGoal
@@ -25,7 +25,7 @@ UnitreeG1.run.real:
   reward_params:
     target_velocity: 2.5
     vel_obs_dict_key: dq_pelvis_tx
-  dataset_path: datasets/humanoids/real/05-run_UnitreeG1.npz
+  dataset_path: datasets/humanoids/real/UnitreeG1/run.npz
 
 UnitreeG1.run.perfect:
   goal_type: NoGoal
@@ -46,7 +46,7 @@ MjxUnitreeG1.walk.real:
   reward_params:
     target_velocity: 1.25
     vel_obs_dict_key: dq_pelvis_tx
-  dataset_path: datasets/humanoids/real/02-constspeed_UnitreeG1.npz
+  dataset_path: datasets/humanoids/real/UnitreeG1/walk.npz
 
 MjxUnitreeG1.run.real:
   goal_type: NoGoal
@@ -54,5 +54,5 @@ MjxUnitreeG1.run.real:
   reward_params:
     target_velocity: 2.5
     vel_obs_dict_key: dq_pelvis_tx
-  dataset_path: datasets/humanoids/real/05-run_UnitreeG1.npz
+  dataset_path: datasets/humanoids/real/UnitreeG1/run.npz
 
