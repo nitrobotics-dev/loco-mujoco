@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 from .unitreeH1 import UnitreeH1
 from loco_mujoco.environments import ValidTaskConf

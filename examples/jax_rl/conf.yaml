@@ -1,0 +1,57 @@
+defaults:
+  - override hydra/job_logging: default
+  - override hydra/launcher: basic
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      experiment.learnable_std: true, false
+      experiment.init_std: 0.1, 0.2
+      experiment.hidden_layers:
+        - [1028, 512]
+        - [512, 256]
+      experiment.num_steps: 10, 20, 30
+      experiment.update_epochs: 2, 4
+      experiment.clip_eps: 0.2, 0.05
+      # env_params
+      experiment.env_params.env_name: MjxUnitreeH1.walk, MjxUnitreeH1.run
+
+wandb:
+  project: "first_hydra_run"
+
+experiment:
+  env_params:
+    env_name: MjxUnitreeH1.walk
+    goal_type: GoalTrajMimic
+    reward_type: mimic
+    disable_arms: false
+    horizon: 1000
+  hidden_layers: [1028, 512]
+  lr: 1e-4
+  disc_lr: 5e-5
+  num_envs: 2048
+  num_steps: 20
+  total_timesteps: 5e7
+  update_epochs: 4
+  train_disc_interval: 3
+  disc_minibatch_size: 2048
+  n_disc_epochs: 10
+  num_minibatches: 32
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  init_std: 0.2
+  learnable_std: false
+  ent_coef: 0.0
+  disc_ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  activation: tanh
+  anneal_lr: false
+  normalize_env: true
+  debug: false
+  n_seeds: 5
+  vmap_across_seeds: true
+
+

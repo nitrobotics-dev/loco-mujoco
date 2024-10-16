@@ -2,6 +2,9 @@ import os
 
 import jax
 import jax.numpy as jnp
+import loco_mujoco.core
+from loco_mujoco.environments.base import TrajState
+
 import wandb
 import chex
 import numpy as np
@@ -24,7 +27,6 @@ from flax.linen.initializers import constant, orthogonal
 from typing import Sequence, NamedTuple, Any
 from flax.training import train_state
 import distrax
-
 #from gymnax.environments import environment, spaces
 # from gymnax.wrappers.purerl import GymnaxWrapper
 #from brax import envs
@@ -106,9 +108,9 @@ class LogWrapper(GymnaxWrapper):
         return obs, state, reward, done, info
 
 class BraxGymnaxWrapper:
-    def __init__(self, env_name):
+    def __init__(self, env_name, **env_params):
         MODEL_OPTION = dict(iterations=100, ls_iterations=50)
-        env = LocoEnv.make(env_name)
+        env = LocoEnv.make(env_name, disable_arms=False, goal_type="GoalTrajMimic", reward_type="mimic", **env_params)
         # env = EpisodeWrapper(env, episode_length=1000, action_repeat=1)
         # env = AutoResetWrapper(env)
         self._env = env
@@ -121,7 +123,7 @@ class BraxGymnaxWrapper:
 
     def step(self, key, state, action, params=None):
         next_state = self._env.mjx_step(state, action)
-        next_obs = jnp.where(next_state.done, next_state.final_observation, next_state.observation)
+        next_obs = jnp.where(next_state.done, next_state.additional_carry.final_observation, next_state.observation)
         return next_obs, next_state, next_state.reward, next_state.done, {}
 
     def observation_space(self, params):
@@ -157,6 +159,9 @@ class BraxGymnaxWrapper:
 
     def mjx_render_trajectory(self, trajectory, record=False):
         return self._env.mjx_render_trajectory(trajectory, record)
+
+    def mjx_render(self, state, record=False):
+        return self._env.mjx_render(state, record)
 
 
 class ClipAction(GymnaxWrapper):
@@ -312,6 +317,9 @@ class RunningMeanStd(nn.Module):
 
     @nn.compact
     def __call__(self, x):
+
+        x = jnp.atleast_2d(x)
+
         # Initialize running mean, std, and count
         mean = self.variable('run_stats', 'mean', lambda: jnp.zeros(x.shape[-1]))
         std = self.variable('run_stats', 'std', lambda: jnp.ones(x.shape[-1]))
@@ -320,6 +328,8 @@ class RunningMeanStd(nn.Module):
         # Compute batch mean and variance
         batch_mean = jnp.mean(x, axis=0)
         batch_var = jnp.var(x, axis=0)
+
+        batch_var = jnp.where(batch_var < 1e-3, jnp.ones_like(batch_var), batch_var) # dimensions which almost not change, won't be scaled
 
         # Update the running mean and std using a simple moving average
         updated_count = count.value + 1
@@ -335,13 +345,15 @@ class RunningMeanStd(nn.Module):
         std.value = new_std
         count.value = updated_count
 
-        return normalized_x
+        return jnp.squeeze(normalized_x)
 
 
 class ActorCritic(nn.Module):
     action_dim: Sequence[int]
     activation: str = "tanh"
     init_std: float = 1.0
+    learnable_std: bool = True
+    dims_layers: Sequence[int] = (1024, 512)
 
     @nn.compact
     def __call__(self, x):
@@ -351,32 +363,30 @@ class ActorCritic(nn.Module):
             activation = nn.relu
         else:
             activation = nn.tanh
-        actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(x)
-        actor_mean = activation(actor_mean)
-        actor_mean = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(actor_mean)
-        actor_mean = activation(actor_mean)
-        actor_mean = nn.Dense(
-            self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
-        )(actor_mean)
+
+        # build actor
+        for dim_layer in self.dims_layers:
+            actor_mean = nn.Dense(
+                dim_layer, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            )(x)
+            actor_mean = activation(actor_mean)
+        actor_mean = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0))(actor_mean)
+
         actor_logtstd = self.param("log_std", nn.initializers.constant(jnp.log(self.init_std)),
                                    (self.action_dim,))
+
+        if not self.learnable_std:
+            actor_logtstd = jax.lax.stop_gradient(actor_logtstd)
+
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(actor_logtstd))
 
-        critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(x)
-        critic = activation(critic)
-        critic = nn.Dense(
-            256, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
-        )(critic)
-        critic = activation(critic)
-        critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
-            critic
-        )
+        # build critic
+        for dim_layer in self.dims_layers:
+            critic = nn.Dense(
+                dim_layer, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+            )(x)
+            critic = activation(critic)
+        critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(critic)
 
         return pi, jnp.squeeze(critic, axis=-1)
 
@@ -399,6 +409,33 @@ class Discriminator(nn.Module):
         return jnp.squeeze(z)
 
 
+class MetricHandler:
+    def __init__(self, obs_dict, trajectories):
+        self._obs_qpos_ind = np.concatenate([obs.obs_ind for obs in obs_dict.values()
+                                             if isinstance(obs, loco_mujoco.core.ObservationType.JointPos)])[2:] - 2
+        self._obs_qvel_ind = np.concatenate([obs.obs_ind for obs in obs_dict.values()
+                                             if isinstance(obs, loco_mujoco.core.ObservationType.JointVel)]) - 2
+        self._traj_qpos_ind = trajectories.qpos_ind[2:]
+        self._traj_qvel_ind = trajectories.qvel_ind
+
+        # setup standardizer
+        jax_traj = trajectories.get_jax_trajectory()
+        self._mean_qpos = jnp.mean(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._mean_qvel = jnp.mean(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+        self._std_qpos = jnp.std(jax_traj[self._traj_qpos_ind, :, :], axis=(1, 2))
+        self._std_qvel = jnp.std(jax_traj[self._traj_qvel_ind, :, :], axis=(1, 2))
+
+    def mean_per_joint_pos_error(self, plcy_obs, exp_obs):
+        plcy_qpos = (plcy_obs[:, self._obs_qpos_ind] - self._mean_qpos) / self._std_qpos
+        exp_qpos = (exp_obs[:, self._traj_qpos_ind] - self._mean_qpos) / self._std_qpos
+        return jnp.mean(jnp.abs(plcy_qpos - exp_qpos))
+
+    def mean_per_joint_vel_error(self, plcy_obs, exp_obs):
+        plcy_qvel = (plcy_obs[:, self._obs_qvel_ind] - self._mean_qvel) / self._std_qvel
+        exp_qvel = (exp_obs[:, self._traj_qvel_ind] - self._mean_qvel) / self._std_qvel
+        return jnp.mean(jnp.abs(plcy_qvel - exp_qvel))
+
+
 class Transition(NamedTuple):
     done: jnp.ndarray
     action: jnp.ndarray
@@ -407,6 +444,7 @@ class Transition(NamedTuple):
     log_prob: jnp.ndarray
     obs: jnp.ndarray
     info: jnp.ndarray
+    traj_state: TrajState
 
 
 class TrainState(train_state.TrainState):
@@ -420,10 +458,13 @@ def make_train(config):
     config["MINIBATCH_SIZE"] = (
         config["NUM_ENVS"] * config["NUM_STEPS"] // config["NUM_MINIBATCHES"]
     )
-    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"]), None
+    env, env_params = BraxGymnaxWrapper(config["ENV_NAME"], **config["ENV_PARAMS"]), None
 
-    expert_dataset = env.create_dataset()
-    expert_states = jnp.array(expert_dataset["states"])
+    #expert_dataset = env.create_dataset()
+    #expert_states = jnp.array(expert_dataset["states"])
+
+    # setup metric handler
+    #metric_handler = MetricHandler(env._env.obs_container, env._env.th)
 
     env = LogWrapper(env)
     env = ClipAction(env)
@@ -443,7 +484,8 @@ def make_train(config):
     def train(train_rng):
         # INIT NETWORK
         network = ActorCritic(
-            env.action_space(env_params).shape[0], activation=config["ACTIVATION"]
+            env.action_space(env_params).shape[0], activation=config["ACTIVATION"], init_std=config["INIT_STD"],
+            learnable_std=config["LEARNABLE_STD"], dims_layers=config["HIDDEN_LAYERS"]
         )
         discriminator = Discriminator(activation=config["ACTIVATION"])
         rng, _rng1, _rng2 = jax.random.split(train_rng, 3)
@@ -507,7 +549,7 @@ def make_train(config):
                 rng_step = jax.random.split(_rng, config["NUM_ENVS"])
                 obsv, env_state, reward, done, info = env.step(rng_step, env_state, action, env_params)
                 transition = Transition(
-                    done, action, value, reward, log_prob, last_obs, info
+                    done, action, value, reward, log_prob, last_obs, info, env_state.env_state.env_state.additional_carry.traj_state
                 )
                 runner_state = (train_state, disc_train_state, env_state, obsv, rng)
                 return runner_state, transition
@@ -533,13 +575,14 @@ def make_train(config):
                         transition.obs
                     )
 
-                    # predict reward with discriminator
-                    logits, _ = discriminator.apply({'params': disc_train_state.params,
-                                                     'run_stats': disc_train_state.run_stats},
-                                                    obs, mutable=["run_stats"])
-
-                    plcy_prob = nn.sigmoid(logits)
-                    reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-6))
+                    # todo: deactivated discriminator for now to use mimic reward
+                    # # predict reward with discriminator
+                    # logits, _ = discriminator.apply({'params': disc_train_state.params,
+                    #                                  'run_stats': disc_train_state.run_stats},
+                    #                                 obs, mutable=["run_stats"])
+                    #
+                    # plcy_prob = nn.sigmoid(logits)
+                    # reward = jnp.squeeze(-jnp.log(1 - plcy_prob + 1e-6))
 
                     delta = reward + config["GAMMA"] * next_value * (1 - done) - value
                     gae = (
@@ -581,20 +624,21 @@ def make_train(config):
                             0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
                         )
 
-                        # CALCULATE ACTOR LOSS
-                        alpha = config["DPO_ALPHA"]
-                        beta = config["DPO_BETA"]
-                        log_diff = log_prob - traj_batch.log_prob
-                        ratio = jnp.exp(log_diff)
+
+                        # CALCULATE PPO ACTOR LOSS
+                        ratio = jnp.exp(log_prob - traj_batch.log_prob)
                         gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        is_pos = (gae >= 0.0).astype("float32")
-                        r1 = ratio - 1.0
-                        drift1 = nn.relu(r1 * gae - alpha * nn.tanh(r1 * gae / alpha))
-                        drift2 = nn.relu(
-                            log_diff * gae - beta * nn.tanh(log_diff * gae / beta)
+                        loss_actor1 = ratio * gae
+                        loss_actor2 = (
+                                jnp.clip(
+                                    ratio,
+                                    1.0 - config["CLIP_EPS"],
+                                    1.0 + config["CLIP_EPS"],
+                                )
+                                * gae
                         )
-                        drift = drift1 * is_pos + drift2 * (1 - is_pos)
-                        loss_actor = -(ratio * gae - drift).mean()
+                        loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+                        loss_actor = loss_actor.mean()
                         entropy = pi.entropy().mean()
 
                         total_loss = (
@@ -709,16 +753,18 @@ def make_train(config):
                 grad_fn = jax.value_and_grad(_discrim_loss, has_aux=True)
                 (total_loss, disc_train_state), grads =\
                     grad_fn(disc_train_state.params, disc_train_state, inputs, targets)
-                disc_train_state = disc_train_state.apply_gradients(grads=grads)
+
+                # TODO: discabled DISCRIM TRAINING!
+                #disc_train_state = disc_train_state.apply_gradients(grads=grads)
 
                 runner_state = (disc_train_state, traj_batch, rng)
                 return runner_state, None
 
             counter = ((train_state.step + 1) // config["NUM_MINIBATCHES"] ) // config["UPDATE_EPOCHS"]
 
-            (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
-                _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=config["N_DISC_EPOCHS"]
-            )
+            # (disc_train_state, traj_batch, rng), _ = jax.lax.scan(
+            #     _update_discriminator, (disc_train_state, traj_batch, rng), xs=None, length=config["N_DISC_EPOCHS"]
+            # )
 
             # disc_train_state, discrim_probs_plcy, discrim_probs_exp, rng =\
             #     jax.lax.cond(counter % config["TRAIN_DISC_INTERVAL"] == 0,
@@ -730,15 +776,32 @@ def make_train(config):
             #                                               rng)
 
             metric = traj_batch.info
+            plcy_obs = jnp.vstack(traj_batch.obs)
+            exp_traj_ind = traj_batch.traj_state.traj_no
+            exp_subtraj_ind = traj_batch.traj_state.subtraj_step_no
+            # todo: fix these wrappers...
+            #exp_obs = env._env._env._env._env._env._jax_trajectory[:, exp_traj_ind, exp_subtraj_ind]
+            #exp_obs = np.transpose(exp_obs, (1, 2, 0))
+            #exp_obs = jnp.vstack(exp_obs)
+            #mpjpe = metric_handler.mean_per_joint_pos_error(plcy_obs, exp_obs)
+            #mpjve = metric_handler.mean_per_joint_vel_error(plcy_obs, exp_obs)
+            mpjpe = 0.0
+            mpjve = 0.0
+
+
             if config.get("DEBUG"):
-                def callback(info):
+                def callback(info, mpjpe, mpjve):
                     return_values = info["returned_episode_returns"][info["returned_episode"]]
                     timesteps = info["timestep"][info["returned_episode"]] * config["NUM_ENVS"]
+                    test1 = np.array(info["timestep"])
+
                     for t in range(len(timesteps)):
                         print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                     wandb.log({"Episodic Return": jnp.mean(return_values)})
+                    wandb.log({"Mean per Join Position Error": mpjpe})
+                    wandb.log({"Mean per Join Velocity Error": mpjve})
 
-                jax.debug.callback(callback, metric)
+                jax.debug.callback(callback, metric, mpjpe, mpjve)
 
             runner_state = (train_state, disc_train_state, env_state, last_obs, rng)
             return runner_state, metric
@@ -785,25 +848,28 @@ config = {
     "LR": 1e-4,
     "DISC_LR": 5e-5,
     "NUM_ENVS": 2048,
-    "NUM_STEPS": 10, #10
-    "TOTAL_TIMESTEPS": 10e7,
+    "NUM_STEPS": 20, #10
+    "TOTAL_TIMESTEPS": 5e7,
     "UPDATE_EPOCHS": 4,    #4
     "TRAIN_DISC_INTERVAL": 3,
     "DISC_MINIBATCH_SIZE": 2048,
     "N_DISC_EPOCHS": 10,
     "NUM_MINIBATCHES": 32,
-    "GAMMA": 0.99,
-    "GAE_LAMBDA": 0.95,
+    "GAMMA": 0.95,
+    "GAE_LAMBDA": 0.99,
     "CLIP_EPS": 0.2,
-    "INIT_STD": 1.0,
+    "INIT_STD": 0.2,
+    "LEARNABLE_STD": False,
+    "HIDDEN_LAYERS": (1024, 512),
     "DPO_ALPHA": 2.0,
     "DPO_BETA": 0.6,
     "ENT_COEF": 0.0, # 0.0
+    "ENV_PARAMS": dict(),
     "DISC_ENT_COEF": 0.0,
     "VF_COEF": 0.5,
     "MAX_GRAD_NORM": 0.5,
-    "ACTIVATION": "tanh",
-    "ENV_NAME": "MjxUnitreeG1.run",
+    "ACTIVATION": "relu",
+    "ENV_NAME": "MjxUnitreeH1.walk",
     "ANNEAL_LR": False,
     "NORMALIZE_ENV": True,
     "DEBUG": True,
@@ -818,11 +884,11 @@ rng = jax.random.PRNGKey(30)
 #
 
 
-mode = "eval"
+mode = "train"
 if mode == "train":
     wandb.login()
     wandb.init(
-        project="gail-jax",
+        project="ppo-full-mimic-reward",
         group="one_run",
         config=config,
         )
@@ -890,8 +956,10 @@ else:
     #train_state = load_train_state("ckpts/20240628_022009", env.info.action_space.shape[0])    # best running h1 so far
     # train_state = load_train_state("ckpts/20240630_233746", env.info.action_space.shape[0]) # h1 best walking so far with capsule
     # train_state = load_train_state("ckpts/20240630_235305", env.info.action_space.shape[0]) # even better h1 walking? difference only in vf_coef
-    train_state = load_train_state("ckpts/20240701_070239", env.info.action_space.shape[0])
-    train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*-20
+    # train_state = load_train_state("ckpts/20240923_204502", env.info.action_space.shape[0]) # best deepmimic qpospvel H1 walk so far
+    # train_state = load_train_state("ckpts/20240923_193552", env.info.action_space.shape[0])
+    train_state = load_train_state("ckpts/20241010_213804", env.info.action_space.shape[0])
+    train_state.params["log_std"] = np.ones_like(train_state.params["log_std"])*np.log(0.01)
     key = jax.random.key(0)
     NENVS = 100
     keys = jax.random.split(key, NENVS + 1)
@@ -904,15 +972,11 @@ else:
     # reset env
     obs, state = rng_reset(env_keys, None)
 
-
-    # optionally collect rollouts for rendering
-    rollout = []
-
     step = 0
     previous_time = time.time()
     LOGGING_FREQUENCY = 100000
 
-    for i in range(300):
+    while True:
 
         keys = jax.random.split(key, NENVS + 1)
         key, action_keys = keys[0], keys[1:]
@@ -930,7 +994,7 @@ else:
 
         obs, state, reward, done, info = rng_step(None, state, action)
 
-        rollout.append(state.env_state.env_state)
+        env.mjx_render(state.env_state.env_state)
 
         step += env.info.n_envs
         if step % LOGGING_FREQUENCY == 0:
@@ -938,7 +1002,4 @@ else:
             print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
             previous_time = current_time
 
-    # Simulate and display video.
-    env = env._env
-    env.mjx_render_trajectory(rollout, record=False)
 

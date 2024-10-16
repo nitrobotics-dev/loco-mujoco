@@ -99,7 +99,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
         # call gran-parent
         super(BaseHumanoid, self).__init__(xml_handles, action_spec, observation_spec, collision_groups, **kwargs)
 
-        if scaling_trajectory_map is not None and self.trajectories is None:
+        if scaling_trajectory_map is not None and self.th is None:
             warnings.warn("You have defined a scaling_trajectory_map, but no trajectory was defined. The former "
                           "will have no effect.")
 
@@ -120,29 +120,29 @@ class BaseHumanoid4Ages(BaseHumanoid):
             raise TypeError("Initializing the environment from an observation is "
                             "not allowed in this environment.")
         else:
-            if not self.trajectories and self._random_start:
+            if not self.th and self._random_start:
                 raise ValueError("Random start not possible without trajectory data.")
-            elif not self.trajectories and self._init_step_no is not None:
+            elif not self.th and self._init_step_no is not None:
                 raise ValueError("Setting an initial step is not possible without trajectory data.")
             elif self._init_step_no is not None and self._random_start:
                 raise ValueError("Either use a random start or set an initial step, not both.")
 
-            if self.trajectories is not None:
+            if self.th is not None:
                 if self._random_start:
                     if self._scaling_trajectory_map:
                         curr_model = self._current_model_idx
                         valid_traj_range = self._scaling_trajectory_map[curr_model]
                         traj_no = np.random.randint(valid_traj_range[0], valid_traj_range[1])
-                        sample = self.trajectories.reset_trajectory(traj_no=traj_no)
+                        sample = self.th.reset_trajectory(traj_no=traj_no)
                     else:
-                        sample = self.trajectories.reset_trajectory()
+                        sample = self.th.reset_trajectory()
                 elif self._init_step_no:
-                    traj_len = self.trajectories.trajectory_length
-                    n_traj = self.trajectories.nnumber_of_trajectories
+                    traj_len = self.th.trajectory_length
+                    n_traj = self.th.nnumber_of_trajectories
                     assert self._init_step_no <= traj_len * n_traj
                     substep_no = int(self._init_step_no % traj_len)
                     traj_no = int(self._init_step_no / traj_len)
-                    sample = self.trajectories.reset_trajectory(substep_no, traj_no)
+                    sample = self.th.reset_trajectory(substep_no, traj_no)
                 self.set_sim_state(sample)
 
     def load_trajectory(self, traj_params, scaling_trajectory_map=None, warn=True):
@@ -167,14 +167,14 @@ class BaseHumanoid4Ages(BaseHumanoid):
                     warnings.warn("\"scaling_trajectory_map\" is not defined! Loading the default map, which assumes that "
                                   "the trajectory contains an equal number of trajectories for all scalings and that"
                                   "they are ordered in the following order %s." % self._scalings)
-                n_trajs_per_scaling = self.trajectories.number_of_trajectories / len(self._scalings)
+                n_trajs_per_scaling = self.th.n_trajectories / len(self._scalings)
                 assert n_trajs_per_scaling.is_integer(), "Failed to construct the default" \
                                                          "\"scaling_trajectory_map\". The number of trajectory " \
                                                          "can not be divided by the number of scalings!"
                 n_trajs_per_scaling = int(n_trajs_per_scaling)
                 current_low_idx = 0
                 self._scaling_trajectory_map = []
-                for i in range(self.trajectories.number_of_trajectories):
+                for i in range(self.th.n_trajectories):
                     current_high_idx = current_low_idx + n_trajs_per_scaling
                     self._scaling_trajectory_map.append((current_low_idx, current_high_idx))
                     current_low_idx = current_high_idx

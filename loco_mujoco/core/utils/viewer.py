@@ -452,8 +452,8 @@ class MujocoViewer:
                 data = self._datas_for_parallel_render[i]
                 offset = self._offsets_for_parallel_render[i]
                 data.qpos, data.qvel = mjx_state.data.qpos[i, :], mjx_state.data.qvel[i, :]
-                data.qpos[0] = offset[0]
-                data.qpos[1] = offset[1]
+                data.qpos[0] += offset[0]
+                data.qpos[1] += offset[1]
                 mujoco.mj_forward(self._model, data)
 
                 if i == 0 and not self._headless:

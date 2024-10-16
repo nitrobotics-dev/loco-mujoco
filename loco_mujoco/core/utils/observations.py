@@ -1,8 +1,11 @@
+from __future__ import annotations
 from copy import deepcopy
 
 import numpy as np
 import mujoco
 import jax.numpy as jnp
+
+#from loco_mujoco.trajectory.trajectory import TrajectoryData, TrajectoryInfo
 
 
 def jnt_name2id(name, model):
@@ -59,17 +62,42 @@ class ObservationIndexContainer:
         self.concatenated_indices = np.array(ind)
 
 
-class Obs:
+class ObservationContainer(dict):
+    """
+    Container for observations. This is a dictionary with additional functionality to set the container reference
+    for each observation.
+    """
+    def __setitem__(self, key, observation: Observation):
+        # Set the container reference before adding to dict
+        if isinstance(observation, Observation):
+            observation.obs_container = self
+        super().__setitem__(key, observation)
+
+    def names(self):
+        """Return a view of the dictionary's keys, same as keys()."""
+        return self.keys()
+
+    def entries(self):
+        """Return a view of the dictionary's values, same as values()."""
+        return self.values()
+
+
+class Observation:
     """
     Base class for all observation types.
     """
     def __init__(self, obs_name: str):
         self.name = obs_name
+        self.obs_container = None
 
         # these attributes will be initialized from MjData
         self.obs_ind = None
         self.data_type_ind = None
         self.min, self.max = None, None
+        self._initialized_from_mj = False
+
+        # these attributes can be initialized from TrajectoryData (optionally)
+        self.traj_data_type_ind = None
 
     def init_from_mj(self, model, data, current_obs_size):
         """
@@ -85,6 +113,16 @@ class Obs:
 
         """
         raise NotImplementedError
+
+    def init_from_traj(self, traj_handler):
+        """
+        Optionally, initialize the observation type to store relevant information from the trajectory.
+
+        Args:
+            traj_handler: Trajectory Handler class.
+
+        """
+        pass
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -103,6 +141,26 @@ class Obs:
         """
         raise NotImplementedError
 
+    @classmethod
+    def get_obs_from_traj(cls, traj_data, traj_info, ind, backend):
+        """
+        Getter for all the observations of this type from the Trajectory datastructure.
+
+        Args:
+            traj_data (TrajectoryData): The trajectory datastructure.
+            traj_info (TrajectoryInfo): The trajectory information.
+            ind: The indices of *allÜ observations of this types in the datastructure.
+            backend: The backend to use for the observation.
+
+        Returns:
+            The observation regarding this observation type.
+        """
+        raise NotImplementedError
+
+    @property
+    def initialized_from_mj(self):
+        return self._initialized_from_mj
+
     @staticmethod
     def to_list(val):
         """
@@ -116,7 +174,7 @@ class Obs:
             raise ValueError("Input must be an integer or a numpy array of integers")
 
 
-class SimpleObs(Obs):
+class SimpleObs(Observation):
     """
     See also:
         :class:`Obs` for the base observation class.
@@ -125,6 +183,15 @@ class SimpleObs(Obs):
     def __init__(self, obs_name: str, xml_name: str):
         self.xml_name = xml_name
         super().__init__(obs_name)
+
+    def _init_body_info_from_traj(self, traj_info):
+        try:
+            self.traj_data_type_ind = traj_info.body_name2ind[self.xml_name]
+        except KeyError:
+            self.traj_data_type_ind = None
+
+    def _init_joint_info_from_traj(self, traj_info):
+        self.traj_data_type_ind = traj_info.joint_name2ind[self.xml_name]
 
 
 class BodyPos(SimpleObs):
@@ -145,7 +212,11 @@ class BodyPos(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_body_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -170,7 +241,11 @@ class BodyRot(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_body_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -195,7 +270,11 @@ class BodyVel(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_body_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -221,7 +300,11 @@ class FreeJointPos(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_joint_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -250,7 +333,11 @@ class JointPos(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_joint_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -277,7 +364,11 @@ class FreeJointVel(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_joint_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -302,7 +393,11 @@ class JointVel(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
+
+    def init_from_traj(self, traj_handler):
+        self._init_joint_info_from_traj(traj_handler.traj_info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -327,6 +422,7 @@ class SitePos(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod
@@ -354,6 +450,7 @@ class SiteRot(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod
@@ -361,7 +458,7 @@ class SiteRot(SimpleObs):
         return backend.ravel(data.site_xmat[ind])
 
 
-class Force(Obs):
+class Force(Observation):
     """
     Observation Type holding the collision forces/torques [3D force + 3D torque]
     between two geoms.
@@ -390,6 +487,7 @@ class Force(Obs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
+        self._initialized_from_mj = True
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod

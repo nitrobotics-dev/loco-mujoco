@@ -1,9 +1,13 @@
 import jax
 import time
+
+import mujoco.mjx
 from loco_mujoco import LocoEnv
 
 
-env = LocoEnv.make("MjxUnitreeH1.run", n_envs=100, goal_type="NoGoal")
+env = LocoEnv.make("MjxUnitreeH1.walk", disable_arms=True, n_envs=4000,
+                   goal_type="GoalTrajMimic", reward_type="mimic")
+
 
 # optionally replay trajectory
 #env.play_trajectory(n_episodes=10)
@@ -20,9 +24,6 @@ rng_sample_uni_action = jax.jit(jax.vmap(env.sample_action_space))
 # reset env
 state = rng_reset(env_keys)
 
-# optionally collect rollouts for rendering
-rollout = []
-
 step = 0
 previous_time = time.time()
 LOGGING_FREQUENCY = 100000
@@ -34,9 +35,7 @@ while i < 100000:
     action = rng_sample_uni_action(action_keys)
     state = rng_step(state, action)
 
-    env.mjx_render(state)
-
-    #rollout.append(state)
+    #env.mjx_render(state)
 
     step += env.info.n_envs
     if step % LOGGING_FREQUENCY == 0:
@@ -46,5 +45,3 @@ while i < 100000:
 
     i+=1
 
-# Simulate and display video.
-env.mjx_render_trajectory(rollout)

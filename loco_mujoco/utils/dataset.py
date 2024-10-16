@@ -112,7 +112,7 @@ def download_raw_mocap_datasets():
     os.remove(file_path)
 
 
-def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_first=None, discard_last=None):
+def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_first=0, discard_last=0):
     """
     Applies a linear transformation to the joint angles and velocities of a mocap dataset to adapt to specific
     humanoid model.
@@ -197,7 +197,10 @@ def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_fir
     # if needed discard first and last part of the dataset
     for j_name, val in dataset.items():
         val_temp = val[discard_first:]
-        val_temp = val_temp[0:-discard_last]
+        val_temp = val_temp[0:-discard_last] if discard_last > 0 else val_temp
         dataset[j_name] = val_temp
+
+    # add the frequency
+    dataset["frequency"] = float(np.squeeze(data["fsKin"]))
 
     return dataset

@@ -63,27 +63,6 @@ class BaseHumanoid(LocoEnv):
 
         super().__init__(xml_handle, action_spec, observation_spec, collision_groups, **kwargs)
 
-    def create_dataset(self, ignore_keys=None):
-        """
-        Creates a dataset from the specified trajectories.
-
-        Args:
-            ignore_keys (list): List of keys to ignore in the dataset. Default is ["q_pelvis_tx", "q_pelvis_tz"].
-
-        Returns:
-            Dictionary containing states, next_states and absorbing flags. For the states the shape is
-            (N_traj x N_samples_per_traj, dim_state), while the absorbing flag has the shape is
-            (N_traj x N_samples_per_traj).
-
-        """
-
-        if ignore_keys is None:
-            ignore_keys = ["q_pelvis_tx", "q_pelvis_tz"]
-
-        dataset = super().create_dataset(ignore_keys)
-
-        return dataset
-
     def _get_xml_modifications(self):
         """
         Function that specifies which joints, motors and equality constraints
