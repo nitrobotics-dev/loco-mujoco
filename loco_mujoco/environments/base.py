@@ -1312,7 +1312,7 @@ class LocoEnv(Mjx):
     @jax.jit
     def get_traj_next_sample(traj_data, traj_no, subtraj_step_no):
         next_traj_no, next_subtraj_step_no = LocoEnv.increment_traj_counter(traj_data, traj_no, subtraj_step_no)
-        return traj_data[next_traj_no, next_subtraj_step_no], next_traj_no, next_subtraj_step_no
+        return traj_data.get(next_traj_no, next_subtraj_step_no), next_traj_no, next_subtraj_step_no
 
     @staticmethod
     @jax.jit

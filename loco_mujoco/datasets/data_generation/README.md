@@ -14,7 +14,7 @@ from loco_mujoco.utils.dataset import download_raw_mocap_datasets
 
 download_raw_mocap_datasets()
 ```
-This funciton will download and extract the raw motion capture data  to `00_raw_mocal_data`.
+This function will download and extract the raw motion capture data  to `00_raw_mocal_data`.
 
 ### Generate and Optimize the Datasets for a specific Humanoid
 For each humanoid, a joint configuration is needed. This joint configuration is a dictionary containing a tuple

@@ -448,7 +448,8 @@ class TrajectoryData:
         """
         return self.dynamic_slice_in_dim(self, traj_index, sub_traj_index, 1, backend)
 
-    def dynamic_slice_in_dim(self, data, traj_index, sub_traj_start_index, slice_length, backend=jnp):
+    @classmethod
+    def dynamic_slice_in_dim(cls, data, traj_index, sub_traj_start_index, slice_length, backend=jnp):
 
         # Get the start indices for the selected trajectory
         start_idx = data.split_points[traj_index]
@@ -458,22 +459,23 @@ class TrajectoryData:
 
         # Apply dynamic slicing to the trajectory data
         return data.replace(
-            qpos=backend.squeeze(self._dynamic_slice_in_dim_compat(data.qpos, slice_start, slice_length, backend)),
-            qvel=backend.squeeze(self._dynamic_slice_in_dim_compat(data.qvel, slice_start, slice_length, backend)),
-            xpos=backend.squeeze(self._dynamic_slice_in_dim_compat(data.xpos, slice_start, slice_length, backend)) if data.xpos.size > 0 else backend.empty(0),
-            xquat=backend.squeeze(self._dynamic_slice_in_dim_compat(data.xquat, slice_start, slice_length, backend)) if data.xquat.size > 0 else backend.empty(0),
-            cvel=backend.squeeze(self._dynamic_slice_in_dim_compat(data.cvel, slice_start, slice_length, backend)) if data.cvel.size > 0 else backend.empty(0),
-            subtree_com=backend.squeeze(self._dynamic_slice_in_dim_compat(data.subtree_com, slice_start, slice_length, backend)) if data.subtree_com.size > 0 else backend.empty(0),
-            site_xpos=backend.squeeze(self._dynamic_slice_in_dim_compat(data.site_xpos, slice_start, slice_length, backend)) if data.site_xpos.size > 0 else backend.empty(0),
-            site_xmat=backend.squeeze(self._dynamic_slice_in_dim_compat(data.site_xmat, slice_start, slice_length, backend)) if data.site_xmat.size > 0 else backend.empty(0),
+            qpos=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.qpos, slice_start, slice_length, backend)),
+            qvel=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.qvel, slice_start, slice_length, backend)),
+            xpos=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.xpos, slice_start, slice_length, backend)) if data.xpos.size > 0 else backend.empty(0),
+            xquat=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.xquat, slice_start, slice_length, backend)) if data.xquat.size > 0 else backend.empty(0),
+            cvel=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.cvel, slice_start, slice_length, backend)) if data.cvel.size > 0 else backend.empty(0),
+            subtree_com=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.subtree_com, slice_start, slice_length, backend)) if data.subtree_com.size > 0 else backend.empty(0),
+            site_xpos=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.site_xpos, slice_start, slice_length, backend)) if data.site_xpos.size > 0 else backend.empty(0),
+            site_xmat=backend.squeeze(cls._dynamic_slice_in_dim_compat(data.site_xmat, slice_start, slice_length, backend)) if data.site_xmat.size > 0 else backend.empty(0),
             split_points=backend.array([0, slice_length])
         )
 
-    def _dynamic_slice_in_dim_compat(self, arr, start, length, backend):
+    @classmethod
+    def _dynamic_slice_in_dim_compat(cls, arr, start, length, backend):
         if backend == jnp:
-            return self._jax_dynamic_slice_in_dim(arr, start, length)
+            return cls._jax_dynamic_slice_in_dim(arr, start, length)
         else:
-            return self._np_dynamic_slice_in_dim(arr, start, length)
+            return cls._np_dynamic_slice_in_dim(arr, start, length)
 
     @staticmethod
     def _jax_dynamic_slice_in_dim(arr, start, length):
@@ -901,8 +903,7 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
 
         # get the i-th trajectory
         traj_len = traj_data.len_trajectory(i)
-        traj_data_slice = TrajectoryData.dynamic_slice_in_dim(traj_data, i, 0,
-                                                              traj_len)
+        traj_data_slice = TrajectoryData.dynamic_slice_in_dim(traj_data, i, 0, traj_len)
 
         # interpolate the trajectory
         new_traj_sampling_factor = new_frequency / old_frequency
