@@ -1,4 +1,4 @@
-import functools
+import atexit
 from typing import Any, Dict
 from functools import partial
 import mujoco
@@ -217,23 +217,9 @@ class Mjx(Mujoco):
 
         return self._viewer.parallel_render(state, record)
 
-    def mjx_render(self, state, record=False):
-        """
-        Renders all environments in parallel.
-        """
-        if self._viewer is None:
-            self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
-
-        return self._viewer.parallel_render(state, record)
-
-    def mjx_render_trajectory(self, trajectory, record=False, **recorder_params):
+    def mjx_render_trajectory(self, trajectory, record=False):
 
         assert len(trajectory) > 0, "Mjx render got provided with an empty trajectory."
-
-        if record:
-            recorder = VideoRecorder(**recorder_params)
-        else:
-            recorder = None
 
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
@@ -247,12 +233,7 @@ class Mjx(Mujoco):
             for state in trajectory:
                 self._data.qpos, self._data.qvel = state.data.qpos[i, :], state.data.qvel[i, :]
                 mujoco.mj_forward(self._model, self._data)
-                im = self._viewer.render(self._data, record)
-                if recorder:
-                    recorder(im)
-
-        if recorder:
-            recorder.stop()
+                self._viewer.render(self._data, record)
 
     def _init_additional_carry(self, key, data):
         return MjxAdditionalCarry(key=key, cur_step_in_episode=1,

@@ -1,3 +1,4 @@
+import atexit
 import types
 from enum import Enum
 from typing import List, Optional, Any, Dict
@@ -87,6 +88,8 @@ class Mujoco:
             self._recompute_action_per_step = False
         else:
             self._recompute_action_per_step = True
+
+        atexit.register(self.stop)
 
     def seed(self, seed):
         np.random.seed(seed)

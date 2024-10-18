@@ -44,7 +44,7 @@ Modified by Firas Al-Hafez 2023.
         <geom group="1" mass="0" density="0"/>
       </default>
       <default class="mimic">
-        <site group="0" type="box" size="0.075 0.05 0.025" rgba="1.0 0.0 0.0 0.5"/>
+        <site group="4" type="box" size="0.075 0.05 0.025" rgba="1.0 0.0 0.0 0.5"/>
       </default>
       <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
     </default>

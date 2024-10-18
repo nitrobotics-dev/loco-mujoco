@@ -6,6 +6,8 @@ import collections
 from itertools import cycle
 import numpy as np
 
+from loco_mujoco.core.utils.video_recorder import VideoRecorder
+
 
 def _import_egl(width, height):
     from mujoco.egl import GLContext
@@ -43,7 +45,7 @@ class MujocoViewer:
     def __init__(self, model, dt, width=1920, height=1080, start_paused=False,
                  custom_render_callback=None, record=False, camera_params=None,
                  default_camera_mode="static", hide_menu_on_startup=None,
-                 geom_group_visualization_on_startup=None, headless=False):
+                 geom_group_visualization_on_startup=None, headless=False, recorder_params=None):
         """
         Constructor.
 
@@ -63,6 +65,7 @@ class MujocoViewer:
             geom_group_visualization_on_startup (int/list): int or list defining which geom group_ids should be
                 visualized on startup. If None, all are visualized.
             headless (bool): If True, render will be done in headless mode.
+            recorder_params (dict): Dictionary of parameters for the video recorder.
 
         """
 
@@ -151,6 +154,9 @@ class MujocoViewer:
         # things for parallel rendering
         self._offsets_for_parallel_render = None
         self._datas_for_parallel_render = None
+
+        if record:
+            self._recorder = VideoRecorder(**recorder_params) if recorder_params is not None else VideoRecorder()
 
     def load_new_model(self, model):
         """
@@ -401,8 +407,12 @@ class MujocoViewer:
             self._set_camera()
             self._loop_count -= 1
 
-        if record:
-            return self.read_pixels()
+        im = self.read_pixels()
+
+        if self._recorder:
+            self._recorder(im)
+
+        return im
 
     def parallel_render(self, mjx_state, record, offset=2.0):
         """
@@ -512,8 +522,12 @@ class MujocoViewer:
             self._set_camera()
             self._loop_count -= 1
 
-        if record:
-            return self.read_pixels()
+        im = self.read_pixels()
+
+        if self._recorder:
+            self._recorder(im)
+
+        return im
 
     def read_pixels(self, depth=False):
         """
