@@ -2,10 +2,10 @@ defaults:
   - override hydra/job_logging: default
   - override hydra/launcher: basic
 
-hydra:
-  mode: MULTIRUN
-  job_logging: {}
-  hydra_logging: {}
+#hydra:
+#  mode: MULTIRUN
+#  job_logging: {}
+#  hydra_logging: {}
 #  sweeper:
 #    params:
 #      experiment.learnable_std: true, false
@@ -50,7 +50,7 @@ experiment:
   anneal_lr: false
   normalize_env: true
   debug: false
-  n_seeds: 1  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 5  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
 
 

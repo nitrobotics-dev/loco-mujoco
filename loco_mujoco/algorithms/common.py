@@ -33,14 +33,17 @@ class Transition(NamedTuple):
     metrics: Metrics
 
 
-def save_ckpt(ckpt, path="ckpts", tag=None, step=0):
+def save_ckpt(ckpt, path="ckpts", tag=None, step=0, path_is_local=True):
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     save_args = orbax_utils.save_args_from_target(ckpt)
     from datetime import datetime
     if tag is None:
         time_stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         tag = time_stamp
-    ckpt_dir = os.getcwd() + "/" + path + "/" + tag
+    if path_is_local:
+        ckpt_dir = os.getcwd() + "/" + path + "/" + tag
+    else:
+        ckpt_dir = path + "/" + tag
     options = orbax.checkpoint.CheckpointManagerOptions(create=True)
     checkpoint_manager = orbax.checkpoint.CheckpointManager(
         ckpt_dir, orbax_checkpointer, options)
