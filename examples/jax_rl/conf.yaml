@@ -17,21 +17,27 @@ defaults:
 #      experiment.env_params.env_name: MjxUnitreeH1.walk, MjxUnitreeH1.run
 
 wandb:
-  project: "first_hydra_run_mimic_h1"
+  project: "logging_test"
 
 experiment:
   env_params:
     env_name: MjxUnitreeH1.walk
-    goal_type: GoalTrajMimic
-    reward_type: mimic
     disable_arms: false
     horizon: 1000
+    goal_type: GoalTrajMimic
+    reward_type: mimic
+    reward_params:
+      qpos_w_sum: 0.0
+      qvel_w_sum: 0.0
+      rpos_w_sum: 0.5
+      rquat_w_sum: 0.3
+      rvel_w_sum: 0.1
   hidden_layers: [1028, 512]
   lr: 1e-4
   disc_lr: 5e-5
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 2e6
+  total_timesteps: 5e7
   update_epochs: 4
   train_disc_interval: 3
   disc_minibatch_size: 2048
@@ -50,7 +56,26 @@ experiment:
   anneal_lr: false
   normalize_env: true
   debug: false
-  n_seeds: 5  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 3  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
-
-
+  validation:
+    num_steps: 100
+    num_envs: 100
+    num: 10 # set to 0 to disable validation
+    # if none of the following is set, only the mean reward and episode length is logged
+    quantities: # quantities to be used for the distance measures below
+      - JointPosition
+      - JointVelocity
+      - RelSitePosition
+      - RelSiteVelocity
+      - RelSiteOrientation
+    measures:
+      - EuclideanDistance
+      - DynamicTimeWarping
+      - DiscreteFrechetDistance
+    rel_site_names:
+      - upper_body_mimic
+      - left_hand_mimic
+      - left_foot_mimic
+      - right_hand_mimic
+      - right_foot_mimic

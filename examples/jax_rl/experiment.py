@@ -3,9 +3,11 @@ import sys
 import jax
 import jax.numpy as jnp
 import wandb
+from dataclasses import fields
 from loco_mujoco import LocoEnv
 from loco_mujoco.algorithms import PPOJax
 from loco_mujoco.algorithms import save_ckpt
+from loco_mujoco.utils.metrics import ValidationSummary, QuantityContainer
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -31,7 +33,7 @@ def experiment(config: DictConfig):
         env = LocoEnv.make(**config.experiment.env_params)
 
         # jit everything
-        train_func = PPOJax.get_train_function(env, config.experiment)
+        train_func, exp_config = PPOJax.get_train_function(env, config.experiment)
         train_jit = jax.jit(jax.vmap(train_func)) if config.experiment.n_seeds > 1 else jax.jit(train_func)
 
         # run training
@@ -39,23 +41,46 @@ def experiment(config: DictConfig):
         rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
         out = train_jit(_rng)
 
+        # do evaluation
+        rng, _rng = jax.random.split(rng)
+        train_state_buffer = out["runner_state"][4]
+        #out_eval = PPOJax.parallel_eval(_rng, train_state_buffer, env)
+
+
         import time
         t_start = time.time()
         # get the metrics and log them
         if not config.experiment.debug:
-            metrics = out["metrics"]
+            training_metrics = out["training_metrics"]
+            validation_metrics = out["validation_metrics"]
 
-            # calculate mean and variance across seeds
-            mean_ret = jnp.mean(jnp.atleast_2d(metrics.mean_episode_return), axis=0)
-            mean_len = jnp.mean(jnp.atleast_2d(metrics.mean_episode_length), axis=0)
-            step = jnp.mean(jnp.atleast_2d(metrics.max_timestep), axis=0)
+            # calculate mean across seeds
+            training_metrics = jax.tree.map(lambda x: jnp.mean(jnp.atleast_2d(x), axis=0), training_metrics)
+            validation_metrics = jax.tree.map(lambda x: jnp.mean(jnp.atleast_2d(x), axis=0), validation_metrics)
 
-            var_ret = jnp.var(jnp.atleast_2d(metrics.mean_episode_return), axis=0)
-            var_len = jnp.var(jnp.atleast_2d(metrics.mean_episode_length), axis=0)
+            for i in range(len(training_metrics.mean_episode_return)):
+                run.log({"Mean Episode Return": training_metrics.mean_episode_return[i],
+                         "Mean Episode Length": training_metrics.mean_episode_length[i]},
+                        step=int(training_metrics.max_timestep[i]))
 
-            for i in range(len(mean_ret)):
-                run.log({"Mean Episode Return": mean_ret[i], "Mean Episode Length": mean_len[i],
-                         "Var Episode Return": var_ret[i], "Var Episode Length": var_len[i]}, step=int(step[i]))
+                if (i+1) % exp_config.validation_interval == 0:
+                    run.log({"Validation Info/Mean Episode Return": validation_metrics.mean_episode_return[i],
+                             "Validation Info/Mean Episode Length": validation_metrics.mean_episode_length[i]},
+                            step=int(training_metrics.max_timestep[i]))
+
+                    # log all measures
+                    metrics_to_log = {}
+                    for field in fields(validation_metrics):
+                        attr = getattr(validation_metrics, field.name)
+                        if isinstance(attr, QuantityContainer):
+                            measure_name = field.name
+                            for field_attr in fields(attr):
+                                attr_name = field_attr.name
+                                attr_value = getattr(attr, attr_name)
+                                if attr_value.size > 0:
+                                    metrics_to_log[f"Validation Measures/{measure_name}/{attr_name}"] = attr_value[i]
+
+                    run.log(metrics_to_log, step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
 

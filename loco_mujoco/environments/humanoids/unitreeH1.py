@@ -329,7 +329,7 @@ class UnitreeH1(BaseRobotHumanoid):
 
     @info_property
     def sites_for_mimic(self):
-        return ["head_mimic", "upper_body_mimic", "pelvis_mimic",
+        return ["upper_body_mimic", "head_mimic", "pelvis_mimic",
                 "left_shoulder_mimic", "left_elbow_mimic", "left_hand_mimic",
                 "left_hip_mimic", "left_knee_mimic", "left_foot_mimic",
                 "right_shoulder_mimic", "right_elbow_mimic", "right_hand_mimic",

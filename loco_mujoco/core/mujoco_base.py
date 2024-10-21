@@ -1,4 +1,5 @@
 import atexit
+from copy import deepcopy
 import types
 from enum import Enum
 from typing import List, Optional, Any, Dict
@@ -519,6 +520,12 @@ class Mujoco:
 
     def _init_additional_carry(self, key, data):
         return AdditionalCarry(key=key, cur_step_in_episode=1)
+
+    def get_model(self):
+        return deepcopy(self._model)
+
+    def get_data(self):
+        return deepcopy(self._data)
 
     @staticmethod
     def _modify_model(model, option_config):

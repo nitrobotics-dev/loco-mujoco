@@ -1,18 +1,15 @@
 import wandb
+from omegaconf import open_dict
 
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 import optax
-from typing import Any
-from flax.training import train_state
 
-from loco_mujoco.algorithms import BaseJaxRLAlgorithm, ActorCritic, FullyConnectedNet, Transition
+from loco_mujoco.algorithms import (BaseJaxRLAlgorithm, ActorCritic, FullyConnectedNet, Transition, TrainState,
+                                    BestTrainStates, TrainStateBuffer, MetriXTransition)
 from loco_mujoco.core.wrappers import LogWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
-
-
-class TrainState(train_state.TrainState):
-    run_stats: Any
+from loco_mujoco.utils import MetricsHandler, ValidationSummary
 
 
 class PPOJax(BaseJaxRLAlgorithm):
@@ -26,6 +23,11 @@ class PPOJax(BaseJaxRLAlgorithm):
             config.num_envs * config.num_steps // config.num_minibatches
         )
 
+        with open_dict(config):
+            config.validation_interval = num_updates // config.validation.num
+
+        config.validation.num = int(num_updates // config.validation_interval)
+
         #expert_dataset = env.create_dataset()
         #expert_states = jnp.array(expert_dataset["states"])
 
@@ -36,6 +38,9 @@ class PPOJax(BaseJaxRLAlgorithm):
         env = VecEnv(env)
         if config.normalize_env:
             env = NormalizeVecReward(env, config.gamma)
+
+        # setup the validation if needed
+        mh = MetricsHandler(config, env)
 
         def linear_schedule(count):
             frac = (
@@ -90,6 +95,8 @@ class PPOJax(BaseJaxRLAlgorithm):
                 tx=disc_tx,
             )
 
+            train_state_buffer = TrainStateBuffer.create(train_state, config.validation.num)
+
             # INIT ENV
             rng, _rng = jax.random.split(rng)
             reset_rng = jax.random.split(_rng, config.num_envs)
@@ -99,7 +106,7 @@ class PPOJax(BaseJaxRLAlgorithm):
             def _update_step(runner_state, unused):
                 # COLLECT TRAJECTORIES
                 def _env_step(runner_state, unused):
-                    train_state, disc_train_state, env_state, last_obs, rng = runner_state
+                    train_state, disc_train_state, env_state, last_obs, train_state_buffer, rng = runner_state
 
                     # SELECT ACTION
                     rng, _rng = jax.random.split(rng)
@@ -122,7 +129,7 @@ class PPOJax(BaseJaxRLAlgorithm):
                         done, action, value, reward, log_prob, last_obs, info, env_state.additional_carry.traj_state,
                         logged_metrics
                     )
-                    runner_state = (train_state, disc_train_state, env_state, obsv, rng)
+                    runner_state = (train_state, disc_train_state, env_state, obsv, train_state_buffer, rng)
                     return runner_state, transition
 
                 runner_state, traj_batch = jax.lax.scan(
@@ -130,7 +137,7 @@ class PPOJax(BaseJaxRLAlgorithm):
                 )
 
                 # CALCULATE ADVANTAGE
-                train_state, disc_train_state, env_state, last_obs, rng = runner_state
+                train_state, disc_train_state, env_state, last_obs, train_state_buffer, rng = runner_state
                 y, _ = network.apply({'params': train_state.params,
                                                   'run_stats': train_state.run_stats},
                                                  last_obs, mutable=["run_stats"])
@@ -355,40 +362,77 @@ class PPOJax(BaseJaxRLAlgorithm):
                     max_timestep=jnp.max(logged_metrics.timestep * config.num_envs),
                 )
 
-                log_env_state = env_state.find(LogEnvState)
-                plcy_obs = jnp.vstack(traj_batch.obs)
-                exp_traj_ind = traj_batch.traj_state.traj_no
-                exp_subtraj_ind = traj_batch.traj_state.subtraj_step_no
-                # todo: fix these wrappers...
-                #exp_obs = env._env._env._env._env._env._jax_trajectory[:, exp_traj_ind, exp_subtraj_ind]
-                #exp_obs = np.transpose(exp_obs, (1, 2, 0))
-                #exp_obs = jnp.vstack(exp_obs)
-                #mpjpe = metric_handler.mean_per_joint_pos_error(plcy_obs, exp_obs)
-                #mpjve = metric_handler.mean_per_joint_vel_error(plcy_obs, exp_obs)
-                mpjpe = 0.0
-                mpjve = 0.0
+                def _evaluation_step():
+
+                    def _eval_env(runner_state, unused):
+                        train_state, disc_train_state, env_state, last_obs, train_state_buffer, rng = runner_state
+
+                        # SELECT ACTION
+                        rng, _rng = jax.random.split(rng)
+                        y, updates = train_state.apply_fn({'params': train_state.params,
+                                                           'run_stats': train_state.run_stats},
+                                                          last_obs, mutable=["run_stats"])
+                        pi, value = y
+                        train_state = train_state.replace(run_stats=updates['run_stats'])  # update stats
+                        action = pi.sample(seed=_rng)
+
+                        # STEP ENV
+                        obsv, reward, absorbing, done, info, env_state = env.step(env_state, action)
+
+                        # GET METRICS
+                        log_env_state = env_state.find(LogEnvState)
+                        logged_metrics = log_env_state.metrics
+
+                        transition = MetriXTransition(env_state, logged_metrics)
+
+                        runner_state = (train_state, disc_train_state, env_state, obsv, train_state_buffer, rng)
+                        return runner_state, transition
+
+                    rng = runner_state[-1]
+                    reset_rng = jax.random.split(rng, config.validation.num_envs)
+                    obsv, env_state = env.reset(reset_rng)
+                    runner_state_eval = (train_state, disc_train_state, env_state, obsv, train_state_buffer, rng)
+
+                    # do evaluation runs
+                    _, traj_batch_eval = jax.lax.scan(
+                        _eval_env, runner_state_eval, None, config.validation.num_steps
+                    )
+
+                    env_states = traj_batch_eval.env_state
+
+                    validation_metrics = mh(env_states)
+
+                    return validation_metrics
+
+                validation_metrics = jax.lax.cond(counter % config.validation_interval == 0, _evaluation_step,
+                                                  mh.get_zero_container)
 
                 if config.debug:
-                    def callback(metrics, mpjpe, mpjve):
+                    def callback(metrics):
                         return_values = metrics.returned_episode_returns[metrics.done]
                         timesteps = metrics.timestep[metrics.done] * config.num_envs
 
                         for t in range(len(timesteps)):
                             print(f"global step={timesteps[t]}, episodic return={return_values[t]}")
                         wandb.log({"Episodic Return": jnp.mean(return_values)})
-                        wandb.log({"Mean per Join Position Error": mpjpe})
-                        wandb.log({"Mean per Join Velocity Error": mpjve})
 
-                    jax.debug.callback(callback, env_state.metrics, mpjpe, mpjve)
+                    jax.debug.callback(callback, env_state.metrics)
 
-                runner_state = (train_state, disc_train_state, env_state, last_obs, rng)
-                return runner_state, metric
+                # add train state to buffer if needed
+                train_state_buffer = jax.lax.cond(counter % config.validation_interval == 0,
+                                                  lambda x, y: TrainStateBuffer.add(x, y),
+                                                  lambda x, y: x, train_state_buffer, train_state)
+
+                runner_state = (train_state, disc_train_state, env_state, last_obs, train_state_buffer, rng)
+                return runner_state, (metric, validation_metrics)
 
             rng, _rng = jax.random.split(rng)
-            runner_state = (train_state, disc_train_state, env_state, obsv, _rng)
-            runner_state, metric = jax.lax.scan(
+            runner_state = (train_state, disc_train_state, env_state, obsv, train_state_buffer, _rng)
+            runner_state, metrics = jax.lax.scan(
                 _update_step, runner_state, None, num_updates
             )
-            return {"runner_state": runner_state, "metrics": metric}
+            return {"runner_state": runner_state,
+                    "training_metrics": metrics[0],
+                    "validation_metrics": metrics[1]}
 
-        return train
+        return train, config
