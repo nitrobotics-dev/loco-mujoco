@@ -23,8 +23,11 @@ def save_ckpt(ckpt, path="ckpts", tag=None, step=0, path_is_local=True):
     checkpoint_manager.save(step, ckpt, save_kwargs={'save_args': save_args})
 
 
-def load_train_state(path):
-    ckpt_dir = os.getcwd() + "/" + path
+def load_raw_checkpoint(path, path_is_local=True):
+    if path_is_local:
+        ckpt_dir = os.getcwd() + "/" + path
+    else:
+        ckpt_dir = path
     orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
     options = orbax.checkpoint.CheckpointManagerOptions(create=True)
     checkpoint_manager = orbax.checkpoint.CheckpointManager(

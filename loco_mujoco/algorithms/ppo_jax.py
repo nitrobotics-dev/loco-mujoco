@@ -1,21 +1,25 @@
 import wandb
 from omegaconf import open_dict
+import warnings
 
+import numpy as np
 import jax
 import jax.numpy as jnp
+import flax
 import flax.linen as nn
 import optax
 
 from loco_mujoco.algorithms import (BaseJaxRLAlgorithm, ActorCritic, FullyConnectedNet, Transition, TrainState,
                                     BestTrainStates, TrainStateBuffer, MetriXTransition)
 from loco_mujoco.core.wrappers import LogWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
-from loco_mujoco.utils import MetricsHandler, ValidationSummary
+from loco_mujoco.utils import MetricsHandler
+from loco_mujoco.algorithms import load_raw_checkpoint
 
 
 class PPOJax(BaseJaxRLAlgorithm):
 
-    @staticmethod
-    def get_train_function(env, config):
+    @classmethod
+    def get_train_function(cls, env, config):
         num_updates = (
             config.total_timesteps // config.num_steps // config.num_envs
         )
@@ -31,13 +35,7 @@ class PPOJax(BaseJaxRLAlgorithm):
         #expert_dataset = env.create_dataset()
         #expert_states = jnp.array(expert_dataset["states"])
 
-        # setup metric handler
-        #metric_handler = MetricHandler(env._env.obs_container, env._env.th)
-
-        env = LogWrapper(env)
-        env = VecEnv(env)
-        if config.normalize_env:
-            env = NormalizeVecReward(env, config.gamma)
+        env = cls.wrap_env(env, config)
 
         # setup the validation if needed
         mh = MetricsHandler(config, env)
@@ -436,3 +434,72 @@ class PPOJax(BaseJaxRLAlgorithm):
                     "validation_metrics": metrics[1]}
 
         return train, config
+
+    @classmethod
+    def play_policy(cls, train_state, env, config, n_envs, n_steps=None, render=True,
+                    record=False, rng=None, train_state_seed=0):
+
+        def sample_actions(ts, obs, _rng):
+            y, updates = ts.apply_fn({'params': ts.params,
+                                      'run_stats': ts.run_stats},
+                                     obs, mutable=["run_stats"])
+            ts = ts.replace(run_stats=updates['run_stats'])  # update stats
+            pi, _ = y
+            action = pi.sample(seed=_rng)
+            return action, ts
+
+        if not render and n_steps is None and not record:
+            warnings.warn("No rendering, no record, no n_steps specified. This will run forever with no effect.")
+
+        # create env
+        env = cls.wrap_env(env, config)
+
+        if rng is None:
+            rng = jax.random.key(0)
+
+        keys = jax.random.split(rng, n_envs + 1)
+        rng, env_keys = keys[0], keys[1:]
+
+        plcy_call = jax.jit(sample_actions)
+
+        # reset env
+        obs, env_state = env.reset(env_keys)
+
+        if n_steps is None:
+            n_steps = np.iinfo(np.int32).max
+
+        # take the seed queried for evaluation
+        train_state = jax.tree.map(lambda x: x[train_state_seed], train_state)
+
+        for i in range(n_steps):
+
+            # SAMPLE ACTION
+            rng, _rng = jax.random.split(rng)
+            action, train_state = plcy_call(train_state, obs, _rng)
+
+            # STEP ENV
+            obs, reward, absorbing, done, info, env_state = env.step(env_state, action)
+
+            # RENDER
+            env.mjx_render(env_state, record=record)
+
+        env.stop()
+
+    @classmethod
+    def load_train_state(cls, env, path, config, path_is_local=False):
+        raw_restored = load_raw_checkpoint(path, path_is_local)
+        network = ActorCritic(
+            env.info.action_space.shape[0], activation=config.activation, init_std=config.init_std,
+            learnable_std=config.learnable_std, hidden_layer_dims=config.hidden_layers
+        )
+        train_state = TrainState(**raw_restored["train_state"], apply_fn=network.apply, tx=None)
+        return train_state
+
+    @staticmethod
+    def wrap_env(env, config):
+
+        env = LogWrapper(env)
+        env = VecEnv(env)
+        if config.normalize_env:
+            env = NormalizeVecReward(env, config.gamma)
+        return env

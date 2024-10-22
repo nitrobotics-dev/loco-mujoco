@@ -296,6 +296,11 @@ class GoalTrajMimic(Goal):
                 name = "visual_goal_" + body_name
                 visual_goal = wb.add("body", name=name, mocap=True)
                 visual_goal.add("site", dclass="mimic", rgba=[0.0, 1.0, 0.0, 0.5])
+            # visualize mimic sites todo: the red sites of the robot should also be visible
+            sites = xml_handle.find_all("site")
+            for site in sites:
+                if site.dclass == "mimic":
+                    site.group = 0
         return xml_handle
 
     def init_from_traj(self, traj_handler):
@@ -363,13 +368,15 @@ class GoalTrajMimic(Goal):
         data = self.set_attr_data_compat(data, backend, "userdata", goal_obs, self.data_type_ind)
         if self.visualize_goal:
             # todo: this currently only works with normal Mujoco since Mjx does not support mocap bodies yet.
+            if backend == jnp:
+                raise NotImplementedError("mocap_pos and mocap_quat are not supported in MJX yet.")
             data = self.set_visual_data(data, backend, traj_data, traj_state)
         return data
 
     def set_visual_data(self, data, backend, traj_data, traj_state):
 
         if backend == np:
-            R =np_R
+            R = np_R
         else:
             R = jnp_R
 

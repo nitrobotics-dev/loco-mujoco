@@ -32,12 +32,12 @@ experiment:
       rpos_w_sum: 0.5
       rquat_w_sum: 0.3
       rvel_w_sum: 0.1
-  hidden_layers: [1028, 512]
+  hidden_layers: [512, 256]
   lr: 1e-4
   disc_lr: 5e-5
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 5e7
+  total_timesteps: 2e6
   update_epochs: 4
   train_disc_interval: 3
   disc_minibatch_size: 2048
@@ -55,8 +55,8 @@ experiment:
   activation: tanh
   anneal_lr: false
   normalize_env: true
-  debug: false
-  n_seeds: 3  # while automatically take seeds from 1 to n_seeds
+  debug: true
+  n_seeds: 1  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
     num_steps: 100

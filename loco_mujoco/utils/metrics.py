@@ -89,7 +89,7 @@ class MetricsHandler:
                 assert m in SUPPORTED_MEASURES, f"{m} is not a supported measure."
 
             dummy_func = lambda x, y: 0.0
-            self._euclidean_distance = jax.vmap(jax.vmap(DistanceMeasures.create_instance("EuclideanDistance"),
+            self._euclidean_distance = jax.vmap(jax.vmap(DistanceMeasures.create_instance("EuclideanDistance", mean=True),
                                                 in_axes=(0, 0)), in_axes=(0, 0)) \
                 if "EuclideanDistance" in self.measures else dummy_func
             self._dynamic_time_warping = jax.vmap(jax.vmap(DistanceMeasures.create_instance("DynamicTimeWarping"),

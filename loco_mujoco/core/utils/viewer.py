@@ -1,4 +1,6 @@
 import os
+import warnings
+
 import glfw
 import mujoco
 import time
@@ -154,9 +156,18 @@ class MujocoViewer:
         # things for parallel rendering
         self._offsets_for_parallel_render = None
         self._datas_for_parallel_render = None
+        self._datas_for_parallel_render = None
 
         if record:
-            self._recorder = VideoRecorder(**recorder_params) if recorder_params is not None else VideoRecorder()
+            if recorder_params is None:
+                recorder_params = dict(fps=1/dt)
+            elif "fps" not in recorder_params.keys():
+                recorder_params["fps"] = 1/dt
+            elif recorder_params["fps"] != 1/dt:
+                warnings.warn("The provided frame rate in recorder_params is different from the simulation frame rate.")
+            self._recorder = VideoRecorder(**recorder_params)
+        else:
+            self._recorder = None
 
     def load_new_model(self, model):
         """
@@ -564,6 +575,8 @@ class MujocoViewer:
         """
         if not self._headless:
             glfw.destroy_window(self._window)
+        if self._recorder:
+            self._recorder.stop()
 
     def _create_overlay(self):
         """

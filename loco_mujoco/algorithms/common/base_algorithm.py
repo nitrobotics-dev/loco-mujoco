@@ -1,8 +1,3 @@
-from functools import partial
-import jax
-from loco_mujoco.core import MjxRolloutWrapper
-from loco_mujoco.core.wrappers import LogEnvState
-from loco_mujoco.algorithms.common.dataclasses import MetriXTransition
 
 
 class BaseJaxRLAlgorithm:
@@ -11,8 +6,10 @@ class BaseJaxRLAlgorithm:
     def get_train_function(env, config):
         raise NotImplementedError
 
-    @staticmethod
-    def load_and_eval(path, env, config):
+    @classmethod
+    def play_policy(cls, train_state, env, config, n_envs, n_steps=None, record=False, key=None):
         raise NotImplementedError
 
-
+    @staticmethod
+    def wrap_env(env, config):
+        raise NotImplementedError

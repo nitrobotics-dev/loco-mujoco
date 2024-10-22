@@ -11,7 +11,7 @@ from loco_mujoco.utils.metrics import ValidationSummary, QuantityContainer
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 import traceback
 
 
@@ -40,12 +40,6 @@ def experiment(config: DictConfig):
         rngs = [jax.random.PRNGKey(i) for i in range(config.experiment.n_seeds+1)]  # create rngs from seed
         rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
         out = train_jit(_rng)
-
-        # do evaluation
-        rng, _rng = jax.random.split(rng)
-        train_state_buffer = out["runner_state"][4]
-        #out_eval = PPOJax.parallel_eval(_rng, train_state_buffer, env)
-
 
         import time
         t_start = time.time()
@@ -84,11 +78,15 @@ def experiment(config: DictConfig):
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
 
-        runner_state = out["runner_state"]
-        ckpt = dict(train_state=runner_state[0], disc_train_state=runner_state[1])
+        # add config to out
+        with open_dict(config):
+            config.experiment = exp_config
+        out["config"] = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
 
-        # Automatically created log directory
-        save_ckpt(ckpt, path=result_dir, path_is_local=False)
+        # seri
+
+        # save checkpoint
+        save_ckpt(out, path=result_dir, path_is_local=False)
         wandb.finish()
 
     except Exception:
