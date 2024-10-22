@@ -13,3 +13,12 @@ class BaseJaxRLAlgorithm:
     @staticmethod
     def wrap_env(env, config):
         raise NotImplementedError
+
+    @classmethod
+    def linear_lr_schedule(cls, count, num_minibatches, update_epochs, lr, num_updates):
+        frac = (
+                1.0
+                - (count // (num_minibatches * update_epochs))
+                / num_updates
+        )
+        return lr * frac

@@ -8,6 +8,7 @@ from loco_mujoco import LocoEnv
 from loco_mujoco.algorithms import PPOJax
 from loco_mujoco.algorithms import save_ckpt
 from loco_mujoco.utils.metrics import ValidationSummary, QuantityContainer
+from loco_mujoco.utils import MetricsHandler
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -27,19 +28,33 @@ def experiment(config: DictConfig):
 
         # setup wandb
         wandb.login()
-        omega_conf_container = OmegaConf.to_container(config.experiment, resolve=True, throw_on_missing=True)
-        run = wandb.init(project=config.wandb.project, config=omega_conf_container)
+        config_dict = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+        run = wandb.init(project=config.wandb.project, config=config_dict)
 
         env = LocoEnv.make(**config.experiment.env_params)
 
-        # jit everything
-        train_func, exp_config = PPOJax.get_train_function(env, config.experiment)
-        train_jit = jax.jit(jax.vmap(train_func)) if config.experiment.n_seeds > 1 else jax.jit(train_func)
+        key = jax.random.PRNGKey(0)
 
-        # run training
+        # get initial agent
+        agent_conf = PPOJax.init_agent(env, config)
+
+        # setup metric handler
+        mh = MetricsHandler(config.experiment, env)
+
+        #rng, rng_train = jax.random.split(key, 2)
         rngs = [jax.random.PRNGKey(i) for i in range(config.experiment.n_seeds+1)]  # create rngs from seed
         rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
-        out = train_jit(_rng)
+        out = jax.vmap(PPOJax.train_agent, in_axes=(0, None, None, None))(_rng, env, agent_conf, mh)
+
+
+        # jit everything
+        # train_func, exp_config = PPOJax.get_train_function(env, config.experiment)
+        # train_jit = jax.jit(jax.vmap(train_func)) if config.experiment.n_seeds > 1 else jax.jit(train_func)
+        #
+        # # run training
+        # rngs = [jax.random.PRNGKey(i) for i in range(config.experiment.n_seeds+1)]  # create rngs from seed
+        # rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
+        # out = train_jit(_rng)
 
         import time
         t_start = time.time()
@@ -57,7 +72,7 @@ def experiment(config: DictConfig):
                          "Mean Episode Length": training_metrics.mean_episode_length[i]},
                         step=int(training_metrics.max_timestep[i]))
 
-                if (i+1) % exp_config.validation_interval == 0:
+                if (i+1) % config.experiment.validation_interval == 0:
                     run.log({"Validation Info/Mean Episode Return": validation_metrics.mean_episode_return[i],
                              "Validation Info/Mean Episode Length": validation_metrics.mean_episode_length[i]},
                             step=int(training_metrics.max_timestep[i]))
@@ -79,11 +94,9 @@ def experiment(config: DictConfig):
         print(f"Time taken to log metrics: {time.time() - t_start}s")
 
         # add config to out
-        with open_dict(config):
-            config.experiment = exp_config
-        out["config"] = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+        out["config"] = config_dict
 
-        # seri
+        # add seri
 
         # save checkpoint
         save_ckpt(out, path=result_dir, path_is_local=False)

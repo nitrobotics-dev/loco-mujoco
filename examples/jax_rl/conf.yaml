@@ -56,9 +56,10 @@ experiment:
   anneal_lr: false
   normalize_env: true
   debug: true
-  n_seeds: 1  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 10  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
+    active: true
     num_steps: 100
     num_envs: 100
     num: 10 # set to 0 to disable validation

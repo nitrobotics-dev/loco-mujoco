@@ -89,9 +89,9 @@ class BaseWrapper:
 
 @struct.dataclass
 class SummaryMetrics:
-    mean_episode_return: float
-    mean_episode_length: float
-    max_timestep: int
+    mean_episode_return: float = 0.0
+    mean_episode_length: float = 0.0
+    max_timestep: int = 0.0
 
 
 @struct.dataclass
