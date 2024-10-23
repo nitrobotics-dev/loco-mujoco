@@ -11,8 +11,8 @@ from loco_mujoco.core.wrappers.mjx import Metrics
 
 
 class Transition(NamedTuple):
-    # todo: add absorbing
     done: jnp.ndarray
+    absorbing: jnp.ndarray
     action: jnp.ndarray
     value: jnp.ndarray
     reward: jnp.ndarray

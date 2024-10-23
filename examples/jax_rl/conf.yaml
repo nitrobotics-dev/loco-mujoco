@@ -17,7 +17,7 @@ defaults:
 #      experiment.env_params.env_name: MjxUnitreeH1.walk, MjxUnitreeH1.run
 
 wandb:
-  project: "logging_test"
+  project: "new_ppo_test"
 
 experiment:
   env_params:
@@ -37,7 +37,7 @@ experiment:
   disc_lr: 5e-5
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 2e6
+  total_timesteps: 2e7
   update_epochs: 4
   train_disc_interval: 3
   disc_minibatch_size: 2048
@@ -56,7 +56,7 @@ experiment:
   anneal_lr: false
   normalize_env: true
   debug: true
-  n_seeds: 10  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 1  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
     active: true

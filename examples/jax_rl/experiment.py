@@ -6,7 +6,6 @@ import wandb
 from dataclasses import fields
 from loco_mujoco import LocoEnv
 from loco_mujoco.algorithms import PPOJax
-from loco_mujoco.algorithms import save_ckpt
 from loco_mujoco.utils.metrics import ValidationSummary, QuantityContainer
 from loco_mujoco.utils import MetricsHandler
 
@@ -33,28 +32,26 @@ def experiment(config: DictConfig):
 
         env = LocoEnv.make(**config.experiment.env_params)
 
-        key = jax.random.PRNGKey(0)
-
         # get initial agent
-        agent_conf = PPOJax.init_agent(env, config)
+        agent_conf = PPOJax.init_agent_conf(env, config)
 
-        # setup metric handler
+        # setup metric handler (optional)
         mh = MetricsHandler(config.experiment, env)
 
-        #rng, rng_train = jax.random.split(key, 2)
+        # build training function
+        train_fn = PPOJax.build_train_fn(env, agent_conf, mh=mh)
+
+        # jit and vmap training function
+        train_fn = jax.jit(jax.vmap(train_fn)) if config.experiment.n_seeds > 1 else jax.jit(train_fn)
+
+        # get rng keys and run training
         rngs = [jax.random.PRNGKey(i) for i in range(config.experiment.n_seeds+1)]  # create rngs from seed
         rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
-        out = jax.vmap(PPOJax.train_agent, in_axes=(0, None, None, None))(_rng, env, agent_conf, mh)
+        out = train_fn(_rng)
 
-
-        # jit everything
-        # train_func, exp_config = PPOJax.get_train_function(env, config.experiment)
-        # train_jit = jax.jit(jax.vmap(train_func)) if config.experiment.n_seeds > 1 else jax.jit(train_func)
-        #
-        # # run training
-        # rngs = [jax.random.PRNGKey(i) for i in range(config.experiment.n_seeds+1)]  # create rngs from seed
-        # rng, _rng = rngs[0], jnp.squeeze(jnp.vstack(rngs[1:]))
-        # out = train_jit(_rng)
+        # save agent state
+        agent_state = out["agent_state"]
+        save_path = PPOJax.save_agent(result_dir, agent_conf, agent_state)
 
         import time
         t_start = time.time()
@@ -92,15 +89,6 @@ def experiment(config: DictConfig):
                     run.log(metrics_to_log, step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
-
-        # add config to out
-        out["config"] = config_dict
-
-        # add seri
-
-        # save checkpoint
-        save_ckpt(out, path=result_dir, path_is_local=False)
-        wandb.finish()
 
     except Exception:
         traceback.print_exc(file=sys.stderr)
