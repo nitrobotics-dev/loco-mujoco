@@ -94,34 +94,34 @@ class MjxUnitreeH1(UnitreeH1):
         pelvis_cond, _, _, _, _ = self._has_fallen_compat(obs, info, data, jnp)
         return pelvis_cond
 
-    def _mjx_is_done(self, obs, absorbing, info, data, carry):
-
-        done = super()._mjx_is_done(obs, absorbing, info, data, carry)
-
-        import mujoco
-        body_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
-
-        # current position main body
-        pos = data.xpos[body_id]
-
-        # traj body position
-        traj_state = carry.traj_state
-        current_pos = self.th.traj_data.get_xpos(traj_state.traj_no, traj_state.subtraj_step_no)[body_id]
-        init_pos = self.th.traj_data.get_xpos(traj_state.traj_no, traj_state.subtraj_step_no_init)[body_id]
-        virtual_pos = current_pos - init_pos
-
-        dist = jnp.linalg.norm(virtual_pos - pos)
-
-        current_qpos = self.th.traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no)[0]
-        init_qpos = self.th.traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init)[0]
-        virtual_qpos = current_qpos - init_qpos
-
-        dist2 = jnp.mean(jnp.square(virtual_qpos - data.qpos[0]))
-
-        #
-        # jax.debug.print("dist {x}",x= dist)
-        # jax.debug.print("dist qpos {x}",x= dist2)
-
-        done = jnp.logical_or(done, dist2 > 0.5)
-
-        return done
+    # def _mjx_is_done(self, obs, absorbing, info, data, carry):
+    #
+    #     done = super()._mjx_is_done(obs, absorbing, info, data, carry)
+    #
+    #     import mujoco
+    #     body_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
+    #
+    #     # current position main body
+    #     pos = data.xpos[body_id]
+    #
+    #     # traj body position
+    #     traj_state = carry.traj_state
+    #     current_pos = self.th.traj_data.get_xpos(traj_state.traj_no, traj_state.subtraj_step_no)[body_id]
+    #     init_pos = self.th.traj_data.get_xpos(traj_state.traj_no, traj_state.subtraj_step_no_init)[body_id]
+    #     virtual_pos = current_pos - init_pos
+    #
+    #     dist = jnp.linalg.norm(virtual_pos - pos)
+    #
+    #     current_qpos = self.th.traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no)[0]
+    #     init_qpos = self.th.traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init)[0]
+    #     virtual_qpos = current_qpos - init_qpos
+    #
+    #     dist2 = jnp.mean(jnp.square(virtual_qpos - data.qpos[0]))
+    #
+    #     #
+    #     # jax.debug.print("dist {x}",x= dist)
+    #     # jax.debug.print("dist qpos {x}",x= dist2)
+    #
+    #     done = jnp.logical_or(done, dist2 > 0.5)
+    #
+    #     return done

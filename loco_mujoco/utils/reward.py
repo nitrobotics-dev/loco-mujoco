@@ -187,7 +187,7 @@ class MimicReward(Reward):
 
     def __init__(self, obs_dict, qpos_w_exp=10.0, qvel_w_exp=2.0, rpos_w_exp=100.0,
                  rquat_w_exp=10.0, rvel_w_exp=0.1, qpos_w_sum=0.0, qvel_w_sum=0.0, rpos_w_sum=0.5,
-                 rquat_w_sum=0.3, rvel_w_sum=0.1, standardize=False, **kwargs):
+                 rquat_w_sum=0.3, rvel_w_sum=0.1, standardize=False, sites_for_mimic=None, **kwargs):
 
         super().__init__(obs_dict, **kwargs)
 
@@ -223,7 +223,7 @@ class MimicReward(Reward):
         model = kwargs["model"]
         info_props = kwargs["info_props"]
         self.main_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.main_body_name)
-        rel_site_names = info_props["sites_for_mimic"]
+        rel_site_names = info_props["sites_for_mimic"] if sites_for_mimic is None else sites_for_mimic
         self._rel_site_ids = np.array([mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
                                        for name in rel_site_names])
         self._rel_body_ids = np.array([model.site_bodyid[site_id] for site_id in self._rel_site_ids])

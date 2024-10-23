@@ -44,27 +44,33 @@ class ValidationSummary(SummaryMetrics):
 class MetricsHandler:
 
     def __init__(self, config: DictConfig, env):
-        self._config = config
+
+        self._config = config.experiment
 
         if env.th is not None:
             self._traj_data = env.th.traj_data
         else:
             self._traj_data = None
 
-        self.quantaties = OmegaConf.select(config, "validation.quantities")
-        self.measures = OmegaConf.select(config, "validation.measures")
+        self.quantaties = OmegaConf.select(self._config, "validation.quantities")
+        self.measures = OmegaConf.select(self._config, "validation.measures")
 
-        rel_joint_names = OmegaConf.select(config, "validation.rel_joint_names")
-        rel_body_names = OmegaConf.select(config, "validation.rel_body_names")
-        rel_site_names = OmegaConf.select(config, "validation.rel_site_names")
+        rel_joint_names = OmegaConf.select(self._config, "validation.rel_joint_names")
+        joints_to_ignore = OmegaConf.select(self._config, "validation.joints_to_ignore")
+        rel_body_names = OmegaConf.select(self._config, "validation.rel_body_names")
+        rel_site_names = OmegaConf.select(self._config, "validation.rel_site_names")
+
+        if joints_to_ignore is None:
+            joints_to_ignore = []
 
         model = env.get_model()
         if rel_joint_names is not None:
             self.rel_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
-                                  for name in rel_joint_names]
+                                  for name in rel_joint_names if name not in joints_to_ignore]
             assert -1 not in self.rel_joint_ids, f"Joint {rel_joint_names[self.rel_joint_ids.index(-1)]} not found."
         else:
-            self.rel_joint_ids = [i for i in range(model.njnt)]
+            self.rel_joint_ids = [i for i in range(model.njnt)
+                                  if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) not in joints_to_ignore]
 
         if rel_body_names is not None:
             self.rel_body_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)

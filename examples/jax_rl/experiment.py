@@ -30,13 +30,14 @@ def experiment(config: DictConfig):
         config_dict = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
         run = wandb.init(project=config.wandb.project, config=config_dict)
 
+        # create env
         env = LocoEnv.make(**config.experiment.env_params)
 
-        # get initial agent
+        # get initial agent configuration
         agent_conf = PPOJax.init_agent_conf(env, config)
 
         # setup metric handler (optional)
-        mh = MetricsHandler(config.experiment, env)
+        mh = MetricsHandler(config, env)
 
         # build training function
         train_fn = PPOJax.build_train_fn(env, agent_conf, mh=mh)
@@ -87,6 +88,13 @@ def experiment(config: DictConfig):
                                     metrics_to_log[f"Validation Measures/{measure_name}/{attr_name}"] = attr_value[i]
 
                     run.log(metrics_to_log, step=int(training_metrics.max_timestep[i]))
+
+                    # metric for used for wandb sweep (optional)
+                    site_rpos = validation_metrics.euclidean_distance.site_rpos[i]
+                    site_rrotvec = validation_metrics.euclidean_distance.site_rpos[i]
+                    site_rvel = validation_metrics.euclidean_distance.site_rpos[i]
+                    run.log({"Metric for Sweep": site_rpos + site_rrotvec + site_rvel},
+                            step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
 
