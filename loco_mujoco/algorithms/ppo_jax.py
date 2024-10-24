@@ -519,7 +519,8 @@ class PPOJax(JaxRLAlgorithmBase):
                     agent_conf: PPOAgentConf,
                     agent_state: PPOAgentState,
                     n_envs: int, n_steps=None, render=True,
-                    record=False, rng=None, train_state_seed=None):
+                    record=False, rng=None, deterministic=False,
+                    train_state_seed=None):
 
         def sample_actions(ts, obs, _rng):
             y, updates = agent_conf.network.apply({'params': ts.params,
@@ -532,6 +533,9 @@ class PPOJax(JaxRLAlgorithmBase):
 
         config = agent_conf.config.experiment
         train_state = agent_state.train_state
+
+        if deterministic:
+            train_state.params["log_std"] = np.ones_like(train_state.params["log_std"]) * -np.inf
 
         if config.n_seeds > 1:
             assert train_state_seed is not None, ("Loaded train state has multiple seeds. Please specify "

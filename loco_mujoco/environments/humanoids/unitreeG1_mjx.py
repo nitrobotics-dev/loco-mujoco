@@ -59,6 +59,6 @@ class MjxUnitreeG1(UnitreeG1):
     def _get_collision_groups(self):
         return []
 
-    def _mjx_has_fallen(self, obs, info, data):
+    def _mjx_has_fallen(self, obs, info, data, carry):
         pelvis_cond, _, _, _, _ = self._has_fallen_compat(obs, info, data, jnp)
         return pelvis_cond

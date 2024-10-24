@@ -11,7 +11,6 @@ from loco_mujoco.core.wrappers import SummaryMetrics
 from loco_mujoco.core.utils.math import calc_site_velocities, calculate_relative_site_quatities
 
 
-
 SUPPORTED_QUANTITIES = ["JointPosition", "JointVelocity", "BodyPosition", "BodyVelocity", "BodyOrientation",
                         "SitePosition", "SiteVelocity",
                         "SiteOrientation", "RelSitePosition", "RelSiteVelocity", "RelSiteOrientation"]
@@ -42,6 +41,9 @@ class ValidationSummary(SummaryMetrics):
 
 
 class MetricsHandler:
+
+    supported_measures = SUPPORTED_MEASURES
+    supported_quantities = SUPPORTED_QUANTITIES
 
     def __init__(self, config: DictConfig, env):
 

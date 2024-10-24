@@ -91,11 +91,13 @@ class Mjx(Mujoco):
         # check if done
         done = self._mjx_is_done(cur_obs, absorbing, cur_info, data, carry)
 
+        # create state
+        carry = carry.replace(cur_step_in_episode=carry.cur_step_in_episode + 1)
         state = state.replace(data=data, observation=cur_obs, reward=reward,
                               absorbing=absorbing, done=done, info=cur_info, additional_carry=carry)
 
-        # reset states that are done
-        state = self._mjx_reset_in_step(state)
+        # reset state if done
+        state = jax.lax.cond(state.done, self._mjx_reset_in_step, lambda x: x, state)
 
         return state
 
@@ -121,14 +123,14 @@ class Mjx(Mujoco):
 
     def _mjx_reset_in_step(self, state: MjxState):
         carry = state.additional_carry
-        data = jax.lax.cond(state.done, lambda: carry.first_data, lambda: state.data)
-        final_obs = jnp.where(state.done, state.observation, jnp.zeros_like(state.observation))
-        carry = carry.replace(cur_step_in_episode=jnp.where(state.done, 1, carry.cur_step_in_episode + 1),
-                              final_observation=final_obs)
-        data = self._mjx_reset_init_data(data, carry)
-        new_obs = self._mjx_create_observation(data, carry)
+        data = self._mjx_reset_init_data(carry.first_data, carry)
+        carry = carry.replace(cur_step_in_episode=1,
+                              final_observation=state.observation,
+                              final_info=state.info)
+        # create new observation
+        obs = self._mjx_create_observation(data, carry)
 
-        return state.replace(data=data, observation=new_obs, additional_carry=carry)
+        return state.replace(data=data, observation=obs, additional_carry=carry)
 
     def _mjx_create_observation(self, data, carry):
         # get the base observation defined in observation_spec and the goal

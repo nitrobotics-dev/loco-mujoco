@@ -289,8 +289,8 @@ class LocoEnv(Mjx):
         return self._has_fallen(obs, info, data) if self._use_absorbing_states else False
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
-        return jax.lax.cond(self._use_absorbing_states, lambda o, i, d: self._mjx_has_fallen(o, i, d),
-                            lambda o, i, d: jnp.array(False), obs, info, data)
+        return jax.lax.cond(self._use_absorbing_states, lambda o, i, d, c: self._mjx_has_fallen(o, i, d, c),
+                            lambda o, i, d, c: jnp.array(False), obs, info, data, carry)
 
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = super()._mjx_is_done(obs, absorbing, info, data, carry)
@@ -454,7 +454,7 @@ class LocoEnv(Mjx):
         else:
             return deepcopy(self._dataset)
 
-    def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, render=True,
+    def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, from_velocity=False, render=True,
                         record=False, recorder_params=None, callback_class=None, key=None):
         """
         Plays a demo of the loaded trajectory by forcing the model
@@ -463,9 +463,13 @@ class LocoEnv(Mjx):
         Args:
             n_episodes (int): Number of episode to replay.
             n_steps_per_episode (int): Number of steps to replay per episode.
+            from_velocity (bool): If True, the joint positions are calculated from the joint
+                velocities in the trajectory.
             render (bool): If True, trajectory will be rendered.
             record (bool): If True, the rendered trajectory will be recorded.
             recorder_params (dict): Dictionary containing the recorder parameters.
+            callback_class (class): Class to be called at each step of the simulation.
+            key (jax.random.PRNGKey): Random key to use for the simulation.
 
         """
 
@@ -514,7 +518,12 @@ class LocoEnv(Mjx):
                     callback_class(self, self._model, self._data, traj_data_sample, self._additional_carry)
 
                 traj_data_sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self.th.traj_data,
-                                                                             traj_no, subtraj_step_no)
+                                                                                       traj_no, subtraj_step_no)
+
+                if from_velocity:
+                    qvel = traj_data_sample.qvel
+                    qpos = [qp + self.dt * qv for qp, qv in zip(self._data.qpos, qvel)]
+                    traj_data_sample = traj_data_sample.replace(qpos=jnp.array(qpos))
 
                 obs = self._create_observation(self._data, self._additional_carry)
 
@@ -538,7 +547,7 @@ class LocoEnv(Mjx):
             recorder.stop()
 
     def play_trajectory_from_velocity(self, n_episodes=None, n_steps_per_episode=None, render=True,
-                                      record=False, recorder_params=None):
+                                      record=False, recorder_params=None, callback_class=None, key=None):
         """
         Plays a demo of the loaded trajectory by forcing the model
         positions to the ones calculated from the joint velocities
@@ -551,81 +560,20 @@ class LocoEnv(Mjx):
             n_episodes (int): Number of episode to replay.
             n_steps_per_episode (int): Number of steps to replay per episode.
             render (bool): If True, trajectory will be rendered.
-            record (bool): If True, the replay will be recorded.
+            record (bool): If True, the rendered trajectory will be recorded.
             recorder_params (dict): Dictionary containing the recorder parameters.
+            callback_class (class): Class to be called at each step of the simulation.
+            key (jax.random.PRNGKey): Random key to use for the simulation.
 
         """
-
-        assert self.th is not None
-
-        if record:
-            assert render
-            fps = 1/self.dt
-            recorder = VideoRecorder(fps=fps, **recorder_params) if recorder_params is not None else\
-                VideoRecorder(fps=fps)
-        else:
-            recorder = None
-
-        self.reset()
-        sample = self.th.get_current_sample()
-        self.set_sim_state(sample)
-        if render:
-            frame = self.render(record)
-        else:
-            frame = None
-
-        if record:
-            recorder(frame)
-
-        highest_int = np.iinfo(np.int32).max
-        if n_steps_per_episode is None:
-            n_steps_per_episode = highest_int
-        if n_episodes is None:
-            n_episodes = highest_int
-        len_qpos, len_qvel = self._len_qpos_qvel()
-        curr_qpos = sample[0:len_qpos]
-        for i in range(n_episodes):
-            for j in range(n_steps_per_episode):
-
-                qvel = sample[len_qpos:len_qpos + len_qvel]
-                qpos = [qp + self.dt * qv for qp, qv in zip(curr_qpos, qvel)]
-                sample[:len(qpos)] = qpos
-
-                self.set_sim_state(sample)
-
-                self._simulation_pre_step()
-                mujoco.mj_forward(self._model, self._data)
-                self._simulation_post_step()
-
-                # get current qpos
-                curr_qpos = self._get_joint_pos()
-
-                sample = self.th.get_next_sample()
-                if sample is None:
-                    self.reset()
-                    sample = self.th.get_current_sample()
-                    curr_qpos = sample[0:len_qpos]
-
-                obs = self._create_observation(np.concatenate(sample))
-                if self._has_fallen(obs):
-                    print("Has fallen!")
-
-                if render:
-                    frame = self.render(record)
-                else:
-                    frame = None
-
-                if record:
-                    recorder(frame)
-
-            self.reset()
-
-            # get current qpos
-            curr_qpos = self._get_joint_pos()
-
-        self.stop()
-        if record:
-            recorder.stop()
+        warnings.warn(
+            "play_trajectory_from_velocity() is deprecated and will be removed in future. "
+            "Use play_trajectory() and set from_velocity=True instead.",
+            category=DeprecationWarning,
+            stacklevel=2
+        )
+        self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
+                             record, recorder_params, callback_class, key)
 
     def load_dataset_and_get_traj_files(self, dataset_path, freq=None):
         """
@@ -774,35 +722,38 @@ class LocoEnv(Mjx):
         return mjx_state
 
     def _mjx_reset_in_step(self, state: MjxState):
-        def where_done(x, y):
-            done = state.done
-            return jnp.where(done, x, y)
 
-        # reset trajectory state
+        # reset traj_state
         carry = state.additional_carry
         key = carry.key
         key, subkey = jax.random.split(key)
         traj_state = self._reset_trajectory_state(subkey)
 
+        # reset data
         if self._random_start or self._use_fixed_start:
             # init simulation from trajectory state
-            traj_data_sample = self._get_init_state_from_trajectory(traj_state)      # get sample from trajectory state
-            data = jax.tree.map(where_done,
-                                self._mjx_set_sim_state_from_traj_data(state.data, traj_data_sample),
-                                state.data)
-
+            traj_data_sample = self._get_init_state_from_trajectory(traj_state)  # get sample from trajectory state
+            # set current data
+            data = self._mjx_set_sim_state_from_traj_data(carry.first_data, traj_data_sample)
         else:
-            # init simulation from default state
-            data = jax.tree.map(where_done, state.additional_carry.first_data, state.data)
+            data = carry.first_data
 
-        final_obs = where_done(state.observation, jnp.ones_like(state.observation))
-        cur_step_in_episode = where_done(1, carry.cur_step_in_episode + 1)
-        carry = carry.replace(key=key, cur_step_in_episode=cur_step_in_episode,
-                              traj_state=traj_state, final_observation=final_obs)
+        # apply general modifications on reset
         data = self._mjx_reset_init_data(data, carry)
-        new_obs = self._mjx_create_observation(data, carry)
 
-        return state.replace(data=data, observation=new_obs, additional_carry=carry)
+        # reset carry
+        running_avg_state = RunningAverageWindowState(storage=jnp.zeros((self._n_substeps, self.grf_size)))
+        carry = carry.replace(key=key,
+                              cur_step_in_episode=1,
+                              final_observation=state.observation,
+                              final_info=state.info,
+                              traj_state=traj_state,
+                              running_avg_state=running_avg_state)
+
+        # create new observation
+        obs = self._mjx_create_observation(data, carry)
+
+        return state.replace(data=data, observation=obs, additional_carry=carry)
 
     @partial(jax.jit, static_argnums=(0,))
     def _reset_trajectory_state(self, key):
@@ -862,29 +813,6 @@ class LocoEnv(Mjx):
         unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
         return unnormalized_action
 
-    def _init_sim_from_obs(self, obs):
-        """
-        Initializes the simulation from an observation.
-
-        Args:
-            obs (np.array): The observation to set the simulation state to.
-
-        """
-
-        assert len(obs.shape) == 1
-
-        # append x and y pos
-        obs = np.concatenate([[0.0, 0.0], obs])
-
-        obs_spec = self.obs_helper.observation_spec
-        assert len(obs) >= len(obs_spec)
-
-        # remove anything added to obs that is not in obs_spec
-        obs = obs[:len(obs_spec)]
-
-        # set state
-        self.set_sim_state(obs)
-
     def _init_additional_carry(self, key, data):
 
         key, subkey = jax.random.split(key)
@@ -926,20 +854,6 @@ class LocoEnv(Mjx):
         mean_grf = RunningAveragedWindow(shape=(self.grf_size,), window_size=self._n_intermediate_steps)
 
         return mean_grf
-
-    def _get_ground_forces(self):
-        """
-        Returns the ground forces (np.array). By default, 4 ground force sensors are used.
-        Environments that use more or less have to override this function.
-
-        """
-
-        grf = np.concatenate([self._get_collision_force("floor", "foot_r")[:3],
-                              self._get_collision_force("floor", "front_foot_r")[:3],
-                              self._get_collision_force("floor", "foot_l")[:3],
-                              self._get_collision_force("floor", "front_foot_l")[:3]])
-
-        return grf
 
     def _setup_reward(self, reward_type, reward_params):
         """
@@ -990,47 +904,6 @@ class LocoEnv(Mjx):
                 info_props[attr_name] = getattr(self, attr_name)
         return info_props
 
-    # def _get_goal(self, goal_type, goal_params):
-    #     """
-    #     Constructs a goal function.
-    #
-    #     Args:
-    #         goal_type (string): Name of the goal.
-    #         goal_params (dict): Parameters of the goal function.
-    #
-    #     Returns:
-    #         Goal function.
-    #
-    #     """
-    #     if goal_type == "NoGoal" or goal_type is None:
-    #         goal = NoGoal()
-    #     elif goal_type == "goal_arrow":
-    #         data_goal_site_ind = [value.data_type_ind for value in self._goal_dict.values()]
-    #         goal = GoalTrajArrow(data_goal_site_ind)
-    #     elif goal_type == "goal_traj":
-    #         # todo: access the correct goal_params
-    #         goal = GoalTrajArrow(**goal_params)
-    #     else:
-    #         raise NotImplementedError("The specified goal is not supported: %s" % goal_type)
-    #
-    #     return goal
-
-    def _get_joint_pos(self):
-        """
-        Returns a vector (np.array) containing the current joint position of the model in the simulation.
-
-        """
-
-        return self.obs_helper.get_joint_pos_from_obs(self.obs_helper._build_obs(self._data))
-
-    def _get_joint_vel(self):
-        """
-        Returns a vector (np.array) containing the current joint velocities of the model in the simulation.
-
-        """
-
-        return self.obs_helper.get_joint_vel_from_obs(self.obs_helper._build_obs(self._data))
-
     def _get_from_obs(self, obs, key):
         """
         Returns a part of the observation based on the specified keys.
@@ -1045,30 +918,9 @@ class LocoEnv(Mjx):
             keys were specified.
 
         """
-
+        # todo: remove -2 once free joint added
         idx = self.obs_container[key].obs_ind - 2
         return obs[idx]
-
-    def _get_idx(self, keys):
-        """
-        Returns the indices of the specified keys.
-        Args:
-            keys (list or str): List of keys or just one key which are
-                used to get the indices from the observation space.
-
-        Returns:
-             np.array including the indices of the specified keys.
-
-        """
-        if type(keys) != list:
-            assert type(keys) == str
-            keys = [keys]
-
-        entries = []
-        for key in keys:
-            entries.append(self.obs_helper.obs_idx_map[key])
-
-        return np.concatenate(entries) - 2
 
     def _len_qpos_qvel(self):
         """
@@ -1097,21 +949,8 @@ class LocoEnv(Mjx):
         
         raise NotImplementedError
 
-    def _get_interpolate_map_params(self):
-        """
-        Returns all parameters needed to do the interpolation mapping for the respective environment.
-
-        """
-
-        pass
-
-    def _get_interpolate_remap_params(self):
-        """
-        Returns all parameters needed to do the interpolation remapping for the respective environment.
-
-        """
-
-        pass
+    def _mjx_has_fallen(self, obs, info, data, carry):
+        raise NotImplementedError
 
     def _check_reset_configuration(self):
 
@@ -1276,21 +1115,6 @@ class LocoEnv(Mjx):
 
         return traj_params
 
-    # @classmethod
-    # def sample_from_trajectories(cls, key, trajectories, traj_no, subtraj_step_no):
-    #     key, subkey = jax.random.split(key)
-    #
-    #     n_trajectories = cls.n_trajectories(trajectories)
-    #     length_trajectory = cls.len_trajectory(trajectories, traj_no)
-    #
-    #     new_sample_idx = jax.random.randint(key, (2,),
-    #                                         minval=jnp.array([0, n_trajectories]),
-    #                                         maxval=jnp.array([0, length_trajectory]))
-    #     new_traj_no = new_sample_idx[0]
-    #     new_subtraj_step_no = new_sample_idx[1]
-    #
-    #     return key, jnp.ravel(trajectories[:, new_traj_no, new_subtraj_step_no]), new_traj_no, new_subtraj_step_no
-
     @staticmethod
     @jax.jit
     def increment_traj_counter(traj_data, traj_no, subtraj_step_no):
@@ -1337,55 +1161,6 @@ class LocoEnv(Mjx):
 
         """
         return list(LocoEnv.registered_envs.keys())
-
-    @staticmethod
-    def _interpolate_map(traj, **interpolate_map_params):
-        """
-        A mapping that is supposed to transform a trajectory into a space where interpolation is
-        allowed. E.g., maps a rotation matrix to a set of angles. If this function is not
-        overwritten, it just converts the list of np.arrays to a np.array.
-
-        Args:
-            traj (list): List of np.arrays containing each observation. Each np.array
-                has the shape (n_trajectories, n_samples, dim_observation).
-            interpolate_map_params: Set of parameters needed by the individual environments.
-
-        Returns:
-            A np.array with shape (n_observations, n_samples) and a list of shapes of the original
-            array for backwards conversion.
-
-        """
-        orig_shape = [t.shape for t in traj]
-        return np.concatenate(traj, axis=-1).T, orig_shape
-
-    @staticmethod
-    def _interpolate_remap(traj, orig_shape, **interpolate_remap_params):
-        """
-        The corresponding backwards transformation to _interpolation_map. If this function is
-        not overwritten, it just converts the np.array to a list of np.arrays.
-
-        Args:
-            traj (np.array): Trajectory as np.array with shape (D, n_samples).
-                D is the dimensionality of the concatenated elements at a certain time in the trajectory.
-            orig_shape: List of shapes of the original arrays before concatenation.
-                The shapes are (n_samples, dim_observation). Note that the sum of all dim_observation in the list
-                equals D.
-            interpolate_remap_params: Set of parameters needed by the individual environments.
-
-        Returns:
-            List of np.arrays containing each observation. Each np.array has the shape
-            (n_trajectories, n_samples, (dim_observation)). If dim_observation
-            is one the shape of the array is just (n_trajectories, n_samples).
-
-        """
-        out = []
-        start_ind = 0
-        for i, shape in enumerate(orig_shape):
-            end_ind = start_ind + shape[1]
-            out.append(traj[start_ind:end_ind, :].T)
-            start_ind = end_ind
-
-        return out
 
     @property
     def root_body_name(self):
