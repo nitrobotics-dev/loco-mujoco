@@ -213,7 +213,7 @@ class MetricsHandler:
         # get from trajectory
         traj_qpos = self._traj_data.qpos[self.get_traj_indices(env_states)]
 
-        return qpos, traj_qpos
+        return qpos[..., self.rel_joint_ids], traj_qpos[..., self.rel_joint_ids]
 
     def get_joint_velocities(self, env_states):
         # get from data
@@ -222,7 +222,7 @@ class MetricsHandler:
         # get from trajectory
         traj_qvel = self._traj_data.qvel[self.get_traj_indices(env_states)]
 
-        return qvel, traj_qvel
+        return qvel[..., self.rel_joint_ids], traj_qvel[..., self.rel_joint_ids]
 
     def get_body_positions(self, env_states):
 
@@ -232,7 +232,7 @@ class MetricsHandler:
         # get from trajectory
         traj_body_pos = self._traj_data.xpos[self.get_traj_indices(env_states)]
 
-        return body_pos, traj_body_pos
+        return body_pos[..., self.rel_body_ids], traj_body_pos[..., self.rel_body_ids]
 
     def get_body_orientations(self, env_states):
         # get from data
@@ -241,7 +241,7 @@ class MetricsHandler:
         # get from trajectory
         traj_body_rotvec = R.from_quat(self._traj_data.xquat[self.get_traj_indices(env_states)]).as_rotvec()
 
-        return body_rotvec, traj_body_rotvec
+        return body_rotvec[..., self.rel_body_ids], traj_body_rotvec[..., self.rel_body_ids]
 
     def get_body_velocities(self, env_states):
         # get from data
@@ -250,7 +250,7 @@ class MetricsHandler:
         # get from trajectory
         traj_body_vel = self._traj_data.cvel[self.get_traj_indices(env_states)]
 
-        return body_vel, traj_body_vel
+        return body_vel[..., self.rel_body_ids], traj_body_vel[..., self.rel_body_ids]
 
     def get_site_positions(self, env_states):
         # get from data
@@ -259,7 +259,7 @@ class MetricsHandler:
         # get from trajectory
         traj_site_pos = self._traj_data.site_xpos[self.get_traj_indices(env_states)]
 
-        return site_pos, traj_site_pos
+        return site_pos[..., self.rel_site_ids], traj_site_pos[..., self.rel_site_ids]
 
     def get_site_orientations(self, env_states):
         # get from data
@@ -271,7 +271,7 @@ class MetricsHandler:
         site_xmat = site_xmat.reshape(site_xmat.shape[0], site_xmat.shape[1], 3, 3)
         traj_site_rotvec = R.from_matrix(site_xmat[self.get_traj_indices(env_states)]).as_rotvec()
 
-        return site_rotvec, traj_site_rotvec
+        return site_rotvec[..., self.rel_site_ids], traj_site_rotvec[..., self.rel_site_ids]
 
     def get_site_velocities(self, env_states):
 
@@ -285,7 +285,7 @@ class MetricsHandler:
                                                         self._site_bodyid[self.rel_site_ids],
                                                         self._body_rootid[self.rel_site_ids], jnp, False)
 
-        return site_xvel, traj_site_xvel
+        return site_xvel[..., self.rel_site_ids], traj_site_xvel[..., self.rel_site_ids]
 
     def get_relative_site_quantities(self, env_states):
 
@@ -299,7 +299,9 @@ class MetricsHandler:
             traj_data, self.rel_site_ids, self._site_bodyid[self.rel_site_ids],
             self._body_rootid[self.rel_site_ids], jnp)
 
-        return rel_site_pos, rel_site_rotvec, rel_site_vel, traj_rel_site_pos, traj_rel_site_rotvec, traj_rel_site_vel
+        return (rel_site_pos[..., self.rel_site_ids], rel_site_rotvec[..., self.rel_site_ids],
+                rel_site_vel[..., self.rel_site_ids], traj_rel_site_pos[..., self.rel_site_ids],
+                traj_rel_site_rotvec[..., self.rel_site_ids], traj_rel_site_vel[..., self.rel_site_ids])
 
     def get_traj_indices(self, env_states):
         traj_states = env_states.additional_carry.traj_state
