@@ -1,19 +1,20 @@
+from dataclasses import replace
 import mujoco
 import jax.numpy as jnp
 
-from loco_mujoco.trajectory.dataclasses import load_trajectory_from_npz, interpolate_trajectories
+from loco_mujoco.trajectory.dataclasses import Trajectory, interpolate_trajectories
 
 
 class TrajectoryHandler:
     """
-    General class to handle TrajectoryInfo and TrajectoryData. It filters and extends the trajectory data to match
+    General class to handle Trajectory. It filters and extends the trajectory data to match
     the current model's joints, bodies and sites. The key idea is to ensure that TrajectoryData has the same
     dimensionality and order for all its attributes as in the Mujoco data structure. So TrajectoryData is a
     simplified version of the Mujoco data structure with fewer attributes. This class also automatically
     interpolates the trajectory to the desired control frequency.
 
     """
-    def __init__(self, model, traj_path=None, traj_data=None, traj_info=None, control_dt=0.01,
+    def __init__(self, model, traj_path=None, traj: Trajectory = None, control_dt=0.01,
                  clip_trajectory_to_joint_ranges=False, warn=True):
         """
         Constructor.
@@ -23,10 +24,8 @@ class TrajectoryHandler:
             traj_path (string): path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
                 with a 'traj_data' array and possibly a 'split_points' array inside. The 'traj_data'
                 should be in the shape (joints x observations). If traj_files is specified, this should be None.
-            traj_data (TrajectoryData): Datastructure containing all trajectory files. If traj_path is specified, this
+            traj (Trajectory): Datastructure containing all trajectory files. If traj_path is specified, this
                 should be None.
-            traj_info (TrajectoryInfo): Datastructure containing information regarding the trajectory. If traj_path is
-                specified, this should be None.
             control_dt (float): Model control frequency used to interpolate the trajectory.
             clip_trajectory_to_joint_ranges (bool): If True, the joint positions in the trajectory are clipped
                 between the low and high values in the trajectory. todo
@@ -34,34 +33,33 @@ class TrajectoryHandler:
 
         """
 
-        assert (traj_data is not None) == (traj_info is not None), "When specifying traj_data, traj_info needs to be " \
-                                                                   "specified as well."
-        assert (traj_path is not None) != (traj_data is not None), "Please specify either traj_path or " \
-                                                                   "(traj_data, traj_info), but not both."
+        assert (traj_path is not None) != (traj is not None), ("Please specify either traj_path or "
+                                                               "trajectory, but not both.")
 
         # load data
         if traj_path is not None:
-            traj_data, traj_info = load_trajectory_from_npz(traj_path, allow_pickle=True)
+            traj = Trajectory.load(traj_path)
 
         # filter/extend the trajectory based on the model/data
-        self.traj_data, self.traj_info = self.filter_and_extend(traj_data, traj_info, model)
+        traj_data, traj_info = self.filter_and_extend(traj.data, traj.info, model)
 
         # todo: implement this in observation types in init_from_traj!
         #self.check_if_trajectory_is_in_range(low, high, keys, joint_pos_idx, warn, clip_trajectory_to_joint_ranges)
 
-        self.traj_dt = 1 / self.traj_info.frequency
+        self.traj_dt = 1 / traj_info.frequency
         self.control_dt = control_dt
 
         if self.traj_dt != self.control_dt:
-            self.traj_data, self.traj_info = interpolate_trajectories(self.traj_data, self.traj_info,
-                                                                      1.0 / self.control_dt)
+            traj_data, traj_info = interpolate_trajectories(traj_data, traj_info, 1.0 / self.control_dt)
+
+        self.traj = replace(traj, data=traj_data, info=traj_info)
 
     def len_trajectory(self, traj_ind):
-        return self.traj_data.split_points[traj_ind + 1] - self.traj_data.split_points[traj_ind]
+        return self.traj.data.split_points[traj_ind + 1] - self.traj.data.split_points[traj_ind]
 
     @property
     def n_trajectories(self):
-        return len(self.traj_data.split_points) - 1
+        return len(self.traj.data.split_points) - 1
 
     @staticmethod
     def filter_and_extend(traj_data, traj_info, model):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, fields, asdict, replace
+import pickle
+
 import flax.serialization
 import numpy as np
 from flax import struct
@@ -9,6 +11,94 @@ import jax.numpy as jnp
 import mujoco
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
+
+from loco_mujoco.core.utils import ObservationContainer
+
+
+@dataclass
+class Trajectory:
+    """
+    Main data structure to store the trajectories.
+
+    Args:
+        info (TrajectoryInfo): Static information about the trajectory. This includes the joint names, frequency,
+            body names, site names as well a reduced version of the Mujoco model.
+        data (TrajectoryData): Dynamic information about the trajectory. This includes the qpos, qvel, xpos, xquat etc.
+        transitions (TrajectoryTransitions): Trajectory transitions used for training RL algorithms where the trajectory
+            consists of tuples of (observation, action, reward, next_observation, absorbing, done). (optional)
+        obs_container (ObservationContainer): The observation container contains all information needed to build an
+            observation from Mujoco data/model. (optional)
+    """
+
+    info: TrajectoryInfo
+    data: TrajectoryData
+    transitions: TrajectoryTransitions = None
+    obs_container: ObservationContainer = None
+
+    def save(self, path):
+        """
+        Serializes the trajectory and saves it to a npz file.
+
+        Args:
+            path (str): Path to save the trajectory.
+        """
+        serialized = flax.serialization.to_state_dict(self.data)
+        traj_info_dict = self.info.to_dict()
+        traj_model = flax.serialization.to_state_dict(traj_info_dict["model"])
+        del traj_info_dict["model"]
+        traj_transitions = flax.serialization.to_state_dict(self.transitions)
+        serialized |= traj_info_dict
+        serialized |= traj_model
+        if self.transitions is not None:
+            serialized |= traj_transitions
+        if self.obs_container is not None:
+            obs_container = pickle.dumps(self.obs_container)
+            serialized["obs_container"] = obs_container
+        np.savez(str(path), **serialized)
+
+    @classmethod
+    def load(cls, path):
+        """
+        Loads a trajectory from a npz file.
+
+        Returns:
+            A new instance of Trajectory.
+        """
+
+        def is_none_object_array(array):
+            # Check if the input is an instance of np.ndarray
+            if isinstance(array, np.ndarray):
+                # Check if the dtype is object and all elements are None
+                return array.dtype == object and np.all(array == None)
+            return False
+
+        data = np.load(path, allow_pickle=True)
+        converted_info = {}
+        converted_model = {}
+        converted_data = {}
+        converted_transitions = {}
+        converted_obs_container = None
+        for key, value in data.items():
+            if key in TrajectoryInfo.get_attribute_names():
+                converted_info[key] = None if is_none_object_array(value) else value.tolist()
+            elif key in TrajectoryModel.get_attribute_names():
+                converted_model[key] = jnp.array(value)
+            elif key in TrajectoryData.get_attribute_names():
+                converted_data[key] = jnp.array(value)
+            elif key in TrajectoryTransitions.get_attribute_names():
+                converted_transitions[key] = jnp.array(value)
+            elif key == "obs_container":
+                converted_obs_container = value
+            else:
+                raise ValueError(f"Unknown key {key} in the npz file.")
+
+        _all = {"data": TrajectoryData(**converted_data),
+                "info": TrajectoryInfo(model=TrajectoryModel(**converted_model), **converted_info)}
+        if converted_transitions:
+            _all["transitions"] = TrajectoryTransitions(**converted_transitions)
+        if converted_obs_container:
+            _all["obs_container"] = pickle.loads(converted_obs_container)
+        return cls(**_all)
 
 
 @dataclass
@@ -446,7 +536,24 @@ class TrajectoryData:
         Returns:
         A new instance of TrajectoryData containing the indexed data.
         """
-        return self.dynamic_slice_in_dim(self, traj_index, sub_traj_index, 1, backend)
+
+        # Get the start indices for the selected trajectory
+        start_idx = self.split_points[traj_index]
+
+        # Get the beginning and end of the slice
+        ind = start_idx + sub_traj_index
+
+        def _apply_fn(x):
+
+            if len(x.shape) >= 2:
+                return backend.squeeze(x[ind])
+            elif len(x.shape) == 1:
+                # used for user data and split points
+                return x
+            else:
+                return backend.empty(0)
+
+        return jax.tree.map(_apply_fn, self)
 
     @classmethod
     def dynamic_slice_in_dim(cls, data, traj_index, sub_traj_start_index, slice_length, backend=jnp):
@@ -799,45 +906,15 @@ class TrajectoryData:
     def n_samples(self):
         return self.split_points[-1]
 
+    @classmethod
+    def get_attribute_names(cls):
+        return [field.name for field in fields(cls)]
+
     def to_numpy(self):
         dic = flax.serialization.to_state_dict(self)
         for key, value in dic.items():
             dic[key] = np.array(value)
         return TrajectoryData(**dic)
-
-
-def save_trajectory_to_npz(path, traj_data: TrajectoryData, traj_info: TrajectoryInfo):
-    serialized = flax.serialization.to_state_dict(traj_data)
-    traj_info_dict = traj_info.to_dict()
-    traj_model = flax.serialization.to_state_dict(traj_info_dict["model"])
-    del traj_info_dict["model"]
-    serialized |= traj_info_dict
-    serialized |= traj_model
-    np.savez(path, **serialized)
-
-
-def load_trajectory_from_npz(path, allow_pickle=False):
-
-    def is_none_object_array(array):
-        # Check if the input is an instance of np.ndarray
-        if isinstance(array, np.ndarray):
-            # Check if the dtype is object and all elements are None
-            return array.dtype == object and np.all(array == None)
-        return False
-
-    data = np.load(path, allow_pickle=allow_pickle)
-    converted_info = {}
-    converted_model = {}
-    converted_data = {}
-    for key, value in data.items():
-        if key in TrajectoryInfo.get_attribute_names():
-            converted_info[key] = None if is_none_object_array(value) else value.tolist()
-        elif key in TrajectoryModel.get_attribute_names():
-            converted_model[key] = jnp.array(value)
-        else:
-            converted_data[key] = jnp.array(value)
-    model = TrajectoryModel(**converted_model)
-    return TrajectoryData(**converted_data), TrajectoryInfo(model=model, **converted_info)
 
 
 def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float):
@@ -940,3 +1017,33 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
     new_traj_data, traj_info = TrajectoryData.concatenate(new_traj_datas, [traj_info] * len(new_traj_datas))
 
     return new_traj_data, traj_info
+
+
+@struct.dataclass
+class TrajectoryTransitions:
+    """
+    Data structure to store tuples of transitions observations, next_observations, actions, rewards, absorbings,
+    and dones to be used for training RL algorithms.
+
+    ..note:: Observations in this class are created using ObservationContainer.
+
+    """
+
+    observations: jax.Array
+    next_observations: jax.Array
+    absorbings: jax.Array
+    dones: jax.Array
+
+    # some datasets may not have actions and rewards (e.g., Mocap datasets)
+    actions: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    rewards: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+
+    def to_jnp(self):
+        return jax.tree_map(lambda x: jnp.array(x), self)
+
+    def to_np(self):
+        return jax.tree_map(lambda x: np.array(x), self)
+
+    @classmethod
+    def get_attribute_names(cls):
+        return [field.name for field in fields(cls)]

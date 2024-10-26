@@ -11,6 +11,7 @@ from loco_mujoco.core.utils.math import (calc_rel_positions, calc_rel_quaternion
 from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
 
+
 class Goal(Observation):
 
     registered = dict()

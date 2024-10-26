@@ -23,7 +23,7 @@ class Transition(NamedTuple):
     metrics: Metrics
 
 
-class MetriXTransition(NamedTuple):
+class MetricHandlerTransition(NamedTuple):
     env_state: Any
     logged_metrics: Metrics
 

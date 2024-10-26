@@ -5,19 +5,22 @@ import jax.numpy as jnp
 import wandb
 from dataclasses import fields
 from loco_mujoco import LocoEnv
-from loco_mujoco.algorithms import PPOJax
+from loco_mujoco.algorithms import AMPJax
 from loco_mujoco.utils.metrics import QuantityContainer
 from loco_mujoco.utils import MetricsHandler
+from loco_mujoco.trajectory import Trajectory
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 import traceback
 
 
 @hydra.main(version_base=None, config_path="./", config_name="conf")
 def experiment(config: DictConfig):
     try:
+
+        expert_dataset_path = "expert_traj.npz"
 
         os.environ['XLA_FLAGS'] = (
             '--xla_gpu_triton_gemm_any=True ')
@@ -33,14 +36,28 @@ def experiment(config: DictConfig):
         # create env
         env = LocoEnv.make(**config.experiment.env_params)
 
+        # check if dataset file exists
+        if not os.path.exists(expert_dataset_path):
+            expert_dataset = env.create_dataset()
+            # save trajectory with expert transitions to speed-up loading next time
+            new_traj = Trajectory(info=env.th.traj.info, data=env.th.traj.data,
+                                  obs_container=env.obs_container, transitions=expert_dataset)
+            new_traj.save(expert_dataset_path)
+        else:
+            # if it exists, load it
+            new_traj = Trajectory.load(expert_dataset_path)
+            env.load_trajectory(new_traj)
+            expert_dataset = env.create_dataset()
+
         # get initial agent configuration
-        agent_conf = PPOJax.init_agent_conf(env, config)
+        agent_conf = AMPJax.init_agent_conf(env, config)
+        agent_conf = agent_conf.add_expert_dataset(expert_dataset)
 
         # setup metric handler (optional)
         mh = MetricsHandler(config, env)
 
         # build training function
-        train_fn = PPOJax.build_train_fn(env, agent_conf, mh=mh)
+        train_fn = AMPJax.build_train_fn(env, agent_conf, mh=mh)
 
         # jit and vmap training function
         train_fn = jax.jit(jax.vmap(train_fn)) if config.experiment.n_seeds > 1 else jax.jit(train_fn)
@@ -52,7 +69,7 @@ def experiment(config: DictConfig):
 
         # save agent state
         agent_state = out["agent_state"]
-        save_path = PPOJax.save_agent(result_dir, agent_conf, agent_state)
+        save_path = AMPJax.save_agent(result_dir, agent_conf, agent_state)
 
         import time
         t_start = time.time()
@@ -67,7 +84,9 @@ def experiment(config: DictConfig):
 
             for i in range(len(training_metrics.mean_episode_return)):
                 run.log({"Mean Episode Return": training_metrics.mean_episode_return[i],
-                         "Mean Episode Length": training_metrics.mean_episode_length[i]},
+                         "Mean Episode Length": training_metrics.mean_episode_length[i],
+                         "Discriminator/Output Policy": training_metrics.discriminator_output_policy[i],
+                         "Discriminator/Output Expert": training_metrics.discriminator_output_expert[i]},
                         step=int(training_metrics.max_timestep[i]))
 
                 if (i+1) % config.experiment.validation_interval == 0:

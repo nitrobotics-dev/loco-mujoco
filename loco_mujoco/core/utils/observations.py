@@ -5,8 +5,6 @@ import numpy as np
 import mujoco
 import jax.numpy as jnp
 
-#from loco_mujoco.trajectory.trajectory import TrajectoryData, TrajectoryInfo
-
 
 def jnt_name2id(name, model):
     """
@@ -80,6 +78,17 @@ class ObservationContainer(dict):
     def entries(self):
         """Return a view of the dictionary's values, same as values()."""
         return self.values()
+
+    def __eq__(self, other):
+        if not isinstance(other, ObservationContainer):
+            return False
+
+        keys_are_the_same = set(self.keys()) == set(other.keys())
+        type_self = [type(v) for v in self.values()]
+        type_other = [type(v) for v in other.values()]
+        types_are_the_same = type_self == type_other
+
+        return keys_are_the_same and types_are_the_same
 
 
 class Observation:
@@ -337,7 +346,7 @@ class JointPos(SimpleObs):
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj_info)
+        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -397,7 +406,7 @@ class JointVel(SimpleObs):
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj_info)
+        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):

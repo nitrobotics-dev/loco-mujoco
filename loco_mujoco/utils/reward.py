@@ -244,11 +244,11 @@ class MimicReward(Reward):
                                              if isinstance(obs, ObservationType.JointVel)])
 
         # setup standardizer
-        qpos = traj_handler.traj_data.qpos
-        qvel = traj_handler.traj_data.qvel
+        qpos = traj_handler.traj.data.qpos
+        qvel = traj_handler.traj.data.qvel
 
-        # site_rpos = calc_rel_positions(traj_handler.traj_data.site_xpos, traj_handler.traj_data.site_xpos[self.main_body_id])
-        # site_xmat = traj_handler.traj_data.site_xmat.reshape(-1, 9)
+        # site_rpos = calc_rel_positions(traj_handler.traj.data.site_xpos, traj_handler.traj.data.site_xpos[self.main_body_id])
+        # site_xmat = traj_handler.traj.data.site_xmat.reshape(-1, 9)
         # orig_shape = site_xmat.shape
         # from scipy.spatial.transform import Rotation as R
         # site_xquat = R.from_matrix(site_xmat).as_quat().reshape(orig_shape[0], orig_shape[1], 4)
@@ -256,9 +256,9 @@ class MimicReward(Reward):
         #
         #
         #
-        # rpos = traj_handler.traj_data.rpos
-        # rquat = traj_handler.traj_data.rquat
-        # rvel = traj_handler.traj_data.rvel
+        # rpos = traj_handler.traj.data.rpos
+        # rquat = traj_handler.traj.data.rquat
+        # rvel = traj_handler.traj.data.rvel
         #
         # if self._standardize:
         #     self._std_qpos = np.std(qpos[:, self._traj_qpos_ind], axis=(0,))

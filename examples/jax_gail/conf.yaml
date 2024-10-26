@@ -40,11 +40,15 @@ experiment:
         - right_foot_mimic
   hidden_layers: [512, 256]
   lr: 1e-4
+  disc_lr: 5e-5
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 5e7
+  total_timesteps: 2e6
   update_epochs: 4
+  train_disc_interval: 3
+  disc_minibatch_size: 2048
   proportion_env_reward: 0.0
+  n_disc_epochs: 10
   num_minibatches: 32
   gamma: 0.99
   gae_lambda: 0.95
@@ -52,6 +56,7 @@ experiment:
   init_std: 0.2
   learnable_std: false
   ent_coef: 0.0
+  disc_ent_coef: 0.0
   vf_coef: 0.5
   max_grad_norm: 0.5
   activation: tanh

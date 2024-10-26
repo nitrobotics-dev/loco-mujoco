@@ -1,6 +1,7 @@
 import os
 from warnings import warn
 from pathlib import Path
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -96,20 +97,20 @@ def convert_all_datasets_of_env(env_name, robot_conf):
 
             # interpolate trajectory to environment frequency
             traj_data, traj_info = interpolate_trajectories(traj_data, traj_info, 1.0/env.dt)
+            traj = Trajectory(info=traj_info, data=traj_data)
 
             # load_trajectory
-            traj_params = dict(traj_data=traj_data, traj_info=traj_info,
-                               control_dt=env.dt)
-            env.load_trajectory(traj_params)
-            traj_data, traj_info = env.th.traj_data, env.th.traj_info
+            env.load_trajectory(traj, warn=False)
+            traj_data, traj_info = env.th.traj.data, env.th.traj.info
 
             callback = ExtendTrajData(env, model=env._model, n_samples=traj_data.n_samples)
             env.play_trajectory(n_episodes=env.n_trajectories(traj_data),
                                 render=False, callback_class=callback)
             traj_data, traj_info = callback.extend_trajectory_data(traj_data, traj_info)
+            traj = replace(traj, data=traj_data, info=traj_info)
 
             # save the trajectory data
-            save_trajectory_to_npz(file_target_path, traj_data, traj_info)
+            traj.save(file_target_path)
 
 
 if __name__ == "__main__":

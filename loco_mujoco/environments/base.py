@@ -7,6 +7,7 @@ from tempfile import mkdtemp
 from itertools import product
 from functools import partial
 from tqdm import tqdm
+from dataclasses import replace
 
 import jax.random
 import jax.numpy as jnp
@@ -21,6 +22,7 @@ from loco_mujoco.core.utils import Box, VideoRecorder, Goal
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
+from loco_mujoco.trajectory.dataclasses import Trajectory, TrajectoryTransitions
 
 
 @struct.dataclass
@@ -198,12 +200,16 @@ class LocoEnv(Mjx):
         # the action space is supposed to be between -1 and 1, so we normalize it
         self._scale_action_space()
 
-    def load_trajectory(self, traj_params, warn=True):
+    def load_trajectory(self,  traj: Trajectory = None, traj_path=None, warn=True):
         """
         Loads trajectories. If there were trajectories loaded already, this function overrides the latter.
 
         Args:
-            traj_params (dict): Dictionary of parameters needed to load trajectories.
+            traj (Trajectory): Datastructure containing all trajectory files. If traj_path is specified, this
+                should be None.
+            traj_path (string): path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
+                with a 'traj_data' array and possibly a 'split_points' array inside. The 'traj_data'
+                should be in the shape (joints x observations). If traj_files is specified, this should be None.
             warn (bool): If True, a warning will be raised if the
                 trajectory ranges are violated.
 
@@ -212,7 +218,14 @@ class LocoEnv(Mjx):
         if self.th is not None:
             warnings.warn("New trajectories loaded, which overrides the old ones.", RuntimeWarning)
 
-        self.th = TrajectoryHandler(model=self._model, warn=warn, **traj_params)
+        self.th = TrajectoryHandler(model=self._model, warn=warn, traj_path=traj_path,
+                                    traj=traj, control_dt=self.dt)
+
+        if self.th.traj.obs_container is not None:
+            assert self.obs_container == self.th.traj.obs_container, \
+                ("Observation containers of trajectory and environment do not match. \n"
+                 "Please, either load a trajectory with the same observation container or "
+                 "set the observation container of the environment to the one of the trajectory.")
 
         # setup trajectory information in observation_dict, goal and reward if needed
         for obs_entry in self.obs_container.entries():
@@ -238,7 +251,7 @@ class LocoEnv(Mjx):
 
         """
         return self._reward_function(state, action, next_state, absorbing, info, model, data,
-                                     carry, np, self.th.traj_data)
+                                     carry, np, self.th.traj.data)
 
     @partial(jax.jit, static_argnums=(0, 6))
     def _mjx_reward(self, state, action, next_state, absorbing, info, model, data, carry):
@@ -247,7 +260,7 @@ class LocoEnv(Mjx):
 
         """
         return self._reward_function(state, action, next_state, absorbing, info, model, data,
-                                     carry, jnp, self.th.traj_data)
+                                     carry, jnp, self.th.traj.data)
 
     def setup(self, data, key):
         """
@@ -299,7 +312,7 @@ class LocoEnv(Mjx):
             # either the goal or the reward function requires the trajectory at each step, so we need to check
             # if the end of the trajectory is reached, if so, we set done to True
             traj_state = carry.traj_state
-            len_traj = self.len_trajectory(self.th.traj_data, traj_state.traj_no)
+            len_traj = self.len_trajectory(self.th.traj.data, traj_state.traj_no)
             reached_end_of_traj = jax.lax.cond(jnp.greater_equal(traj_state.subtraj_step_no, len_traj - 1),
                                                lambda: True, lambda: False)
             done = jnp.logical_or(done, reached_end_of_traj)
@@ -326,7 +339,7 @@ class LocoEnv(Mjx):
 
         """
         carry = self._update_trajectory_state(carry)
-        data = self._goal.set_data(data, backend=np, traj_data=self.th.traj_data, traj_state=carry.traj_state)
+        data = self._goal.set_data(data, backend=np, traj_data=self.th.traj.data, traj_state=carry.traj_state)
 
         # if self._use_foot_forces:
         #     grf = self._get_ground_forces()
@@ -340,16 +353,8 @@ class LocoEnv(Mjx):
 
         """
         carry = self._update_trajectory_state(carry)
-        data = self._goal.set_data(data, backend=jnp, traj_data=self.th.traj_data, traj_state=carry.traj_state)
+        data = self._goal.set_data(data, backend=jnp, traj_data=self.th.traj.data, traj_state=carry.traj_state)
         return data, carry
-
-    def get_kinematic_obs_mask(self):
-        """
-        Returns a mask (np.array) for the observation specified in observation_spec (or part of it).
-
-        """
-
-        return np.arange(len(self.obs_helper.observation_spec) - 2)
 
     def get_obs_idx(self, key):
         """
@@ -377,15 +382,14 @@ class LocoEnv(Mjx):
 
         """
 
-        if self._dataset is None:
+        if self.th is not None:
 
-            if self.th is not None:
-
+            if self.th.traj.transitions is None:
                 # save the original starting configuration
                 orig_random_start = self._random_start
                 orig_fix = self._use_fixed_start
                 orig_fix_conf = self._fixed_start_conf
-                orig_traj_data = deepcopy(self.th.traj_data)
+                orig_traj_data = deepcopy(self.th.traj.data)
 
                 # set it to a fixed start configuration
                 self._random_start = False
@@ -393,30 +397,29 @@ class LocoEnv(Mjx):
                 self._fixed_start_conf = (0, 0)
 
                 # setup containers for the dataset
-                all_states, all_next_states, all_lasts = [], [], []
+                all_observations, all_next_observations, all_dones = [], [], []
 
                 if rng_key is None:
                     rng_key = jax.random.key(0)
 
-                for i in tqdm(range(self.n_trajectories(self.th.traj_data)), desc="Creating Dataset"):
+                for i in tqdm(range(self.n_trajectories(self.th.traj.data)), desc="Creating Transition Dataset"):
 
                     # set configuration to the first state of the current trajectory
                     self._fixed_start_conf = (i, 0)
 
-                    self.th.traj_data = self.th.traj_data.to_numpy()
-                    traj_data_single = self.th.traj_data.get(i, 0, np)
+                    self.th.traj = replace(self.th.traj, data=self.th.traj.data.to_numpy())
+                    traj_data_single = self.th.traj.data.get(i, 0, np)
                     carry = self._init_additional_carry(rng_key, traj_data_single)
                     traj_data_single = self._reset_init_data(traj_data_single, carry)
 
-                    states = [self._create_observation(traj_data_single, carry)]
-                    for j in tqdm(range(1, self.len_trajectory(self.th.traj_data, i)),
-                                  desc=f"Converted Samples in Trajectory {i}", leave=False):
-                        traj_data_single = self.th.traj_data.get(i, j, np)
-                        states.append(self._create_observation(traj_data_single, carry))
+                    observations = [self._create_observation(traj_data_single, carry)]
+                    for j in range(1, self.len_trajectory(self.th.traj.data, i)):
+                        traj_data_single = self.th.traj.data.get(i, j, np)
+                        observations.append(self._create_observation(traj_data_single, carry))
                         traj_data_single, carry = self._simulation_post_step(traj_data_single, carry)
 
                         # check if the current state is an absorbing state
-                        has_fallen, msg = self._has_fallen(states[-1], None, traj_data_single,
+                        has_fallen, msg = self._has_fallen(observations[-1], None, traj_data_single,
                                                            return_err_msg=True)
                         if has_fallen:
                             err_msg = "Some of the states in the created dataset are terminal states. " \
@@ -424,35 +427,35 @@ class LocoEnv(Mjx):
                             err_msg += msg
                             raise ValueError(err_msg)
 
-                    states = np.vstack(states)
-                    all_states.append(states[:-1])
-                    all_next_states.append(states[1:])
-                    lasts = np.zeros(states.shape[0]-1)
-                    lasts[-1] = 1
-                    all_lasts.append(lasts)
+                    observations = np.vstack(observations)
+                    all_observations.append(observations[:-1])
+                    all_next_observations.append(observations[1:])
+                    dones = np.zeros(observations.shape[0]-1)
+                    dones[-1] = 1
+                    all_dones.append(dones)
 
-                all_states = np.concatenate(all_states)
-                all_next_states = np.concatenate(all_next_states)
-                all_lasts = np.concatenate(all_lasts)
-                all_absorbing = np.zeros_like(all_lasts)    # assume no absorbing states
-
-                dataset = dict(states=all_states, next_states=all_next_states, absorbing=all_absorbing, last=all_lasts)
+                all_observations = np.concatenate(all_observations).astype(np.float32)
+                all_next_observations = np.concatenate(all_next_observations).astype(np.float32)
+                all_dones = np.concatenate(all_dones).astype(np.float32)
+                all_absorbing = np.zeros_like(all_dones).astype(np.float32)    # assume no absorbing states
 
                 # reset the original configuration
                 self._random_start = orig_random_start
                 self._use_fixed_start = orig_fix
                 self._fixed_start_conf = orig_fix_conf
-                self.th.traj_data = orig_traj_data
+                self.th.traj = replace(self.th.traj, data=orig_traj_data)
 
-            else:
-                raise ValueError("No trajectory was passed to the environment. "
-                                 "To create a dataset pass a trajectory first.")
+                transitions = TrajectoryTransitions(jnp.array(all_observations),
+                                                    jnp.array(all_next_observations),
+                                                    jnp.array(all_absorbing),
+                                                    jnp.array(all_dones))
+                self.th.traj = replace(self.th.traj, transitions=transitions)
 
-            self._dataset = deepcopy(dataset)
+            return self.th.traj.transitions
 
-            return dataset
         else:
-            return deepcopy(self._dataset)
+            raise ValueError("No trajectory was passed to the environment. "
+                             "To create a dataset pass a trajectory first.")
 
     def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, from_velocity=False, render=True,
                         record=False, recorder_params=None, callback_class=None, key=None):
@@ -490,7 +493,7 @@ class LocoEnv(Mjx):
         self.reset(subkey)
         traj_no = 0
         subtraj_step_no = 0
-        traj_data_sample = self.get_traj_current_sample(self.th.traj_data, traj_no, subtraj_step_no)
+        traj_data_sample = self.get_traj_current_sample(self.th.traj.data, traj_no, subtraj_step_no)
         self._set_sim_state_from_traj_data(self._data, traj_data_sample)
 
         if render:
@@ -503,7 +506,7 @@ class LocoEnv(Mjx):
 
         highest_int = np.iinfo(np.int32).max
         if n_steps_per_episode is None:
-            n_steps_per_episode = self.len_trajectory(self.th.traj_data, traj_no)
+            n_steps_per_episode = self.len_trajectory(self.th.traj.data, traj_no)
         if n_episodes is None:
             n_episodes = highest_int
         for i in range(n_episodes):
@@ -517,7 +520,7 @@ class LocoEnv(Mjx):
                 else:
                     callback_class(self, self._model, self._data, traj_data_sample, self._additional_carry)
 
-                traj_data_sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self.th.traj_data,
+                traj_data_sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self.th.traj.data,
                                                                                        traj_no, subtraj_step_no)
 
                 if from_velocity:
@@ -574,58 +577,6 @@ class LocoEnv(Mjx):
         )
         self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
                              record, recorder_params, callback_class, key)
-
-    def load_dataset_and_get_traj_files(self, dataset_path, freq=None):
-        """
-        Calculates a dictionary containing the kinematics given a dataset. If freq is provided,
-        the x and z positions are calculated based on the velocity.
-
-        Args:
-            dataset_path (str): Path to the dataset.
-            freq (float): Frequency of the data in obs.
-
-        Returns:
-            Dictionary containing the keys specified in observation_spec with the corresponding
-            values from the dataset.
-
-        """
-
-        dataset = np.load(str(Path(loco_mujoco.__file__).resolve().parent / dataset_path))
-        self._dataset = deepcopy({k: d for k, d in dataset.items()})
-
-        states = dataset["states"]
-        last = dataset["last"]
-
-        states = np.atleast_2d(states)
-        rel_keys = [obs_spec[0] for obs_spec in self.obs_helper.observation_spec]
-        num_data = len(states)
-        trajectories = dict()
-        for i, key in enumerate(rel_keys):
-            if i < 2:
-                if freq is None:
-                    # fill with zeros for x and y position
-                    data = np.zeros(num_data)
-                else:
-                    # compute positions from velocities
-                    dt = 1 / float(freq)
-                    assert len(states) > 2
-                    vel_idx = rel_keys.index("d" + key) - 2
-                    data = [0.0]
-                    for j, o in enumerate(states[:-1, vel_idx], 1):
-                        if last is not None and last[j - 1] == 1:
-                            data.append(0.0)
-                        else:
-                            data.append(data[-1] + dt * o)
-                    data = np.array(data)
-            else:
-                data = states[:, i - 2]
-            trajectories[key] = data
-
-        # add split points
-        if len(states) > 2:
-            trajectories["split_points"] = np.concatenate([[0], np.squeeze(np.argwhere(last == 1) + 1)])
-
-        return trajectories
 
     @property
     def xml_handle(self):
@@ -760,7 +711,7 @@ class LocoEnv(Mjx):
 
         if self._random_start:
             k1, k2 = jax.random.split(key)
-            traj_idx = jax.random.randint(k1, shape=(1,), minval=0, maxval=self.n_trajectories(self.th.traj_data))
+            traj_idx = jax.random.randint(k1, shape=(1,), minval=0, maxval=self.n_trajectories(self.th.traj.data))
             subtraj_step_idx = jax.random.randint(k2, shape=(1,), minval=0, maxval=self.th.len_trajectory(traj_idx))
             idx = [traj_idx[0], subtraj_step_idx[0]]
 
@@ -776,13 +727,13 @@ class LocoEnv(Mjx):
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_init_state_from_trajectory(self, traj_state):
-        traj_data = self.get_traj_current_sample(self.th.traj_data, traj_state.traj_no, traj_state.subtraj_step_no)
+        traj_data = self.get_traj_current_sample(self.th.traj.data, traj_state.traj_no, traj_state.subtraj_step_no)
         traj_data = traj_data.replace(qpos=traj_data.qpos.at[0:2].set(0.0))
         return traj_data
 
     def _update_trajectory_state(self, carry):
         traj_state = carry.traj_state
-        next_traj_no, next_subtraj_step_no = self.increment_traj_counter(self.th.traj_data,
+        next_traj_no, next_subtraj_step_no = self.increment_traj_counter(self.th.traj.data,
                                                                          traj_state.traj_no,
                                                                          traj_state.subtraj_step_no)
         traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
@@ -837,11 +788,11 @@ class LocoEnv(Mjx):
         return carry
 
     def _reset_init_data(self, data, carry):
-        data = self._goal.set_data(data, backend=np, traj_data=self.th.traj_data, traj_state=carry.traj_state)
+        data = self._goal.set_data(data, backend=np, traj_data=self.th.traj.data, traj_state=carry.traj_state)
         return data
 
     def _mjx_reset_init_data(self, data, carry):
-        data = self._goal.set_data(data, backend=jnp, traj_data=self.th.traj_data, traj_state=carry.traj_state)
+        data = self._goal.set_data(data, backend=jnp, traj_data=self.th.traj.data, traj_state=carry.traj_state)
         return data
 
     def _setup_ground_force_statistics(self):
@@ -991,8 +942,8 @@ class LocoEnv(Mjx):
         env = env_cls(**task_config)
 
         # load the trajectory
-        traj_params = env.get_traj_params(env, dataset_path, dataset_type, debug, clip_trajectory_to_joint_ranges)
-        env.load_trajectory(traj_params, warn=False)
+        traj_path = env.get_traj_path(dataset_path, dataset_type, debug)
+        env.load_trajectory(traj_path=traj_path, warn=False)
 
         return env
 
@@ -1057,15 +1008,9 @@ class LocoEnv(Mjx):
         return task_config, dataset_path
 
     @staticmethod
-    def get_traj_params(mdp, path, dataset_type, debug, clip_trajectory_to_joint_ranges):
-
-        # Load the trajectory
-        env_freq = 1 / mdp._timestep  # hz
-        desired_contr_freq = 1 / mdp.dt  # hz
-        n_substeps = env_freq // desired_contr_freq
+    def get_traj_path(path, dataset_type, debug):
 
         if dataset_type == "real":
-            traj_data_freq = 500  # hz
             use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
             if debug or use_mini_dataset:
                 if use_mini_dataset:
@@ -1075,45 +1020,13 @@ class LocoEnv(Mjx):
                 path.insert(3, "mini_datasets")
                 path = "/".join(path)
 
-            path = Path(loco_mujoco.__file__).resolve().parent / path
-            traj_params = dict(traj_path=Path(loco_mujoco.__file__).resolve().parent / path,
-                               control_dt=(1 / desired_contr_freq),
-                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
+            traj_path = Path(loco_mujoco.__file__).resolve().parent / path
 
         elif dataset_type == "perfect":
             # todo: this needs to be adapted to new traj_data
-            traj_files = mdp.load_dataset_and_get_traj_files(path, traj_data_freq)
-            traj_params = dict(traj_files=traj_files,
-                               control_dt=(1 / desired_contr_freq),
-                               clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
+            traj_path = None
 
-        # elif dataset_type == "preference":
-        #     traj_data_freq = 100  # hz
-        #     infos = []
-        #     all_paths = next(os.walk(Path(loco_mujoco.__file__).resolve().parent / path), (None, None, []))[2]
-        #     for i, p in enumerate(all_paths):
-        #         traj_files = mdp.load_dataset_and_get_traj_files(path + p, traj_data_freq)
-        #         if i == 0:
-        #             all_traj_files = traj_files
-        #         else:
-        #             for key in traj_files.keys():
-        #                 if key == "split_points":
-        #                     all_traj_files[key] = np.concatenate([all_traj_files[key],
-        #                                                           traj_files[key][1:] + all_traj_files[key][-1]])
-        #                 else:
-        #                     all_traj_files[key] = np.concatenate([all_traj_files[key], traj_files[key]])
-        #         info = p.split(".")[0]
-        #         info = info.split("_")[-2]
-        #         n_traj = len(traj_files["split_points"]) - 1
-        #         infos += [info] * n_traj
-        #
-        #     traj_params = dict(traj_files=all_traj_files,
-        #                        traj_dt=(1 / traj_data_freq),
-        #                        traj_info = infos,
-        #                        control_dt=(1 / desired_contr_freq),
-        #                        clip_trajectory_to_joint_ranges=clip_trajectory_to_joint_ranges)
-
-        return traj_params
+        return traj_path
 
     @staticmethod
     @jax.jit

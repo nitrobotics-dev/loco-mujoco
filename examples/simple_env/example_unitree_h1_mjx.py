@@ -1,7 +1,6 @@
 import jax
 import time
 
-import mujoco.mjx
 from loco_mujoco import LocoEnv
 
 

@@ -73,7 +73,9 @@ class ExtendTrajData(ReplayCallback):
         for key, value in self.recorder.items():
             converted_data[key] = jnp.array(value)
         return (traj_data.replace(**converted_data),
-                replace(traj_info, body_names=self.b_names, site_names=self.s_names, model=self.traj_model))
+                replace(traj_info, body_names=self.b_names if len(self.b_names) > 0 else None,
+                        site_names=self.s_names if len(self.s_names) > 0 else None,
+                        model=self.traj_model))
 
     @staticmethod
     def get_body_names_and_ids(model, keys=None):
