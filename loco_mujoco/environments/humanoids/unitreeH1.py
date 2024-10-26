@@ -231,22 +231,16 @@ class UnitreeH1(BaseRobotHumanoid):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run", "carry"],
-                                     data_types=["real", "perfect"],
-                                     non_combinable=[("carry", None, "perfect")])
+    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
+                                     data_types=["real", "perfect"])
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=False, disable_back_joint=False, hold_weight=False,
-                 weight_mass=None, **kwargs):
+    def __init__(self, disable_arms=False, disable_back_joint=False, **kwargs):
         """
         Constructor.
 
         """
-
-        if hold_weight:
-            assert disable_arms is True, "If you want Unitree H1 to carry a weight, please disable the arms. " \
-                                         "They will be kept fixed."
 
         xml_path = (Path(__file__).resolve().parent.parent / "data" / "unitree_h1" / "h1.xml").as_posix()
 
@@ -254,16 +248,9 @@ class UnitreeH1(BaseRobotHumanoid):
 
         observation_spec = self._get_observation_specification()
 
-        collision_groups = self._get_collision_groups()
-
-        self._hidable_obs = ("positions", "velocities", "foot_forces", "weight")
-
         # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
-        self._hold_weight = hold_weight
-        self._weight_mass = weight_mass
-        self._valid_weights = [0.1, 1.0, 5.0, 10.0]
 
         xml_handles = []
         xml_handle = mjcf.from_path(xml_path)
@@ -271,7 +258,7 @@ class UnitreeH1(BaseRobotHumanoid):
         if self.mjx_enabled:
             xml_handle = self._modify_xml_for_mjx(xml_handle)
 
-        if disable_arms or hold_weight:
+        if disable_arms or disable_back_joint:
 
             if disable_arms or disable_back_joint:
                 joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_xml_modifications()
@@ -281,38 +268,15 @@ class UnitreeH1(BaseRobotHumanoid):
 
                 xml_handle = self._delete_from_xml_handle(xml_handle, joints_to_remove,
                                                           motors_to_remove, equ_constr_to_remove)
-            if disable_arms and not hold_weight:
+
                 xml_handle = self._reorient_arms(xml_handle)
 
-            if hold_weight and weight_mass is not None:
-                color_red = np.array([1.0, 0.0, 0.0, 1.0])
-                xml_handle = self._add_weight(xml_handle, weight_mass, color_red)
-                xml_handles.append(xml_handle)
-            elif hold_weight and weight_mass is None:
-                for i, w in enumerate(self._valid_weights):
-                    color = self._get_box_color(i)
-                    current_xml_handle = deepcopy(xml_handle)
-                    current_xml_handle = self._add_weight(current_xml_handle, w, color)
-                    xml_handles.append(current_xml_handle)
-            else:
                 xml_handles.append(xml_handle)
         else:
             xml_handles.append(xml_handle)
 
-        super().__init__(xml_handles, action_spec, observation_spec, collision_groups, enable_mjx=self.mjx_enabled,
+        super().__init__(xml_handles, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
                          **kwargs)
-
-    def _get_ground_forces(self):
-        """
-        Returns the ground forces (np.array). By default, 4 ground force sensors are used.
-        Environments that use more or less have to override this function.
-
-        """
-
-        grf = np.concatenate([self._get_collision_force("floor", "foot_r")[:3],
-                              self._get_collision_force("floor", "foot_l")[:3]])
-
-        return grf
 
     @info_property
     def grf_size(self):
@@ -326,14 +290,6 @@ class UnitreeH1(BaseRobotHumanoid):
     @info_property
     def upper_body_xml_name(self):
         return "torso_link"
-
-    @info_property
-    def sites_for_mimic(self):
-        return ["upper_body_mimic", "head_mimic", "pelvis_mimic",
-                "left_shoulder_mimic", "left_elbow_mimic", "left_hand_mimic",
-                "left_hip_mimic", "left_knee_mimic", "left_foot_mimic",
-                "right_shoulder_mimic", "right_elbow_mimic", "right_hand_mimic",
-                "right_hip_mimic", "right_knee_mimic", "right_foot_mimic"]
 
     def _get_xml_modifications(self):
         """
@@ -362,12 +318,6 @@ class UnitreeH1(BaseRobotHumanoid):
             motors_to_remove += ["back_bkz_actuator"]
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
-
-    def _get_collision_groups(self):
-        collision_groups = [("floor", ["floor"]),
-                            ("foot_r", ["right_foot"]),
-                            ("foot_l", ["left_foot"])]
-        return collision_groups
 
     def _has_fallen(self, obs, info, data, return_err_msg=False):
         """
@@ -433,8 +383,7 @@ class UnitreeH1(BaseRobotHumanoid):
         Returns an environment corresponding to the specified task.
 
         Args:
-        task (str): Main task to solve. Either "walk", "run" or "carry". The latter is walking while carrying
-        an unknown weight, which makes the task partially observable.
+        task (str): Main task to solve.
         dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
         reference trajectory. This data does not perfectly match the kinematics
         and dynamics of this environment, hence it is more challenging. "perfect" uses
@@ -448,31 +397,9 @@ class UnitreeH1(BaseRobotHumanoid):
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod
-    def _add_weight(xml_handle, mass, color):
-        """
-        Adds a weight to the Mujoco XML handle. The weight will
-        be hold in front of Unitree H1. Therefore, the arms will be
-        reoriented.
-
-        Args:
-            xml_handle: Handle to Mujoco XML.
-
-        Returns:
-            Modified Mujoco XML handle.
-
-        """
-        # find pelvis handle
-        pelvis = xml_handle.find("body", "torso_link")
-        pelvis.add("body", name="weight")
-        weight = xml_handle.find("body", "weight")
-        weight.add("geom", type="box", size="0.1 0.18 0.1", pos="0.35 0 0.1", group="0", rgba=color, mass=mass)
-
-        return xml_handle
-
-    @staticmethod
     def _reorient_arms(xml_handle):
         """
-        Reorients the elbow to not collide with the hip.
+        Reorients the elbow to not collide with the hip. Is used when disable_arms is set to True.
 
         Args:
             xml_handle: Handle to Mujoco XML.
@@ -492,10 +419,6 @@ class UnitreeH1(BaseRobotHumanoid):
         left_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
 
         return xml_handle
-
-    @staticmethod
-    def _modify_xml_for_mjx(xml_handle):
-        raise NotImplementedError
 
     @staticmethod
     def _get_observation_specification():

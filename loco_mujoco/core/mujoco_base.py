@@ -34,7 +34,7 @@ class Mujoco:
 
     def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, goal=None,
                  n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1,
-                 collision_groups=None, model_option_conf=None, **viewer_params):
+                 model_option_conf=None, **viewer_params):
 
         # load the model and data
         self._model = self.load_model(xml_file)

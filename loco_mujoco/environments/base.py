@@ -44,7 +44,7 @@ class LocoEnv(Mjx):
 
     """
 
-    def __init__(self, xml_handles, action_spec, observation_spec, collision_groups=None, enable_mjx=False,
+    def __init__(self, xml_handles, action_spec, observation_spec, enable_mjx=False,
                  n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type="no_reward", reward_params=None,
                  goal_type="NoGoal", goal_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
                  timestep=0.001, use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
@@ -64,12 +64,6 @@ class LocoEnv(Mjx):
                 which is used to access the data. An entry in the list
                 is given by: (key, name, type). The name can later be used
                 to retrieve specific observations;
-            collision_groups (list, None): A list containing groups of geoms for
-                which collisions should be checked during simulation via
-                ``check_collision``. The entries are given as:
-                ``(key, geom_names)``, where key is a string for later
-                referencing in the "check_collision" method, and geom_names is
-                a list of geom names in the XML specification;
             enable_mjx (bool): Flag specifying whether Mjx simulation is enabled or not.
             n_envs (int): Number of environment to run in parallel when using Mjx.
             gamma (float): The discounting factor of the environment;
@@ -111,9 +105,6 @@ class LocoEnv(Mjx):
             xml_handles = [xml_handles]
         self._xml_handles = xml_handles
 
-        if collision_groups is None:
-            collision_groups = list()
-
         if use_foot_forces:
             n_intermediate_steps = n_substeps
             n_substeps = 1
@@ -141,7 +132,7 @@ class LocoEnv(Mjx):
                                           observation_spec=observation_spec, goal=goal, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
                                           n_intermediate_steps=n_intermediate_steps,
-                                          timestep=timestep, collision_groups=collision_groups,
+                                          timestep=timestep,
                                           default_camera_mode=default_camera_mode,
                                           model_option_conf=model_option_conf, **viewer_params)
         else:
@@ -150,7 +141,7 @@ class LocoEnv(Mjx):
             super(Mjx, self).__init__(xml_file=xml_handles, actuation_spec=action_spec,
                                       observation_spec=observation_spec, goal=goal, gamma=gamma,
                                       horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
-                                      timestep=timestep, collision_groups=collision_groups,
+                                      timestep=timestep,
                                       default_camera_mode=default_camera_mode,
                                       model_option_conf=model_option_conf, **viewer_params)
 
@@ -901,6 +892,9 @@ class LocoEnv(Mjx):
         raise NotImplementedError
 
     def _mjx_has_fallen(self, obs, info, data, carry):
+        raise NotImplementedError
+
+    def _modify_xml_for_mjx(self, xml_handle):
         raise NotImplementedError
 
     def _check_reset_configuration(self):
