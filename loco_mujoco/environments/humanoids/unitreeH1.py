@@ -242,7 +242,7 @@ class UnitreeH1(BaseRobotHumanoid):
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent / "data" / "unitree_h1" / "h1.xml").as_posix()
+        xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "unitree_h1" / "h1.xml").as_posix()
 
         action_spec = self._get_action_specification()
 

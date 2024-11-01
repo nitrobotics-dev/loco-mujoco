@@ -4,9 +4,6 @@ from pathlib import Path
 from copy import deepcopy
 
 from dm_control import mjcf
-# from mushroom_rl.utils.running_stats import *
-# from mushroom_rl.utils.mujoco import *
-# from mushroom_rl.utils.angles import mat_to_euler, euler_to_mat
 
 import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
@@ -209,10 +206,10 @@ class UnitreeA1(LocoEnv):
 
         # Choose xml file (either for torque or position control)
         if action_mode == "torque":
-            xml_path = (Path(__file__).resolve().parent.parent / "data" / "quadrupeds" /
+            xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "quadrupeds" /
                         "unitree_a1_torque.xml").as_posix()
         else:
-            xml_path = (Path(__file__).resolve().parent.parent / "data" / "quadrupeds" /
+            xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "quadrupeds" /
                         "unitree_a1_position.xml").as_posix()
 
         self._action_mode = action_mode

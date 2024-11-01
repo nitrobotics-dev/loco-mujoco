@@ -249,7 +249,7 @@ class UnitreeG1(BaseRobotHumanoid):
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent / "data" / "unitree_g1" / "g1.xml").as_posix()
+        xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "unitree_g1" / "g1.xml").as_posix()
         xml_handle = mjcf.from_path(xml_path)
 
         self._hold_weight = False   # no weights supported with this envs
@@ -260,8 +260,6 @@ class UnitreeG1(BaseRobotHumanoid):
         action_spec = self._get_action_specification()
 
         observation_spec = self._get_observation_specification()
-
-        collision_groups = self._get_collision_groups()
 
         self._hidable_obs = ("positions", "velocities", "foot_forces", "weight")
 
@@ -289,7 +287,7 @@ class UnitreeG1(BaseRobotHumanoid):
         else:
             xml_handles.append(xml_handle)
 
-        super().__init__(xml_handles, action_spec, observation_spec, collision_groups, enable_mjx=self.mjx_enabled,
+        super().__init__(xml_handles, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
                          **kwargs)
 
     def _get_ground_forces(self):

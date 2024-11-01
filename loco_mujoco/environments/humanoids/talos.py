@@ -2,9 +2,6 @@ from pathlib import Path
 from copy import deepcopy
 from dm_control import mjcf
 
-# from mushroom_rl.utils.running_stats import *
-# from mushroom_rl.utils.mujoco import *
-
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
@@ -275,7 +272,7 @@ class Talos(BaseRobotHumanoid):
             assert disable_arms is True, "If you want Talos to carry a weight, please disable the arms. " \
                                          "They will be kept fixed."
 
-        xml_path = (Path(__file__).resolve().parent.parent / "data" / "talos" / "talos.xml").as_posix()
+        xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "talos" / "talos.xml").as_posix()
 
         action_spec = self._get_action_specification()
 

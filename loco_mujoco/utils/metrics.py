@@ -293,8 +293,8 @@ class MetricsHandler:
             env_states.data, self.rel_site_ids, self._site_bodyid[self.rel_site_ids],
             self._body_rootid[self.rel_site_ids], jnp)
 
-        traj_indices = self.get_traj_indices(env_states)
-        traj_data = jax.tree.map(lambda x: x[traj_indices], self._traj_data)
+        traj_states = env_states.additional_carry.traj_state
+        traj_data = self._traj_data.get(traj_states.traj_no, traj_states.subtraj_step_no)
         traj_rel_site_pos, traj_rel_site_rotvec, traj_rel_site_vel = self._vec_calc_rel_site_quantaties(
             traj_data, self.rel_site_ids, self._site_bodyid[self.rel_site_ids],
             self._body_rootid[self.rel_site_ids], jnp)

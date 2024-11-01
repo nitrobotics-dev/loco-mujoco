@@ -486,30 +486,16 @@ class TrajectoryModel:
 
 
 @struct.dataclass
-class TrajectoryData:
+class SingleData:
     """
-    Data structure to store relevant attributes of Mujoco data. It also holds the qpos, qvel and split_points of
-    a recorded trajectory. All other attributes are inferred by these attributes by setting the qpos and qvel and
-    forwarding the simulation. The key idea is to create a data structure that is equivalent to the Mujoco data structure
-    but with an additional dimension (the batch dimension for an arbitrary amount of samples and trajectories)
-    and with a reduced amount of attributes to save memory. In doing so, this data structure can be used equivalently
-    in functions that use Mujoco's datastructure (like the create_observation method).
+    Data structure to store relevant attributes of Mujoco Data. This data structure is supposed to be a reduced version
+    of the Mujoco data structure to reduce memory.
 
-    Note 1: All samples are stacked along the first dimension, and the split_points attribute is used to separate
-    the different trajectories. The split_points attribute is a list of indices that define the beginning of each
-    trajectory, and the end of the last trajectory.
-
-    Note 2: This datastructure is meant to be used with jax arrays. However, a conversion to numpy is implemented, but
-    not recommended.
-
+    While it currently stores just a few elements, it can be extended to store more elements in the future.
     """
-
     # joint properties in Mujoco datastructure
     qpos: jax.Array
     qvel: jax.Array
-
-    # points defining the beginning of each trajectory, and the end of the last trajectory
-    split_points: jax.Array
 
     # global body properties
     xpos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
@@ -522,7 +508,27 @@ class TrajectoryData:
     site_xmat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
 
     # userdata is only used as a placeholder for goals during dataset creation
-    userdata: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    userdata: jax.Array = struct.field(default_factory=lambda: jnp.empty((0)))
+
+
+@struct.dataclass
+class TrajectoryData(SingleData):
+    """
+    Data structure to store the trajectory data. It holds everything in SingleData, but with an additional dimension
+    (the batch dimension for an arbitrary amount of samples and trajectories).
+     It also includes the split_points attribute to separate the different trajectories.
+
+    Note 1: All samples are stacked along the first dimension, and the split_points attribute is used to separate
+    the different trajectories. The split_points attribute is a list of indices that define the beginning of each
+    trajectory, and the end of the last trajectory.
+
+    Note 2: This datastructure is meant to be used with jax arrays. However, a conversion to numpy is implemented, but
+    not recommended.
+
+    """
+
+    # points defining the beginning of each trajectory, and the end of the last trajectory
+    split_points: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
 
     def get(self, traj_index, sub_traj_index, backend=jnp):
         """
@@ -534,7 +540,7 @@ class TrajectoryData:
             backend: Backend to use for the computation.
 
         Returns:
-        A new instance of TrajectoryData containing the indexed data.
+        A new instance of SingleData containing the indexed data.
         """
 
         # Get the start indices for the selected trajectory
@@ -543,17 +549,17 @@ class TrajectoryData:
         # Get the beginning and end of the slice
         ind = start_idx + sub_traj_index
 
-        def _apply_fn(x):
-
-            if len(x.shape) >= 2:
-                return backend.squeeze(x[ind])
-            elif len(x.shape) == 1:
-                # used for user data and split points
-                return x
-            else:
-                return backend.empty(0)
-
-        return jax.tree.map(_apply_fn, self)
+        return SingleData(
+            qpos=backend.squeeze(self.qpos[ind]),
+            qvel=backend.squeeze(self.qvel[ind]),
+            xpos=backend.squeeze(self.xpos[ind]) if self.xpos.size > 0 else backend.empty((1, 0))[ind],
+            xquat=backend.squeeze(self.xquat[ind]) if self.xquat.size > 0 else backend.empty((1, 0))[ind],
+            cvel=backend.squeeze(self.cvel[ind]) if self.cvel.size > 0 else backend.empty((1, 0))[ind],
+            subtree_com=backend.squeeze(self.subtree_com[ind]) if self.subtree_com.size > 0 else backend.empty((1, 0))[ind],
+            site_xpos=backend.squeeze(self.site_xpos[ind]) if self.site_xpos.size > 0 else backend.empty((1, 0))[ind],
+            site_xmat=backend.squeeze(self.site_xmat[ind]) if self.site_xmat.size > 0 else backend.empty((1, 0))[ind],
+            userdata=backend.squeeze(self.userdata[ind]) if self.userdata.size > 0 else backend.empty((1, 0))[ind]
+        )
 
     @classmethod
     def dynamic_slice_in_dim(cls, data, traj_index, sub_traj_start_index, slice_length, backend=jnp):
@@ -845,7 +851,7 @@ class TrajectoryData:
             A new instance of TrajectoryData with the userdata set.
         """
         return self.replace(
-            userdata=backend.zeros((userdata_size,))
+            userdata=backend.zeros((userdata_size, ))
         )
 
     @staticmethod
