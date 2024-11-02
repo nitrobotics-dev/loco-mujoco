@@ -26,14 +26,22 @@ class ExtendTrajData(ReplayCallback):
     def __init__(self, env, n_samples, model, body_names=None, site_names=None):
         self.b_names, self.b_ids = self.get_body_names_and_ids(env._model, body_names)
         self.s_names, self.s_ids = self.get_site_names_and_ids(env._model, site_names)
+        dim_qpos, dim_qvel = 0, 0
+        for i in range(model.njnt):
+            if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+                dim_qpos += 7
+                dim_qvel += 6
+            else:
+                dim_qpos += 1
+                dim_qvel += 1
         self.recorder = dict(xpos=np.empty((n_samples, model.nbody, 3)),
                              xquat=np.empty((n_samples, model.nbody, 4)),
                              cvel=np.empty((n_samples, model.nbody, 6)),
                              subtree_com=np.empty((n_samples, model.nbody, 3)),
                              site_xpos=np.empty((n_samples, model.nsite, 3)),
                              site_xmat=np.empty((n_samples, model.nsite, 9)),
-                             qpos=np.empty((n_samples, model.njnt)),
-                             qvel=np.empty((n_samples, model.njnt)))
+                             qpos=np.empty((n_samples, dim_qpos)),
+                             qvel=np.empty((n_samples, dim_qvel)))
         self.traj_model = TrajectoryModel(njnt=model.njnt,
                                           jnt_type=jnp.array(model.jnt_type),
                                           nbody=model.nbody,

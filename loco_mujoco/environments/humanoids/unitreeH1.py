@@ -1,10 +1,9 @@
 from pathlib import Path
-from copy import deepcopy
 
 import numpy as np
 from dm_control import mjcf
-
-# from mushroom_rl.utils.running_stats import *
+from jax.scipy.spatial.transform import Rotation as jnp_R
+from scipy.spatial.transform import Rotation as np_R
 
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
@@ -352,10 +351,21 @@ class UnitreeH1(BaseRobotHumanoid):
 
     def _has_fallen_compat(self, obs, info, data, backend):
 
-        q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
-        q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
-        q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
-        q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
+        if backend == np:
+            R = np_R
+        else:
+            R = jnp_R
+
+        q_root = self._get_from_obs(obs, "q_root")
+        q_pelvis_y = q_root[2]
+        q_root_quat = q_root[3:7]
+        q_root_euler = R.from_quat(q_root_quat).as_euler("xyz")
+        q_pelvis_tilt, q_pelvis_list, q_pelvis_rotation = q_root_euler[0], q_root_euler[1], q_root_euler[2]
+
+        # q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
+        # q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
+        # q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
+        # q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
 
         pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
                                            backend.greater(q_pelvis_y, 0.1))
@@ -390,8 +400,6 @@ class UnitreeH1(BaseRobotHumanoid):
         a perfect dataset.
 
         """
-        check_validity_task_mode_dataset(UnitreeH1.__name__, task, None, dataset_type,
-                                         *UnitreeH1.valid_task_confs.get_all())
 
         return BaseRobotHumanoid.generate(cls, task, dataset_type,
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
@@ -432,12 +440,13 @@ class UnitreeH1(BaseRobotHumanoid):
         """
 
         observation_spec = [# ------------- JOINT POS -------------
-                            ObservationType.JointPos("q_pelvis_tx", xml_name="pelvis_tx"),
-                            ObservationType.JointPos("q_pelvis_tz", xml_name="pelvis_tz"),
-                            ObservationType.JointPos("q_pelvis_ty", xml_name="pelvis_ty"),
-                            ObservationType.JointPos("q_pelvis_tilt", xml_name="pelvis_tilt"),
-                            ObservationType.JointPos("q_pelvis_list", xml_name="pelvis_list"),
-                            ObservationType.JointPos("q_pelvis_rotation", xml_name="pelvis_rotation"),
+                            ObservationType.FreeJointPos("q_root", xml_name="root"),
+                            # ObservationType.JointPos("q_pelvis_tx", xml_name="pelvis_tx"),
+                            # ObservationType.JointPos("q_pelvis_tz", xml_name="pelvis_tz"),
+                            # ObservationType.JointPos("q_pelvis_ty", xml_name="pelvis_ty"),
+                            # ObservationType.JointPos("q_pelvis_tilt", xml_name="pelvis_tilt"),
+                            # ObservationType.JointPos("q_pelvis_list", xml_name="pelvis_list"),
+                            # ObservationType.JointPos("q_pelvis_rotation", xml_name="pelvis_rotation"),
                             ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointPos("q_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointPos("q_l_arm_shx", xml_name="l_arm_shx"),
@@ -459,12 +468,13 @@ class UnitreeH1(BaseRobotHumanoid):
                             ObservationType.JointPos("q_ankle_angle_l", xml_name="ankle_angle_l"),
 
                             # ------------- JOINT VEL -------------
-                            ObservationType.JointVel("dq_pelvis_tx", xml_name="pelvis_tx"),
-                            ObservationType.JointVel("dq_pelvis_tz", xml_name="pelvis_tz"),
-                            ObservationType.JointVel("dq_pelvis_ty", xml_name="pelvis_ty"),
-                            ObservationType.JointVel("dq_pelvis_tilt", xml_name="pelvis_tilt"),
-                            ObservationType.JointVel("dq_pelvis_list", xml_name="pelvis_list"),
-                            ObservationType.JointVel("dq_pelvis_rotation", xml_name="pelvis_rotation"),
+                            ObservationType.FreeJointVel("dq_root", xml_name="root"),
+                            # ObservationType.JointVel("dq_pelvis_tx", xml_name="pelvis_tx"),
+                            # ObservationType.JointVel("dq_pelvis_tz", xml_name="pelvis_tz"),
+                            # ObservationType.JointVel("dq_pelvis_ty", xml_name="pelvis_ty"),
+                            # ObservationType.JointVel("dq_pelvis_tilt", xml_name="pelvis_tilt"),
+                            # ObservationType.JointVel("dq_pelvis_list", xml_name="pelvis_list"),
+                            # ObservationType.JointVel("dq_pelvis_rotation", xml_name="pelvis_rotation"),
                             ObservationType.JointVel("dq_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointVel("dq_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointVel("dq_l_arm_shx", xml_name="l_arm_shx"),

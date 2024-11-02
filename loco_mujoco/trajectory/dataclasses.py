@@ -114,13 +114,22 @@ class TrajectoryInfo:
     metadata: dict = None
 
     def __post_init__(self):
-        self.joint_name2ind = {}
+        self.joint_name2ind_qpos = {}
+        self.joint_name2ind_qvel = {}
+        j_qpos = 0
+        j_qvel = 0
         for i, item in enumerate(zip(self.joint_names, self.model.jnt_type)):
             j_name, j_type = item
             if j_type == mujoco.mjtJoint.mjJNT_FREE:
-                self.joint_name2ind[j_name] = np.arange(i, i+7)
+                self.joint_name2ind_qpos[j_name] = np.arange(j_qpos, j_qpos + 7)
+                self.joint_name2ind_qvel[j_name] = np.arange(j_qvel, j_qvel + 6)
+                j_qpos += 7
+                j_qvel += 6
             elif j_type == mujoco.mjtJoint.mjJNT_SLIDE or j_type == mujoco.mjtJoint.mjJNT_HINGE:
-                self.joint_name2ind[j_name] = np.array([i])
+                self.joint_name2ind_qpos[j_name] = np.array([j_qpos])
+                self.joint_name2ind_qvel[j_name] = np.array([j_qvel])
+                j_qpos += 1
+                j_qvel += 1
 
         self.body_name2ind = {}
         if self.body_names is not None:
@@ -219,7 +228,7 @@ class TrajectoryInfo:
         Returns:
             A new instance of TrajectoryInfo with the specified joints removed.
         """
-        new_model = self.model.remove_joints(jnp.array([self.joint_name2ind[name] for name in joint_names]))
+        new_model = self.model.remove_joints(jnp.array([self.joint_name2ind_qpos[name] for name in joint_names]))
         return replace(self,
                        joint_names=[name for name in self.joint_names if name not in joint_names],
                        model=new_model
@@ -736,7 +745,7 @@ class TrajectoryData(SingleData):
                                                                                 (self.site_xmat.shape[0], 1, 9))], axis=1)
         )
 
-    def remove_joints(self, joint_ids, backend=jnp):
+    def remove_joints(self, joint_qpos_ids, joint_qvel_ids, backend=jnp):
         """
         Remove the joints with the specified ids from the trajectory data.
 
@@ -750,8 +759,8 @@ class TrajectoryData(SingleData):
 
         # Remove the specified joints from the trajectory data
         return self.replace(
-            qpos=backend.delete(self.qpos, joint_ids, axis=1),
-            qvel=backend.delete(self.qvel, joint_ids, axis=1)
+            qpos=backend.delete(self.qpos, joint_qpos_ids, axis=1),
+            qvel=backend.delete(self.qvel, joint_qvel_ids, axis=1)
         )
 
     def remove_bodies(self, body_ids, backend=jnp):
@@ -791,19 +800,20 @@ class TrajectoryData(SingleData):
             site_xmat=backend.delete(self.site_xmat, site_ids, axis=1)
         )
 
-    def reorder_joints(self, new_order):
+    def reorder_joints(self, new_order_qpos, new_order_qvel):
         """
         Reorder the joints in the trajectory data.
 
         Args:
-            new_order (jax.Array): Array of indices specifying the new order of the joints.
+            new_order_qpos (jax.Array): Array of indices specifying the new order of the joints positions.
+            new_order_qvel (jax.Array): Array of indices specifying the new order of the joints velocities.
 
         Returns:
             A new instance of TrajectoryData with the joints reordered.
         """
         return self.replace(
-            qpos=self.qpos[:, new_order],
-            qvel=self.qvel[:, new_order]
+            qpos=self.qpos[:, new_order_qpos],
+            qvel=self.qvel[:, new_order_qvel]
         )
 
     def reorder_bodies(self, new_order):
@@ -1006,8 +1016,19 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
         else:
             xmat_interpolated = jnp.empty(0)
 
+        # do slerp interpolation for free joint orientation
+        qpos_free_joint_quat_ids = [i[3:] for i in traj_info.joint_name2ind_qpos.values() if len(i) > 1]
+        qpos_free_joint_quat_ids_flat = [item for sublist in qpos_free_joint_quat_ids for item in sublist]
+        qpos_other_ids = jnp.array([i for i in range(traj_data.qpos.shape[-1])
+                                    if i not in qpos_free_joint_quat_ids_flat])
+        qpos = jnp.zeros((x_new.shape[0], traj_data_slice.qpos.shape[-1]))
+        qpos = qpos.at[:, qpos_other_ids].set(interp1d(x, traj_data_slice.qpos[:, qpos_other_ids], kind="cubic", axis=0)(x_new))
+        for quat_ids in qpos_free_joint_quat_ids:
+            quat_ids = jnp.array(quat_ids)
+            qpos = qpos.at[:, quat_ids].set(slerp_batch(traj_data_slice.qpos[:, quat_ids], x, x_new))
+
         traj_data_slice = traj_data_slice.replace(
-            qpos=interp1d(x, traj_data_slice.qpos, kind="cubic", axis=0)(x_new),
+            qpos=qpos,
             qvel=interp1d(x, traj_data_slice.qvel, kind="cubic", axis=0)(x_new),
             xpos=interp1d(x, traj_data_slice.xpos, kind="cubic", axis=0)(x_new) if traj_data_slice.xpos.size > 0 else jnp.empty(0),
             xquat=xquat_interpolated,

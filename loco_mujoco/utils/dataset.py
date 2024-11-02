@@ -1,4 +1,6 @@
 import os
+
+import scipy.spatial.transform
 import wget
 import zipfile
 import numpy as np

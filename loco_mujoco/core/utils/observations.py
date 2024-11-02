@@ -200,7 +200,7 @@ class SimpleObs(Observation):
             self.traj_data_type_ind = None
 
     def _init_joint_info_from_traj(self, traj_info):
-        self.traj_data_type_ind = traj_info.joint_name2ind[self.xml_name]
+        self.traj_data_type_ind = traj_info.joint_name2ind_qpos[self.xml_name]
 
 
 class BodyPos(SimpleObs):
@@ -305,7 +305,8 @@ class FreeJointPos(SimpleObs):
         assert dim == self.dim
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.joint(self.xml_name).id)
+        free_joint_id = data.joint(self.xml_name).id
+        data_type_ind = [i for i in range(free_joint_id, free_joint_id+self.dim)]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
@@ -313,7 +314,7 @@ class FreeJointPos(SimpleObs):
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj_info)
+        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -369,7 +370,8 @@ class FreeJointVel(SimpleObs):
         assert dim == self.dim
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.joint(self.xml_name).id)
+        free_joint_id = data.joint(self.xml_name).id
+        data_type_ind = [i for i in range(free_joint_id, free_joint_id + self.dim)]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
@@ -377,7 +379,7 @@ class FreeJointVel(SimpleObs):
         return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj_info)
+        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):

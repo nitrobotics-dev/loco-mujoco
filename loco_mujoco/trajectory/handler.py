@@ -83,17 +83,28 @@ class TrajectoryHandler:
 
         # --- filter the trajectory based on the model and data ---
         # get the joint names from current model
-        joint_names = set()
-        joint_ids = set()
-        joint_name2id = dict()
+        joint_names = []
+        joint_ids = []
+        joint_name2id_qpos = dict()
+        joint_name2id_qvel = dict()
+        j_qpos, j_qvel = 0, 0
         for i in range(model.njnt):
             name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
-            joint_names.add(name)
-            if name in joint_name2id.keys():
-                joint_name2id[name].append(i)   # free joints can have multiple ids
-            else:
-                joint_name2id[name] = [i]
-            joint_ids.add(i)
+            j_type = model.jnt_type[i]
+            joint_names.append(name)
+
+            if j_type == mujoco.mjtJoint.mjJNT_FREE:
+                joint_name2id_qpos[name] = jnp.arange(j_qpos, j_qpos + 7)
+                joint_name2id_qvel[name] = jnp.arange(j_qvel, j_qvel + 6)
+                j_qpos += 7
+                j_qvel += 6
+            elif j_type == mujoco.mjtJoint.mjJNT_SLIDE or j_type == mujoco.mjtJoint.mjJNT_HINGE:
+                joint_name2id_qpos[name] = jnp.array([j_qpos])
+                joint_name2id_qvel[name] = jnp.array([j_qvel])
+                j_qpos += 1
+                j_qvel += 1
+
+            joint_ids.append(i)
 
         # get the body names from current model
         body_names = set()
@@ -111,10 +122,12 @@ class TrajectoryHandler:
             site_names.add(name)
             site_name2id[name] = i
 
-        joint_to_be_removed = dict()
+        joint_to_be_removed_qpos = dict()
+        joint_to_be_removed_qvel = dict()
         for i, j_name in enumerate(traj_info.joint_names):
             if j_name not in joint_names:
-                joint_to_be_removed[j_name] = i
+                joint_to_be_removed_qpos[j_name] = traj_info.joint_name2ind_qpos[j_name]
+                joint_to_be_removed_qvel[j_name] = traj_info.joint_name2ind_qvel[j_name]
 
         bodies_to_be_removed = dict()
         if traj_info.body_names is not None:
@@ -129,9 +142,11 @@ class TrajectoryHandler:
                     site_to_be_removed[s_name] = i
 
         # create new traj_data and traj_info with removed joints, bodies and sites
-        if joint_to_be_removed:
-            traj_data = traj_data.remove_joints(jnp.array(list(joint_to_be_removed.values())))
-            traj_info = traj_info.remove_joints(list(joint_to_be_removed.keys()))
+        if joint_to_be_removed_qpos:
+            qpos_ind = jnp.concatenate(list(joint_to_be_removed_qpos.values()))
+            qvel_ind = jnp.concatenate(list(joint_to_be_removed_qvel.values()))
+            traj_data = traj_data.remove_joints(qpos_ind, qvel_ind)
+            traj_info = traj_info.remove_joints(list(joint_to_be_removed_qpos.keys()))
         if bodies_to_be_removed:
             traj_data = traj_data.remove_bodies(jnp.array(list(bodies_to_be_removed.values())))
             traj_info = traj_info.remove_bodies(list(bodies_to_be_removed.keys()))
@@ -166,10 +181,12 @@ class TrajectoryHandler:
 
         # --- reorder the joints and bodies based on the model ---
         new_joint_order_names = []
-        new_joint_order_ids = []
-        for j_name in joint_name2id.keys():
+        new_joint_order_ids_qpos = []
+        new_joint_order_ids_qvel = []
+        for j_name in joint_names:
             new_joint_order_names.append(traj_info.joint_names.index(j_name))
-            new_joint_order_ids.append(traj_info.joint_name2ind[j_name])
+            new_joint_order_ids_qpos.append(traj_info.joint_name2ind_qpos[j_name])
+            new_joint_order_ids_qvel.append(traj_info.joint_name2ind_qvel[j_name])
 
         if traj_info.body_names is not None:
             new_body_order = []
@@ -184,7 +201,8 @@ class TrajectoryHandler:
         traj_info = traj_info.reorder_joints(new_joint_order_names)
         traj_info = traj_info.reorder_bodies(new_body_order) if traj_info.body_names is not None else traj_info
         traj_info = traj_info.reorder_sites(new_site_order) if traj_info.site_names is not None else traj_info
-        traj_data = traj_data.reorder_joints(jnp.concatenate(new_joint_order_ids))
+        traj_data = traj_data.reorder_joints(jnp.concatenate(new_joint_order_ids_qpos),
+                                             jnp.concatenate(new_joint_order_ids_qvel))
         traj_data = traj_data.reorder_bodies(jnp.array(new_body_order)) \
             if traj_info.body_names is not None else traj_data
         traj_data = traj_data.reorder_sites(jnp.array(new_site_order)) \

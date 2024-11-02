@@ -23,6 +23,7 @@ from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
 from loco_mujoco.trajectory.dataclasses import Trajectory, TrajectoryTransitions
+from loco_mujoco.datasets.data_generation import convert_single_dataset_of_env, PATH_RAW_DATASET
 
 
 @struct.dataclass
@@ -45,7 +46,7 @@ class LocoEnv(Mjx):
     """
 
     def __init__(self, xml_handles, action_spec, observation_spec, enable_mjx=False,
-                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type="no_reward", reward_params=None,
+                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type="NoReward", reward_params=None,
                  goal_type="NoGoal", goal_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
                  timestep=0.001, use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
                  domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
@@ -208,6 +209,11 @@ class LocoEnv(Mjx):
 
         if self.th is not None:
             warnings.warn("New trajectories loaded, which overrides the old ones.", RuntimeWarning)
+
+        if traj_path is not None:
+            if not os.path.exists(traj_path):
+                # trajectories for this environment do not exist yet, so convert and save them
+                self.convert_dataset_for_env(traj_path)
 
         self.th = TrajectoryHandler(model=self._model, warn=warn, traj_path=traj_path,
                                     traj=traj, control_dt=self.dt)
@@ -860,8 +866,8 @@ class LocoEnv(Mjx):
             keys were specified.
 
         """
-        # todo: remove -2 once free joint added
-        idx = self.obs_container[key].obs_ind - 2
+
+        idx = self.obs_container[key].obs_ind
         return obs[idx]
 
     def _len_qpos_qvel(self):
@@ -930,13 +936,13 @@ class LocoEnv(Mjx):
 
         # load correct task configuration
         config_key = ".".join((env_cls.__name__, task, dataset_type))
-        task_config, dataset_path = env_cls.get_task_config_and_dataset_path(config_key, **kwargs)
+        task_config = env_cls.get_task_config(config_key, **kwargs)
 
         # create the environment
         env = env_cls(**task_config)
 
         # load the trajectory
-        traj_path = env.get_traj_path(dataset_path, dataset_type, debug)
+        traj_path = env.get_traj_path(env_cls, dataset_type, task, debug)
         env.load_trajectory(traj_path=traj_path, warn=False)
 
         return env
@@ -956,7 +962,7 @@ class LocoEnv(Mjx):
                                   f"in the {type(self).__name__} environment.")
 
     @staticmethod
-    def get_task_config_and_dataset_path(config_key, **kwargs):
+    def get_task_config(config_key, **kwargs):
 
         def load_all_yaml_at_path(path):
             all_files = os.listdir(path)
@@ -976,7 +982,14 @@ class LocoEnv(Mjx):
 
         # get task-specific configuration
         try:
-            task_config = all_configs[config_key]
+            if config_key in all_configs.keys():
+                task_config = all_configs[config_key]
+            else:
+                # load default config
+                def_config_key = config_key.split(".")
+                def_config_key[1] = "DEFAULT"
+                def_config_key = ".".join(def_config_key)
+                task_config = all_configs[def_config_key]
         except KeyError:
             raise KeyError("The specified task configuration could not be found: %s" % config_key)
 
@@ -995,26 +1008,17 @@ class LocoEnv(Mjx):
         # add rest of kwargs to task_config
         task_config |= kwargs
 
-        # get the dataset path and delete it from the task_config
-        dataset_path = task_config["dataset_path"]
-        del task_config["dataset_path"]
-
-        return task_config, dataset_path
+        return task_config
 
     @staticmethod
-    def get_traj_path(path, dataset_type, debug):
+    def get_traj_path(env_cls, dataset_type, task, debug):
 
         if dataset_type == "real":
-            use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
-            if debug or use_mini_dataset:
-                if use_mini_dataset:
-                    warnings.warn("Datasets not found, falling back to test datasets. Please download and install "
-                                  "the datasets to use this environment for imitation learning!")
-                path = path.split("/")
-                path.insert(3, "mini_datasets")
-                path = "/".join(path)
-
-            traj_path = Path(loco_mujoco.__file__).resolve().parent / path
+            traj_path = str(env_cls.path_to_real_datasets() / (task+".npz"))
+            if debug:
+                traj_path = traj_path.split("/")
+                traj_path.insert(3, "mini_datasets")
+                traj_path = "/".join(traj_path)
 
         elif dataset_type == "perfect":
             # todo: this needs to be adapted to new traj_data
@@ -1131,6 +1135,39 @@ class LocoEnv(Mjx):
     @staticmethod
     def raise_mjx_not_enabled_error(*args, **kwargs):
         return ValueError("Mjx not enabled in this environment")
+
+    @classmethod
+    def path_to_real_datasets(cls):
+        """
+        Returns the path to the real datasets.
+
+        """
+
+        return Path(loco_mujoco.__file__).resolve().parent / "datasets" / "real" / cls.__name__
+
+    @classmethod
+    def path_to_perfect_datasets(cls):
+        """
+        Returns the path to the perfect datasets.
+
+        """
+
+        return Path(loco_mujoco.__file__).resolve().parent / "datasets" / "perfect" / cls.__name__
+
+    @classmethod
+    def convert_dataset_for_env(cls, traj_path):
+        try:
+            env_name = cls.__name__.split(".")[0]
+            if "Mjx" in env_name:
+                env_name = env_name[3:]
+            file_path = PATH_RAW_DATASET / (traj_path.split("/")[-1].split(".")[0] + ".mat")
+            print(f"Trajectory files for env \"{env_name}\" and task \"{file_path.stem}\" not yet converted."
+                  f" Trying to convert.\n")
+            convert_single_dataset_of_env(env_name, file_path)
+        except:
+            raise ValueError(f"Trajectory file {traj_path} not found and could not be created.")
+
+        print(f"Conversion successful. Saving dataset to: {traj_path}.\n")
 
     @classmethod
     def get_all_task_names(cls):

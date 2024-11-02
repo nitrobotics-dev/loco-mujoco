@@ -1,8 +1,8 @@
 traj_conf:
   joint_conf:
     pelvis_tx: [0.95, 0.0]
-    pelvis_tz: [-1.0, 0.0]
-    pelvis_ty: [0.8, -0.77]
+    pelvis_tz: [1.0, 0.0]
+    pelvis_ty: [0.8, 0.22]
     pelvis_tilt: [0.5, -0.13]
     pelvis_list: [0.5, 0.0]
     pelvis_rotation: [1.0, 0.0]

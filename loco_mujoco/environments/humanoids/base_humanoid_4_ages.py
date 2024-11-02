@@ -10,7 +10,6 @@ from dm_control import mjcf
 import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments.humanoids.base_humanoid import BaseHumanoid
-from loco_mujoco.utils.reward import MultiTargetVelocityReward
 from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
