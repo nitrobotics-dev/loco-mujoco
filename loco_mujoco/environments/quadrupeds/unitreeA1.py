@@ -9,7 +9,7 @@ import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils.math import rotate_obs
-from loco_mujoco.core.utils.goals import GoalDirectionVelocity
+#from loco_mujoco.core.utils.goals import GoalDirectionVelocity
 from loco_mujoco.core.utils.math import mat2angle_xy, angle2mat_xy, transform_angle_2pi
 from loco_mujoco.utils.checks import check_validity_task_mode_dataset
 
