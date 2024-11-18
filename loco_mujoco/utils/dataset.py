@@ -180,9 +180,10 @@ def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_fir
     trajec = np.concatenate((joint_pos, joint_vel))
 
     # rename if needed
+    old_keys = deepcopy(euler_keys)
     if rename_map is not None:
         for k, v in rename_map.items():
-            i = euler_keys.index(k)
+            i = old_keys.index(k)
             euler_keys[i] = v
 
     keys = ["q_" + k for k in euler_keys] + ["dq_" + k for k in euler_keys]

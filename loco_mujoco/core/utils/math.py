@@ -368,6 +368,35 @@ def calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids, body_roo
     return site_rpos, site_rangles, site_rvel
 
 
+def quaternion_angular_distance(q1, q2, backend):
+    """
+    Calculate the angular distance between two rotations represented by quaternions.
+
+    Args:
+        q1 (array): First quaternion. Shape (4,) or (batch_size, 4)
+        q2 (array): Second quaternion. Shape (4,) or (batch_size, 4)
+
+    Returns:
+        array: Angular distance between the two rotations. Shape (batch_size,)
+    """
+
+    if backend == "np":
+        R = np_R
+    else:
+        R = jnp_R
+
+    # Create Rotation objects for both quaternions
+    r1 = R.from_quat(q1)
+    r2 = R.from_quat(q2)
+
+    # Compute the relative rotation
+    relative_rotation = r1.inv() * r2
+
+    # Extract the angle of the relative rotation
+    angular_distance = relative_rotation.magnitude()  # Returns the angle in radians
+    return angular_distance
+
+
 def quat2angle(quat, backend):
     """
     Converts a quaternion to an angle.

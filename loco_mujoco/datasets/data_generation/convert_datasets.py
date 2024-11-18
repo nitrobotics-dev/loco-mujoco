@@ -3,6 +3,7 @@ from warnings import warn
 from pathlib import Path
 from dataclasses import replace
 from scipy.spatial.transform import Rotation as R
+import scipy.io as sio
 
 import mujoco
 import numpy as np
@@ -53,17 +54,48 @@ def create_traj_data(dataset: dict):
     qpos = np.array(qpos).T
     qvel = np.array(qvel).T
 
-    # convert to free joint
-    q_root_pos = qpos[:, :3]
-    q_root_euler = qpos[:, 3:6]
-    q_root_euler[:, 2] += np.pi
-    #q_root_euler[:, 2] = np.pi
-    q_root_euler = q_root_euler[:, [2, 0, 1]]
-    #q_root_euler = np.zeros_like(q_root_euler)
-    q_root_quat = R.from_euler("XYZ", q_root_euler).as_quat()
+    dt = 1 / frequency
+
+    # calculate new pelvis position for free joint
+    q_pelvis_tx = qpos[:, joint_names_in_qpos.index("pelvis_tx")]
+    q_pelvis_ty = qpos[:, joint_names_in_qpos.index("pelvis_ty")]
+    q_pelvis_tz = qpos[:, joint_names_in_qpos.index("pelvis_tz")]
+    q_root_pos = np.stack([q_pelvis_tx, -q_pelvis_tz, q_pelvis_ty + 0.975], axis=1)
+
+    q_pelvis_tilt = qpos[:, joint_names_in_qpos.index("pelvis_tilt")]
+    q_pelvis_list = qpos[:, joint_names_in_qpos.index("pelvis_list")]
+    q_pelvis_rotation = qpos[:, joint_names_in_qpos.index("pelvis_rotation")]
+    q_root_euler = np.stack([-1*q_pelvis_tilt, q_pelvis_list, -q_pelvis_rotation], axis=1)
+    q_root_rot = R.from_euler("xzy", q_root_euler) * R.from_quat(
+        np.array([0.7071067811865475, 0.7071067811865475, 0.0, 0.0])).inv()
+    q_root_quat = q_root_rot.as_quat()
+
     q_root = np.concatenate([q_root_pos, q_root_quat], axis=1)
     qpos = jnp.concatenate([q_root, qpos[:, 6:]], axis=1)
+
+    # calculate velocities of root
+    r1 = R.from_quat(q_root_quat[:-1])
+    r2 = R.from_quat(q_root_quat[1:])
+
+    # Calculate relative rotation between consecutive quaternions
+    delta_rotation = r2 * r1.inv()
+
+    # Convert relative rotation to axis-angle representation
+    angle = delta_rotation.magnitude().reshape(-1, 1)  # This is θ
+    axis = delta_rotation.as_rotvec() / angle  # Normalize to get rotation axis
+
+    # Calculate angular velocity vector (θ/Δt * axis)
+    dq_root_anglular_vel = (angle / dt) * axis
+
+    # caluclate linear velocity
+    dq_root_pos = (q_root_pos[1:] - q_root_pos[:-1]) / (1 * dt)
+
+    dq_root = np.concatenate([dq_root_pos, dq_root_anglular_vel], axis=1)
+    qvel = jnp.concatenate([dq_root, qvel[:-1, 6:]], axis=1)
+    qpos = qpos[:-1]
+
     joint_names_in_qpos = ["root"] + [j_name for j_name in joint_names_in_qpos if "pelvis" not in j_name]
+    joint_names_in_qvel = ["root"] + [j_name for j_name in joint_names_in_qpos if "pelvis" not in j_name]
 
     split_points = jnp.array([0, qpos.shape[0]]) if split_points is None else jnp.array(split_points)
 
@@ -139,7 +171,7 @@ def convert_single_dataset_of_env(env_name, file_path):
 def convert_all_datasets_of_env(env_name):
 
     for file_path in PATH_RAW_DATASET.iterdir():
-        if file_path.suffix == ".mat":
+        if file_path.suffix == ".mat" and "random_walk" in file_path.stem:
             convert_single_dataset_of_env(env_name, file_path)
 
 
@@ -149,7 +181,7 @@ def convert_all_datasets():
 
     converted_environments = []
     for task in all_task_names:
-        if "Mjx" not in task:
+        if "Mjx" not in task and "H1" in task:
             task = task.split(".")[0]
             try:
                 if task not in converted_environments:

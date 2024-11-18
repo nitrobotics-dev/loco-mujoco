@@ -1,10 +1,16 @@
-from loco_mujoco.environments.humanoids.base_humanoid import BaseHumanoid
+import warnings
+
+import mujoco
+
+from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
 from loco_mujoco.environments.humanoids.base_humanoid_4_ages import BaseHumanoid4Ages
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
-class HumanoidTorque(BaseHumanoid):
+
+
+class SkeletonTorque(BaseSkeleton):
 
     """
     Description
@@ -274,9 +280,7 @@ class HumanoidTorque(BaseHumanoid):
     ------------
 
     """
-
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real", "perfect"])
+    mjx_enabled = False
 
     def __init__(self, **kwargs):
         """
@@ -288,36 +292,36 @@ class HumanoidTorque(BaseHumanoid):
             assert kwargs["use_muscles"] is False, "Activating muscles in this environment not allowed. "
             del kwargs["use_muscles"]
 
-        super(HumanoidTorque, self).__init__(use_muscles=False, **kwargs)
-
-    @staticmethod
-    def generate(task="walk", dataset_type="real", **kwargs):
-
-        check_validity_task_mode_dataset(HumanoidTorque.__name__, task, None, dataset_type,
-                                         *HumanoidTorque.valid_task_confs.get_all())
-
-        if dataset_type == "real":
-            if task == "walk":
-                path = "datasets/humanoids/real/02-constspeed_reduced_humanoid.npz"
-            elif task == "run":
-                path = "datasets/humanoids/real/05-run_reduced_humanoid.npz"
-        elif dataset_type == "perfect":
-            if "use_foot_forces" in kwargs.keys():
-                assert kwargs["use_foot_forces"] is False
-            if "disable_arms" in kwargs.keys():
-                assert kwargs["disable_arms"] is True
-            if "use_box_feet" in kwargs.keys():
-                assert kwargs["use_box_feet"] is True
-
-            if task == "walk":
-                path = "datasets/humanoids/perfect/humanoid_torque_walk/perfect_expert_dataset_det.npz"
-            elif task == "run":
-                path = "datasets/humanoids/perfect/humanoid_torque_run/perfect_expert_dataset_det.npz"
-
-        return BaseHumanoid.generate(HumanoidTorque, path, task, dataset_type, **kwargs)
+        super(SkeletonTorque, self).__init__(use_muscles=False, **kwargs)
 
 
-class HumanoidMuscle(BaseHumanoid):
+class MjxSkeletonTorque(SkeletonTorque):
+    mjx_enabled = True
+
+    def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
+        if "model_option_conf" not in kwargs.keys():
+            model_option_conf = dict(iterations=4, ls_iterations=8)
+        else:
+            model_option_conf = kwargs["model_option_conf"]
+            del kwargs["model_option_conf"]
+        super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
+
+
+class HumanoidTorque(SkeletonTorque):
+    """
+    Wrapper class for SkeletonTorque. Deprecated and will be removed in a future release.
+    """
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            f"{self.__class__.__name__} is deprecated and will be removed in a future release. "
+            f"Please use {super().__class__.__name__} instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        super().__init__(*args, **kwargs)
+
+
+class HumanoidMuscle(BaseSkeleton):
 
     """
     Description
@@ -786,7 +790,7 @@ class HumanoidMuscle(BaseHumanoid):
         return BaseHumanoid.generate(HumanoidMuscle, path, task, dataset_type, **kwargs)
 
 
-class HumanoidTorque4Ages(BaseHumanoid4Ages):
+class HumanoidTorque4Ages(BaseSkeleton):
     """
     Mujoco environment of 4 simplified humanoid models with one torque actuator per joint.
     At the beginning of each episode, one of the four humanoid models are randomly

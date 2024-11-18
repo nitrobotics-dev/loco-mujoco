@@ -7,7 +7,6 @@ from scipy.spatial.transform import Rotation as np_R
 
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
-from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.utils import info_property
 
@@ -290,6 +289,17 @@ class UnitreeH1(BaseRobotHumanoid):
     def upper_body_xml_name(self):
         return "torso_link"
 
+    @info_property
+    def root_free_joint_xml_name(self):
+        return "root"
+
+    @info_property
+    def root_height_healthy_range(self):
+        """
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        """
+        return (0.0, 1.0)
+
     def _get_xml_modifications(self):
         """
         Function that specifies which joints, motors and equality constraints
@@ -318,74 +328,74 @@ class UnitreeH1(BaseRobotHumanoid):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
-    def _has_fallen(self, obs, info, data, return_err_msg=False):
-        """
-        Checks if a model has fallen.
-
-        Args:
-            obs (np.array): Current observation.
-            return_err_msg (bool): If True, an error message with violations is returned.
-
-        Returns:
-            True, if the model has fallen for the current observation, False otherwise.
-            Optionally an error message is returned.
-        """
-
-        pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond = (
-            self._has_fallen_compat(obs, info, data, np))
-
-        if return_err_msg:
-            error_msg = ""
-            if pelvis_y_cond:
-                error_msg += "pelvis_y_condition violated.\n"
-            elif pelvis_tilt_cond:
-                error_msg += "pelvis_tilt_condition violated.\n"
-            elif pelvis_list_cond:
-                error_msg += "pelvis_list_condition violated.\n"
-            elif pelvis_rotation_cond:
-                error_msg += "pelvis_rotation_condition violated.\n"
-            return pelvis_cond, error_msg
-        else:
-
-            return pelvis_cond
-
-    def _has_fallen_compat(self, obs, info, data, backend):
-
-        if backend == np:
-            R = np_R
-        else:
-            R = jnp_R
-
-        q_root = self._get_from_obs(obs, "q_root")
-        q_pelvis_y = q_root[2]
-        q_root_quat = q_root[3:7]
-        q_root_euler = R.from_quat(q_root_quat).as_euler("xyz")
-        q_pelvis_tilt, q_pelvis_list, q_pelvis_rotation = q_root_euler[0], q_root_euler[1], q_root_euler[2]
-
-        # q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
-        # q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
-        # q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
-        # q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
-
-        pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
-                                           backend.greater(q_pelvis_y, 0.1))
-        pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
-                                              backend.greater(q_pelvis_tilt, backend.pi / 12))
-        pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12),
-                                              backend.greater(q_pelvis_list, backend.pi / 8))
-        pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 8),
-                                                  backend.greater(q_pelvis_rotation, backend.pi / 8))
-
-        pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
-                                         backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
-
-        pelvis_cond = backend.squeeze(pelvis_cond)
-        pelvis_y_cond = backend.squeeze(pelvis_y_cond)
-        pelvis_tilt_cond = backend.squeeze(pelvis_tilt_cond)
-        pelvis_list_cond = backend.squeeze(pelvis_list_cond)
-        pelvis_rotation_cond = backend.squeeze(pelvis_rotation_cond)
-
-        return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
+    # def _has_fallen(self, obs, info, data, return_err_msg=False):
+    #     """
+    #     Checks if a model has fallen.
+    #
+    #     Args:
+    #         obs (np.array): Current observation.
+    #         return_err_msg (bool): If True, an error message with violations is returned.
+    #
+    #     Returns:
+    #         True, if the model has fallen for the current observation, False otherwise.
+    #         Optionally an error message is returned.
+    #     """
+    #
+    #     pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond = (
+    #         self._has_fallen_compat(obs, info, data, np))
+    #
+    #     if return_err_msg:
+    #         error_msg = ""
+    #         if pelvis_y_cond:
+    #             error_msg += "pelvis_y_condition violated.\n"
+    #         elif pelvis_tilt_cond:
+    #             error_msg += "pelvis_tilt_condition violated.\n"
+    #         elif pelvis_list_cond:
+    #             error_msg += "pelvis_list_condition violated.\n"
+    #         elif pelvis_rotation_cond:
+    #             error_msg += "pelvis_rotation_condition violated.\n"
+    #         return pelvis_cond, error_msg
+    #     else:
+    #
+    #         return pelvis_cond
+    #
+    # def _has_fallen_compat(self, obs, info, data, backend):
+    #
+    #     if backend == np:
+    #         R = np_R
+    #     else:
+    #         R = jnp_R
+    #
+    #     q_root = self._get_from_obs(obs, "q_root")
+    #     q_pelvis_y = q_root[2]
+    #     q_root_quat = q_root[3:7]
+    #     q_root_euler = R.from_quat(q_root_quat).as_euler("xyz")
+    #     q_pelvis_tilt, q_pelvis_list, q_pelvis_rotation = q_root_euler[0], q_root_euler[1], q_root_euler[2]
+    #
+    #     # q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
+    #     # q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
+    #     # q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
+    #     # q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
+    #
+    #     pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
+    #                                        backend.greater(q_pelvis_y, 0.1))
+    #     pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
+    #                                           backend.greater(q_pelvis_tilt, backend.pi / 12))
+    #     pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12),
+    #                                           backend.greater(q_pelvis_list, backend.pi / 8))
+    #     pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 8),
+    #                                               backend.greater(q_pelvis_rotation, backend.pi / 8))
+    #
+    #     pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
+    #                                      backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
+    #
+    #     pelvis_cond = backend.squeeze(pelvis_cond)
+    #     pelvis_y_cond = backend.squeeze(pelvis_y_cond)
+    #     pelvis_tilt_cond = backend.squeeze(pelvis_tilt_cond)
+    #     pelvis_list_cond = backend.squeeze(pelvis_list_cond)
+    #     pelvis_rotation_cond = backend.squeeze(pelvis_rotation_cond)
+    #
+    #     return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
 
     @classmethod
     def generate(cls, task="walk", dataset_type="real", **kwargs):
@@ -440,13 +450,7 @@ class UnitreeH1(BaseRobotHumanoid):
         """
 
         observation_spec = [# ------------- JOINT POS -------------
-                            ObservationType.FreeJointPos("q_root", xml_name="root"),
-                            # ObservationType.JointPos("q_pelvis_tx", xml_name="pelvis_tx"),
-                            # ObservationType.JointPos("q_pelvis_tz", xml_name="pelvis_tz"),
-                            # ObservationType.JointPos("q_pelvis_ty", xml_name="pelvis_ty"),
-                            # ObservationType.JointPos("q_pelvis_tilt", xml_name="pelvis_tilt"),
-                            # ObservationType.JointPos("q_pelvis_list", xml_name="pelvis_list"),
-                            # ObservationType.JointPos("q_pelvis_rotation", xml_name="pelvis_rotation"),
+                            ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
                             ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointPos("q_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointPos("q_l_arm_shx", xml_name="l_arm_shx"),
@@ -469,12 +473,6 @@ class UnitreeH1(BaseRobotHumanoid):
 
                             # ------------- JOINT VEL -------------
                             ObservationType.FreeJointVel("dq_root", xml_name="root"),
-                            # ObservationType.JointVel("dq_pelvis_tx", xml_name="pelvis_tx"),
-                            # ObservationType.JointVel("dq_pelvis_tz", xml_name="pelvis_tz"),
-                            # ObservationType.JointVel("dq_pelvis_ty", xml_name="pelvis_ty"),
-                            # ObservationType.JointVel("dq_pelvis_tilt", xml_name="pelvis_tilt"),
-                            # ObservationType.JointVel("dq_pelvis_list", xml_name="pelvis_list"),
-                            # ObservationType.JointVel("dq_pelvis_rotation", xml_name="pelvis_rotation"),
                             ObservationType.JointVel("dq_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointVel("dq_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointVel("dq_l_arm_shx", xml_name="l_arm_shx"),

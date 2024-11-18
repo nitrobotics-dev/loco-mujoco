@@ -1,22 +1,17 @@
-from copy import deepcopy
-
 import numpy as np
-import jax
 import jax.numpy as jnp
-
 import mujoco
-from loco_mujoco.core.utils.observations import Observation, ObservationType
-from loco_mujoco.core.utils.math import (calc_rel_positions, calc_rel_quaternions, calc_rel_body_velocities,
-                                         calculate_relative_site_quatities, quat2angle)
 from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
+
+from loco_mujoco.core.utils.observations import Observation, ObservationType
+from loco_mujoco.core.utils.math import calculate_relative_site_quatities
 
 
 class Goal(Observation):
 
-    registered = dict()
-
     def __init__(self, info_props, visualize_goal=False):
+
         self._initialized_from_traj = False
         self._info_props = info_props
         if visualize_goal:
@@ -25,11 +20,7 @@ class Goal(Observation):
         self.visualize_goal = visualize_goal
         super().__init__(obs_name=self.__class__.__name__)
 
-    def init_from_mj(self, model, data, current_obs_size):
-        raise NotImplementedError
-
-    @classmethod
-    def get_obs(cls, model, data, ind, backend):
+    def _init_from_mj(self, model, data, current_obs_size):
         raise NotImplementedError
 
     @property
@@ -39,6 +30,10 @@ class Goal(Observation):
     @property
     def requires_trajectory(self):
         return False
+
+    @classmethod
+    def data_type(cls):
+        return "userdata"
 
     def reset(self, data, backend, trajectory=None, traj_state=None):
         assert self.initialized
@@ -98,36 +93,17 @@ class Goal(Observation):
         return self.size_user_data
 
     @classmethod
-    def register(cls):
-        """
-        Register a goal in the goal list.
-
-        """
-        env_name = cls.__name__
-
-        if env_name not in Goal.registered:
-            Goal.registered[env_name] = cls
-
-    @staticmethod
-    def list_registered():
-        """
-        List registered goals.
-
-        Returns:
-             The list of the registered goals.
-
-        """
-        return list(Goal.registered.keys())
+    def list_goals(cls):
+        return [goal for goal in Goal.__subclasses__()]
 
 
 class NoGoal(Goal):
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_type_ind = np.array([])
         self.obs_ind = np.array([])
         self._initialized_from_mj = True
-        return [], []
 
     def init_from_traj(self, traj_handler):
         self._initialized_from_traj = True
@@ -163,7 +139,7 @@ class GoalTrajArrow(Goal):
 
         super().__init__(info_props, **kwargs)
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         # todo: This will only work if userdata contains only a single goal and no other info.
         data_type_ind = [i for i in range(data.userdata.size)]
@@ -171,7 +147,6 @@ class GoalTrajArrow(Goal):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def init_from_traj(self, traj_handler):
         pass
@@ -182,7 +157,7 @@ class GoalTrajArrow(Goal):
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.userdata[ind])
+        return backend.ravel(data.userdata[ind.GoalTrajArrow])
 
     @property
     def has_visual(self):
@@ -246,6 +221,7 @@ class GoalTrajMimic(Goal):
     _site_bodyid = None
 
     def __init__(self, info_props, **kwargs):
+
         # todo: implement n_step_lookahead (requires dynamic slicing in jax)
         self.n_step_lookahead = 1
         super().__init__(info_props, **kwargs)
@@ -254,12 +230,12 @@ class GoalTrajMimic(Goal):
         self.main_body_name = self._info_props["upper_body_xml_name"]
 
         # these will be calculated during initialization
-        self._traj_qpos_ind = None
-        self._traj_qvel_ind = None
+        self._qpos_ind = None
+        self._qvel_ind = None
         self._size_user_data = None
         self._size_additional_observation = None
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         data_type_ind = [i for i in range(data.userdata.size)]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
@@ -276,7 +252,6 @@ class GoalTrajMimic(Goal):
         self.__class__._body_rootid = model.body_rootid
         self.__class__._site_bodyid = model.site_bodyid
         self._initialized_from_traj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     def apply_xml_modifications(self, xml_handle, root_body_name):
         joints = xml_handle.find_all("joint")
@@ -286,9 +261,10 @@ class GoalTrajMimic(Goal):
             if body.name not in self._relevant_body_names and body.name != self.main_body_name:
                 self._relevant_body_names.append(body.name)
         n_sites = len(self._info_props["sites_for_mimic"]) - 1   # number of sites to be considered, -1 because all quantities are relative to the main site
-        size_for_joints = (2 * n_joints - 2) * self.n_step_lookahead
+        size_for_joint_pos = (5 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 7 dim -2 to not incl. x and y
+        size_for_joint_vel = (6 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 6 dim
         size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
-        self._size_user_data = (size_for_joints + size_for_sites) * self.n_step_lookahead
+        self._size_user_data = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
         self._size_additional_observation = size_for_sites
         self.allocate_user_data(xml_handle)
         if self.visualize_goal:
@@ -305,32 +281,39 @@ class GoalTrajMimic(Goal):
         return xml_handle
 
     def init_from_traj(self, traj_handler):
-
-        # todo: remove that weird indexing once fixed in observations
-        self._traj_qpos_ind = np.concatenate([obs.traj_data_type_ind for obs in self.obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointPos)])[2:]
-        self._traj_qvel_ind = np.concatenate([obs.traj_data_type_ind for obs in self.obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointVel)])
-
+        # focus on joints in the observation space
+        self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self.obs_container.entries()
+                                         if (type(obs) is ObservationType.JointPos) or
+                                         (type(obs) is ObservationType.FreeJointPos) or
+                                         (type(obs) is ObservationType.EntryFromFreeJointPos) or
+                                         (type(obs) is ObservationType.FreeJointPosNoXY)])
+        self._qvel_ind = np.concatenate([obs.data_type_ind for obs in self.obs_container.entries()
+                                         if (type(obs) is ObservationType.JointVel) or
+                                         (type(obs) is ObservationType.EntryFromFreeJointVel) or
+                                         (type(obs) is ObservationType.FreeJointVel)])
         self._initialized_from_traj = True
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
+    def get_obs(cls, model, data, data_ind_cont, backend):
 
-        # get trajectory goal
-        goal_traj = data.userdata[ind]
+        if len(cls._rel_site_ids) > 0:
 
-        # get relative site quantities for current data
-        rel_site_ids = cls._rel_site_ids
-        rel_body_ids = cls._site_bodyid[rel_site_ids]
-        site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids,
-                                                                               cls._body_rootid, backend)
+            # get trajectory goal
+            goal_traj = data.userdata[data_ind_cont.GoalTrajMimic]
 
-        # concatenate all relevant information
-        return backend.concatenate([backend.ravel(site_rpos),
-                                    backend.ravel(site_rangles),
-                                    backend.ravel(site_rvel),
-                                    backend.ravel(goal_traj)])
+            # get relative site quantities for current data
+            rel_site_ids = cls._rel_site_ids
+            rel_body_ids = cls._site_bodyid[rel_site_ids]
+            site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids,
+                                                                                   cls._body_rootid, backend)
+
+            # concatenate all relevant information
+            return backend.concatenate([backend.ravel(site_rpos),
+                                        backend.ravel(site_rangles),
+                                        backend.ravel(site_rvel),
+                                        backend.ravel(goal_traj)])
+        else:
+            return backend.array([])
 
     @property
     def has_visual(self):
@@ -359,8 +342,8 @@ class GoalTrajMimic(Goal):
                                                                                self._body_rootid, backend)
 
         # setup goal observation
-        goal_obs = backend.concatenate([qpos_traj[self._traj_qpos_ind],
-                                        qvel_traj[self._traj_qvel_ind],
+        goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
+                                        qvel_traj[self._qvel_ind],
                                         backend.ravel(site_rpos),
                                         backend.ravel(site_rangles),
                                         backend.ravel(site_rvel)])
@@ -401,30 +384,3 @@ class GoalTrajMimic(Goal):
         if self._size_user_data is None:
             raise NotImplementedError
         return self._size_user_data
-
-
-class GoalDirectionVelocity:
-
-    def __init__(self):
-        self._direction = None
-        self._velocity = None
-
-    def __call__(self):
-        return self.get_goal()
-
-    def get_goal(self):
-        assert self._direction is not None
-        assert self._velocity is not None
-        return deepcopy(self._direction), deepcopy(self._velocity)
-
-    def set_goal(self, direction, velocity):
-        self._direction = direction
-        self._velocity = velocity
-
-    def get_direction(self):
-        assert self._direction is not None
-        return deepcopy(self._direction)
-
-    def get_velocity(self):
-        assert self._velocity is not None
-        return deepcopy(self._velocity)

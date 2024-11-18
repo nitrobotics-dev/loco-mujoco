@@ -1,7 +1,8 @@
 import numpy as np
 import mujoco
+
 from loco_mujoco.core import ObservationType
-from loco_mujoco.core.utils.math import calc_rel_positions, calc_rel_quaternions, calc_rel_body_velocities, quat2angle, calculate_relative_site_quatities
+from loco_mujoco.core.utils.math import  calculate_relative_site_quatities, quaternion_angular_distance
 
 
 class Reward:
@@ -148,7 +149,7 @@ class MimicReward(Reward):
 
     def __init__(self, obs_dict, qpos_w_exp=10.0, qvel_w_exp=2.0, rpos_w_exp=100.0,
                  rquat_w_exp=10.0, rvel_w_exp=0.1, qpos_w_sum=0.0, qvel_w_sum=0.0, rpos_w_sum=0.5,
-                 rquat_w_sum=0.3, rvel_w_sum=0.1, standardize=False, sites_for_mimic=None, **kwargs):
+                 rquat_w_sum=0.3, rvel_w_sum=0.1, sites_for_mimic=None, **kwargs):
 
         super().__init__(obs_dict, **kwargs)
 
@@ -162,21 +163,6 @@ class MimicReward(Reward):
         self._rpos_w_sum = rpos_w_sum
         self._rquat_w_sum = rquat_w_sum
         self._rvel_w_sum = rvel_w_sum
-        self._standardize = standardize
-
-        # to be defined in init_from_traj
-        self._obs_qpos_ind = None
-        self._obs_qvel_ind = None
-        self._traj_qpos_ind = None
-        self._traj_qvel_ind = None
-        self._joints_in_obs = None
-        self._mean_qpos = None
-        self._mean_qvel = None
-        self._std_qpos = None
-        self._std_qvel = None
-        self._std_rpos = None
-        self._std_rquat = None
-        self._std_rvel = None
 
         # get main body name of the environment
         self.main_body_name = self._info_props["upper_body_xml_name"]
@@ -188,35 +174,55 @@ class MimicReward(Reward):
                                        for name in rel_site_names])
         self._rel_body_ids = np.array([model.site_bodyid[site_id] for site_id in self._rel_site_ids])
 
-    def init_from_traj(self, traj_handler=None):
-        # todo: remove shift by 2 once the observation space does not include xy anymore
-        self._obs_qpos_ind = np.concatenate([obs.obs_ind for obs in self._obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointPos)])[2:] - 2
-        self._obs_qvel_ind = np.concatenate([obs.obs_ind for obs in self._obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointVel)])
-        self._traj_qpos_ind = np.concatenate([obs.traj_data_type_ind for obs in self._obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointPos)])[2:]
-        self._traj_qvel_ind = np.concatenate([obs.traj_data_type_ind for obs in self._obs_container.entries()
-                                             if isinstance(obs, ObservationType.JointVel)])
+        # focus on joints in the observation space
+        self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
+                                         if (type(obs) is ObservationType.JointPos) or
+                                         (type(obs) is ObservationType.FreeJointPos) or
+                                         (type(obs) is ObservationType.EntryFromFreeJointPos) or
+                                         (type(obs) is ObservationType.FreeJointPosNoXY)])
+
+        self._qvel_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
+                                         if (type(obs) is ObservationType.JointVel) or
+                                         (type(obs) is ObservationType.EntryFromFreeJointVel) or
+                                         (type(obs) is ObservationType.FreeJointVel)])
+
+        # determine the quaternions in qpos. Note: ObservationType.EntryFromFreeJointPos for quaternions not supported
+        quat_in_qpos = []
+        for obs in self._obs_container.entries():
+            if type(obs) is ObservationType.FreeJointPos:
+                quat = obs.data_type_ind[3:]
+                assert len(quat) == 4, "Quaternions must have 4 elements"
+                quat_in_qpos.append(quat)
+            elif type(obs) is ObservationType.FreeJointPosNoXY:
+                quat = obs.data_type_ind[1:]
+                assert len(quat) == 4, "Quaternions must have 4 elements"
+                quat_in_qpos.append(quat)
+
+        quat_in_qpos = np.concatenate(quat_in_qpos)
+        self._quat_in_qpos = np.array([True if q in quat_in_qpos else False for q in self._qpos_ind])
 
     def __call__(self, state, action, next_state, absorbing, info, model, data, carry, backend, traj_data=None):
 
-        # todo: check that this is correct and code the part where the obs_container init_from_traj is called
+
+
         # get all quantities from trajectory
         traj_data_single = traj_data.get(carry.traj_state.traj_no, carry.traj_state.subtraj_step_no)
-        qpos_traj, qvel_traj = traj_data_single.qpos[self._traj_qpos_ind], traj_data_single.qvel[self._traj_qvel_ind]
+        qpos_traj, qvel_traj = traj_data_single.qpos[self._qpos_ind], traj_data_single.qvel[self._qvel_ind]
+        qpos_quat_traj = qpos_traj[self._quat_in_qpos].reshape(-1, 4)
         site_rpos_traj, site_rangles_traj, site_rvel_traj =\
             calculate_relative_site_quatities(traj_data_single, self._rel_site_ids,
                                               self._rel_body_ids, model.body_rootid, backend)
 
         # get all quantities from the current data
-        qpos, qvel = data.qpos[self._traj_qpos_ind], data.qvel[self._traj_qvel_ind]
+        qpos, qvel = data.qpos[self._qpos_ind], data.qvel[self._qvel_ind]
+        qpos_quat = qpos[self._quat_in_qpos].reshape(-1, 4)
         site_rpos, site_rangles, site_rvel = (
             calculate_relative_site_quatities(data, self._rel_site_ids, self._rel_body_ids,
                                               model.body_rootid, backend))
 
         # calculate distances
-        qpos_dist = backend.mean(backend.square(qpos - qpos_traj))
+        qpos_dist = backend.mean(backend.square(qpos[~self._quat_in_qpos] - qpos_traj[~self._quat_in_qpos]))
+        qpos_dist += backend.mean(quaternion_angular_distance(qpos_quat, qpos_quat_traj, backend))
         qvel_dist = backend.mean(backend.square(qvel - qvel_traj))
         rpos_dist = backend.mean(backend.square(site_rpos - site_rpos_traj))
         rquat_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
@@ -231,8 +237,10 @@ class MimicReward(Reward):
         rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
         rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
-        return (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward + self._rpos_w_sum * rpos_reward
-                + self._rquat_w_sum * rquat_reward + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
+        return self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
+
+        #return # self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward + self._rpos_w_sum * rpos_reward
+                #+ self._rquat_w_sum * rquat_reward + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
 
     @property
     def requires_trajectory(self):

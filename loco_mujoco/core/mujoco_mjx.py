@@ -74,7 +74,7 @@ class Mjx(Mujoco):
         data, carry = self._mjx_simulation_post_step(data, carry)
 
         # create the observation
-        cur_obs = self._mjx_create_observation(data, carry)
+        cur_obs = self._mjx_create_observation(self._model, data, carry)
 
         # modify the observation and the data if needed (does nothing by default)
         cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, data, cur_info, carry)
@@ -112,7 +112,7 @@ class Mjx(Mujoco):
 
         data = self._mjx_reset_init_data(data, carry)
 
-        obs = self._mjx_create_observation(data, carry)
+        obs = self._mjx_create_observation(self._model, data, carry)
         reward = 0.0
         absorbing = jnp.array(False, dtype=bool)
         done = jnp.array(False, dtype=bool)
@@ -128,13 +128,13 @@ class Mjx(Mujoco):
                               final_observation=state.observation,
                               final_info=state.info)
         # create new observation
-        obs = self._mjx_create_observation(data, carry)
+        obs = self._mjx_create_observation(self._model, data, carry)
 
         return state.replace(data=data, observation=obs, additional_carry=carry)
 
-    def _mjx_create_observation(self, data, carry):
+    def _mjx_create_observation(self, model, data, carry):
         # get the base observation defined in observation_spec and the goal
-        obs = self._create_observation_compat(data, jnp)
+        obs = self._create_observation_compat(model, data, jnp)
         return self._mjx_order_observation(obs)
 
     def _mjx_order_observation(self, obs):
@@ -147,7 +147,6 @@ class Mjx(Mujoco):
     def _mjx_update_info_dictionary(self, info, obs, data, carry):
         return info
 
-    @partial(jax.jit, static_argnums=(0, 6))
     def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data):
         return 0.0
 

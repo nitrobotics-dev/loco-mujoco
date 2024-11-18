@@ -9,11 +9,11 @@ from dm_control import mjcf
 
 import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
-from loco_mujoco.environments.humanoids.base_humanoid import BaseHumanoid
+from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
 from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
-class BaseHumanoid4Ages(BaseHumanoid):
+class BaseHumanoid4Ages(BaseSkeleton):
     """
     Mujoco environment of 4 simplified humanoid models.
     At the beginning of each episode, one of the four humanoid models are

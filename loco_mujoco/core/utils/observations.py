@@ -25,20 +25,10 @@ class ObservationIndexContainer:
     """
 
     def __init__(self):
-        """
-        Indices for the different observation types in the datastructure.
-        """
-        self.body_xpos = []
-        self.body_xquat = []
-        self.body_cvel = []
-        self.free_joint_qpos = []
-        self.free_joint_qvel = []
-        self.joint_qpos = []
-        self.joint_qvel = []
-        self.site_xpos = []
-        self.site_xmat = []
-        self.forces = []
-        self.goal = []
+
+        # add attributes for the different observation types
+        for obs_type in ObservationType.list_all():
+            setattr(self, obs_type.__name__, [])
 
         self.concatenated_indices = None
 
@@ -95,6 +85,9 @@ class Observation:
     """
     Base class for all observation types.
     """
+
+    registered = dict()
+
     def __init__(self, obs_name: str):
         self.name = obs_name
         self.obs_container = None
@@ -105,10 +98,8 @@ class Observation:
         self.min, self.max = None, None
         self._initialized_from_mj = False
 
-        # these attributes can be initialized from TrajectoryData (optionally)
-        self.traj_data_type_ind = None
-
-    def init_from_mj(self, model, data, current_obs_size):
+    def init_from_mj(self, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
+                     obs_ind_cont: ObservationIndexContainer):
         """
         Initialize the observation type from the Mujoco data structure and model.
 
@@ -116,9 +107,24 @@ class Observation:
             model: The Mujoco model.
             data: The Mujoco data structure.
             current_obs_size: The current size of the observation space.
+            data_ind_cont (ObservationIndexContainer): The data indices container.
+            obs_ind_cont (ObservationIndexContainer): The observation indices container.
 
-        Returns:
-            The data type indices in the Mujoco data structure and the observation indices.
+        """
+        # extract all information from data and model
+        self._init_from_mj(model, data, current_obs_size)
+
+        # store the indices in the ObservationIndexContainer
+        self._add_to_data_and_obs_cont(data_ind_cont, obs_ind_cont)
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        """
+        Initialize the observation type from the Mujoco data structure and model.
+
+        Args:
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            current_obs_size: The current size of the observation space.
 
         """
         raise NotImplementedError
@@ -133,38 +139,68 @@ class Observation:
         """
         pass
 
-    @classmethod
-    def get_obs(cls, model, data, ind, backend):
+    def _add_to_data_and_obs_cont(self, data_ind_cont: ObservationIndexContainer,
+                                  obs_ind_cont: ObservationIndexContainer):
         """
-        Getter for all the observations of this type from the Mujoco datastructure.
+        Adds the indices corresponding to this observation to the specified
+        `ObservationIndexContainer` for both the MuJoCo data structure and the
+        observation itself.
+
+        Args:
+            data_ind_cont (ObservationIndexContainer): The container holding
+                the indices for the MuJoCo data structure.
+            obs_ind_cont (ObservationIndexContainer): The container holding
+                the indices for the observation.
+        """
+
+        # get the obs type name
+        obs_type_name = self.__class__.__name__
+
+        # store the indices in the ObservationIndexContainer
+        data_ind_cont_attr = getattr(data_ind_cont, obs_type_name)
+        obs_ind_cont_attr = getattr(obs_ind_cont, obs_type_name)
+        data_ind_cont_attr.extend(deepcopy(self.data_type_ind.tolist()))
+        obs_ind_cont_attr.extend(deepcopy(self.obs_ind.tolist()))
+
+    @classmethod
+    def get_obs(cls, model, data, data_ind_cont, backend):
+        """
+        Default getter for all the observations from the Mujoco data structure.
 
         Args:
             model: The Mujoco model.
             data: The Mujoco data structure.
-            ind: The indices of *allÜ observations of this types in the datastructure.
+            data_ind_cont (ObservationIndexContainer): The indices of *all* observations of all types.
             backend: The backend to use for the observation.
 
         Returns:
             The observation regarding this observation type.
 
         """
-        raise NotImplementedError
+        obs_type_name = cls.__name__
+        data_type_name = cls.data_type()
+
+        assert data_type_name is not None, (f"Observation type {cls.__name__} does not have a default data_type. "
+                                            f"Default get_obs method can not be used, please implement"
+                                            f" a dedicated one.")
+
+        # get the attribute from the mujoco data structure
+        data_attr = getattr(data, data_type_name)
+        # get the indices of all observations of this type
+        data_ind = getattr(data_ind_cont, obs_type_name)
+        # return the observation
+        return backend.ravel(data_attr[data_ind])
 
     @classmethod
-    def get_obs_from_traj(cls, traj_data, traj_info, ind, backend):
+    def data_type(cls):
         """
-        Getter for all the observations of this type from the Trajectory datastructure.
-
-        Args:
-            traj_data (TrajectoryData): The trajectory datastructure.
-            traj_info (TrajectoryInfo): The trajectory information.
-            ind: The indices of *allÜ observations of this types in the datastructure.
-            backend: The backend to use for the observation.
+        Attribute name in the mujoco data structure. If this is provided, the default get_obs method can be used.
+        If not provided, a dedicated get_obs method must be implemented.
 
         Returns:
-            The observation regarding this observation type.
+            The attribute name in the Mujoco data structure.
         """
-        raise NotImplementedError
+        return None
 
     @property
     def initialized_from_mj(self):
@@ -182,6 +218,31 @@ class Observation:
         else:
             raise ValueError("Input must be an integer or a numpy array of integers")
 
+    @classmethod
+    def register(cls):
+        """
+        Register observation in the list and as an observation type.
+
+        """
+        obs_type_name = cls.__name__
+
+        if obs_type_name not in Observation.registered:
+            Observation.registered[obs_type_name] = cls
+
+        # register it also in observation type class
+        ObservationType.register(cls)
+
+    @staticmethod
+    def list_registered():
+        """
+        List registered Observations.
+
+        Returns:
+             The list of the registered goals.
+
+        """
+        return list(Observation.registered.keys())
+
 
 class SimpleObs(Observation):
     """
@@ -192,15 +253,6 @@ class SimpleObs(Observation):
     def __init__(self, obs_name: str, xml_name: str):
         self.xml_name = xml_name
         super().__init__(obs_name)
-
-    def _init_body_info_from_traj(self, traj_info):
-        try:
-            self.traj_data_type_ind = traj_info.body_name2ind[self.xml_name]
-        except KeyError:
-            self.traj_data_type_ind = None
-
-    def _init_joint_info_from_traj(self, traj_info):
-        self.traj_data_type_ind = traj_info.joint_name2ind_qpos[self.xml_name]
 
 
 class BodyPos(SimpleObs):
@@ -213,7 +265,7 @@ class BodyPos(SimpleObs):
 
     dim = 3
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -221,15 +273,12 @@ class BodyPos(SimpleObs):
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
-        self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
-    def init_from_traj(self, traj_handler):
-        self._init_body_info_from_traj(traj_handler.traj_info)
+        self._initialized_from_mj = True
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.xpos[ind])
+    def data_type(cls):
+        return "xpos"
 
 
 class BodyRot(SimpleObs):
@@ -242,7 +291,7 @@ class BodyRot(SimpleObs):
 
     dim = 4
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).cvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -251,14 +300,10 @@ class BodyRot(SimpleObs):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
-
-    def init_from_traj(self, traj_handler):
-        self._init_body_info_from_traj(traj_handler.traj_info)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.xquat[ind])
+    def data_type(cls):
+        return "xquat"
 
 
 class BodyVel(SimpleObs):
@@ -271,7 +316,7 @@ class BodyVel(SimpleObs):
 
     dim = 6
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).xquat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -280,14 +325,10 @@ class BodyVel(SimpleObs):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
-
-    def init_from_traj(self, traj_handler):
-        self._init_body_info_from_traj(traj_handler.traj_info)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.cvel[ind])
+    def data_type(cls):
+        return "cvel"
 
 
 class FreeJointPos(SimpleObs):
@@ -300,25 +341,70 @@ class FreeJointPos(SimpleObs):
 
     dim = 7
 
-    def init_from_mj(self, model, data, current_obs_size):
-        dim = len(data.joint(self.xml_name).qpos)
-        assert dim == self.dim
+    def _init_from_mj(self, model, data, current_obs_size):
         # note: free joints do not have limits
-        self.min, self.max = [-np.inf] * dim, [np.inf] * dim
+        self.min, self.max = [-np.inf] * FreeJointPos.dim, [np.inf] * FreeJointPos.dim
         free_joint_id = data.joint(self.xml_name).id
-        data_type_ind = [i for i in range(free_joint_id, free_joint_id+self.dim)]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
+        start_addr = model.jnt_qposadr[free_joint_id]
+        data_type_ind = [i for i in range(start_addr, start_addr + FreeJointPos.dim)]
+        obs_ind = [j for j in range(current_obs_size, current_obs_size + FreeJointPos.dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
-
-    def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.qpos[ind])
+    def data_type(cls):
+        return "qpos"
+
+
+class EntryFromFreeJointPos(FreeJointPos):
+    """
+    Observation Type holding *a single entry* of a free joint pose.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    dim = 1
+
+    def __init__(self, entry_index: int, **kwargs):
+        assert type(entry_index) == int, "entry_index must be an integer."
+        self._entry_index = entry_index
+        super().__init__(**kwargs)
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        super()._init_from_mj(model, data, current_obs_size)
+        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
+        self.data_type_ind = self.data_type_ind[self._entry_index]
+        self.obs_ind = self.obs_ind[0]
+        self._initialized_from_mj = True
+
+    @classmethod
+    def data_type(cls):
+        return "qpos"
+
+
+class FreeJointPosNoXY(FreeJointPos):
+    """
+    Observation Type holding the height and the 4D quaternion of a free joint pose, neglecting the x and y position.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    dim = 5
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        super()._init_from_mj(model, data, current_obs_size)
+
+        self.min, self.max = self.min[2:], self.max[2:]
+        self.data_type_ind = self.data_type_ind[2:]
+        self.obs_ind = self.obs_ind[:-2]
+        self._initialized_from_mj = True
+
+    @classmethod
+    def data_type(cls):
+        return "qpos"
 
 
 class JointPos(SimpleObs):
@@ -331,7 +417,7 @@ class JointPos(SimpleObs):
 
     dim = 1
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qpos)
         assert dim == self.dim
         jh = model.joint(jnt_name2id(self.xml_name, model))
@@ -339,19 +425,16 @@ class JointPos(SimpleObs):
             self.min, self.max = [jh.range[0]], [jh.range[1]]
         else:
             self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.joint(self.xml_name).id)
+        data_type_ind = [model.jnt_qposadr[jh.id]]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
-        self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
-    def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj.info)
+        self._initialized_from_mj = True
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.qpos[ind])
+    def data_type(cls):
+        return "qpos"
 
 
 class FreeJointVel(SimpleObs):
@@ -365,25 +448,46 @@ class FreeJointVel(SimpleObs):
 
     dim = 6
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qvel)
         assert dim == self.dim
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
         free_joint_id = data.joint(self.xml_name).id
-        data_type_ind = [i for i in range(free_joint_id, free_joint_id + self.dim)]
+        start_addr = model.jnt_dofadr[free_joint_id]
+        data_type_ind = [i for i in range(start_addr, start_addr + FreeJointVel.dim)]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
-
-    def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.qvel[ind])
+    def data_type(cls):
+        return "qvel"
+
+
+class EntryFromFreeJointVel(FreeJointVel):
+    """
+    Observation Type holding a single entry from of a free joint velocity.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    def __init__(self, entry_index: int, **kwargs):
+        assert type(entry_index) == int, "entry_index must be an integer."
+        self._entry_index = entry_index
+        super().__init__(**kwargs)
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        super()._init_from_mj(model, data, current_obs_size)
+        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
+        self.data_type_ind = self.data_type_ind[self._entry_index]
+        self.obs_ind = self.obs_ind[0]
+
+    @classmethod
+    def data_type(cls):
+        return "qvel"
 
 
 class JointVel(SimpleObs):
@@ -396,23 +500,19 @@ class JointVel(SimpleObs):
 
     dim = 1
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.joint(self.xml_name).id)
+        data_type_ind = [model.jnt_dofadr[data.joint(self.xml_name).id]]
         obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
-
-    def init_from_traj(self, traj_handler):
-        self._init_joint_info_from_traj(traj_handler.traj.info)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.qvel[ind])
+    def data_type(cls):
+        return "qvel"
 
 
 class SitePos(SimpleObs):
@@ -425,7 +525,7 @@ class SitePos(SimpleObs):
 
     dim = 3
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         dim = len(data.site(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -434,11 +534,10 @@ class SitePos(SimpleObs):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.site_xpos[ind])
+    def data_type(cls):
+        return "site_xpos"
 
 
 class SiteRot(SimpleObs):
@@ -451,7 +550,7 @@ class SiteRot(SimpleObs):
 
     dim = 9
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         # Sites don't have rotation quaternion for some reason...
         # x_mat is rotation matrix with shape (9, )
         dim = len(data.site(self.xml_name).xmat)
@@ -462,11 +561,10 @@ class SiteRot(SimpleObs):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.site_xmat[ind])
+    def data_type(cls):
+        return "site_xmat"
 
 
 class Force(Observation):
@@ -489,7 +587,7 @@ class Force(Observation):
         self.data_geom_id1 = None
         self.data_geom_id2 = None
 
-    def init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, model, data, current_obs_size):
         # get all required information from data
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_geom_id1 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, self.xml_name_geom1)
@@ -499,10 +597,10 @@ class Force(Observation):
         self.data_type_ind = np.array(data_type_ind)
         self.obs_ind = np.array(obs_ind)
         self._initialized_from_mj = True
-        return deepcopy(data_type_ind), deepcopy(obs_ind)
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
+    def get_obs(cls, model, data, data_ind_cont, backend):
+        ind = data_ind_cont.Force
         if backend == np:
             return backend.ravel(cls.mj_collision_force(model, data, ind))
         elif backend == jnp:
@@ -543,7 +641,38 @@ class ObservationType:
     JointPos = JointPos
     JointVel = JointVel
     FreeJointPos = FreeJointPos
+    EntryFromFreeJointPos = EntryFromFreeJointPos
+    FreeJointPosNoXY = FreeJointPosNoXY
     FreeJointVel = FreeJointVel
+    EntryFromFreeJointVel = EntryFromFreeJointVel
     SitePos = SitePos
     SiteRot = SiteRot
     Force = Force
+
+    @classmethod
+    def register(cls, new_obs_type):
+        """
+        Register a new observation type.
+
+        Args:
+            new_obs_type: The new observation type to register.
+
+        """
+        # Check if new_obs_type is a class
+        if not isinstance(new_obs_type, type):
+            raise TypeError(f"{new_obs_type} must be a class.")
+
+        # Check if new_obs_type inherits from Observation
+        if not issubclass(new_obs_type, Observation):
+            raise TypeError(f"{new_obs_type.__name__} must inherit from Observation.")
+
+        setattr(cls, new_obs_type.__name__, new_obs_type)
+
+    @classmethod
+    def list_all(cls):
+        """
+        List all observation types.
+        """
+        return [getattr(ObservationType, obs_type) for obs_type in dir(cls) if not obs_type.startswith("__")
+                and obs_type not in ["register", "list_all"]]
+

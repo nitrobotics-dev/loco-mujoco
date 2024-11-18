@@ -61,12 +61,17 @@ class Mujoco:
         # set goal
         self._goal = goal
 
+        # add goal to observation spec
+        if goal is not None:
+            # todo: right now only one goal is supported, do we need more?
+            observation_spec.append(goal)
+
         # read the observation space, create a dictionary of observations and goals containing information
         # about each observation's type, indices, min and max values, etc. Additionally, create two dataclasses
         # containing the indices in the datastructure for each observation type (data_indices) and the indices for
         # each observation type in the observation array (obs_indices).
         self.obs_container, self._data_indices, self._obs_indices = (
-            self._setup_observations(observation_spec, goal, self._model, self._data))
+            self._setup_observations(observation_spec, self._model, self._data))
 
         # define observation space bounding box
         observation_space = Box(*self._get_obs_limits())
@@ -102,7 +107,7 @@ class Mujoco:
         # todo: replace all cur_step_in_episode to use additional info!
         self._additional_carry = self._init_additional_carry(key, self._data)
         self._data = self._reset_init_data(self._data, self._additional_carry)
-        self._obs = self._create_observation(self._data, self._additional_carry)
+        self._obs = self._create_observation(self._model, self._data, self._additional_carry)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         return self._obs
 
@@ -136,11 +141,11 @@ class Mujoco:
 
             # recompute thef action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
-                cur_obs = self._create_observation(self._data, carry)
+                cur_obs = self._create_observation(self._model, self._data, carry)
 
         # create the final observation
         if not self._recompute_action_per_step:
-            cur_obs = self._create_observation(self._data, carry)
+            cur_obs = self._create_observation(self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._data, cur_info, carry)
@@ -327,16 +332,15 @@ class Mujoco:
         self._mdp_info.observation_space = Box(*self._get_obs_limits())
 
     @staticmethod
-    def _setup_observations(observation_spec, goal, model, data):
+    def _setup_observations(observation_spec, model, data):
         """
         Sets up the observation space for the environment. It generates a dictionary containing all the observation
         types and their corresponding information, as well as two dataclasses containing the indices in the
         Mujoco datastructure for each observation type (data_indices) and the indices for each observation type
-        in the observation array (obs_indices). Goals are equally treated as observation types.
+        in the observation array (obs_indices).
 
         Args:
             observation_spec (list): A list of observation types.
-            goal (Goal): A goal class.
             model: Mujoco model.
             data: Mujoco data structure.
 
@@ -359,59 +363,13 @@ class Mujoco:
         # calculate the indices for the different observation types
         for obs in observation_spec:
             # initialize the observation type and get all relevant data indices
-            d_ind, o_ind = obs.init_from_mj(model, data, i)
-            # add the indices to the corresponding observation type data indices for fast observation retrieval
-            # during the create_observation function
-            if isinstance(obs, ObservationType.BodyPos):
-                data_ind.body_xpos.extend(d_ind)
-                obs_ind.body_xpos.extend(o_ind)
-            elif isinstance(obs, ObservationType.BodyVel):
-                data_ind.body_cvel.extend(d_ind)
-                obs_ind.body_cvel.extend(o_ind)
-            elif isinstance(obs, ObservationType.BodyRot):
-                data_ind.body_xquat.extend(d_ind)
-                obs_ind.body_xquat.extend(o_ind)
-            elif isinstance(obs, ObservationType.JointPos):
-                data_ind.joint_qpos.extend(d_ind)
-                obs_ind.joint_qpos.extend(o_ind)
-            elif isinstance(obs, ObservationType.JointVel):
-                data_ind.joint_qvel.extend(d_ind)
-                obs_ind.joint_qvel.extend(o_ind)
-            elif isinstance(obs, ObservationType.FreeJointPos):
-                data_ind.free_joint_qpos.extend(d_ind)
-                obs_ind.free_joint_qpos.extend(o_ind)
-            elif isinstance(obs, ObservationType.FreeJointVel):
-                data_ind.free_joint_qvel.extend(d_ind)
-                obs_ind.free_joint_qvel.extend(o_ind)
-            elif isinstance(obs, ObservationType.SitePos):
-                data_ind.site_xpos.extend(d_ind)
-                obs_ind.site_xpos.extend(o_ind)
-            elif isinstance(obs, ObservationType.SiteRot):
-                data_ind.site_xmat.extend(d_ind)
-                obs_ind.site_xmat.extend(o_ind)
-            elif isinstance(obs, ObservationType.Force):
-                data_ind.forces.extend(d_ind)
-                obs_ind.forces.extend(o_ind)
-            else:
-                raise ValueError
+            obs.init_from_mj(model, data, i, data_ind, obs_ind)
 
             i += obs.dim
             if obs.name in obs_container.keys():
                 raise KeyError("Duplicate keys are not allowed. Key: ", obs.name)
 
             obs_container[obs.name] = obs
-
-        # add goal class to observation dict
-        # todo: only single goals are supported, maybe change this in future
-        if goal is not None:
-            d_ind, o_ind = goal.init_from_mj(model, data, i)
-            data_ind.goal.extend(d_ind)
-            obs_ind.forces.extend(o_ind)
-
-        if goal.name in obs_container.keys():
-            raise KeyError("Duplicate keys are not allowed. Key: ", goal.name)
-
-        obs_container[goal.name] = goal
 
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
@@ -422,9 +380,9 @@ class Mujoco:
     def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
         return 0.0
 
-    def _create_observation(self, data, carry):
+    def _create_observation(self, model, data, carry):
         # get the base observation defined in observation_spec and the goal
-        obs = self._create_observation_compat(data, np)
+        obs = self._create_observation_compat(model, data, np)
         return self._order_observation(obs)
 
     def _order_observation(self, obs):
@@ -434,24 +392,12 @@ class Mujoco:
         obs[self._obs_indices.concatenated_indices] = obs
         return obs
 
-    def _create_observation_compat(self, data, backend):
+    def _create_observation_compat(self, model, data, backend):
         """
         Creates the observation array by concatenating the observation extracted from all observation types.
         """
-
-        # extract the observations from all observation types in the Mujoco Datastructure
-        obs = backend.concatenate(
-            [ObservationType.BodyPos.get_obs(None, data, self._data_indices.body_xpos, backend),
-             ObservationType.BodyRot.get_obs(None, data, self._data_indices.body_xquat, backend),
-             ObservationType.BodyVel.get_obs(None, data, self._data_indices.body_cvel, backend),
-             ObservationType.FreeJointPos.get_obs(None, data, self._data_indices.free_joint_qpos, backend),
-             ObservationType.FreeJointVel.get_obs(None, data, self._data_indices.free_joint_qvel, backend),
-             ObservationType.JointPos.get_obs(None, data, self._data_indices.joint_qpos, backend),
-             ObservationType.JointVel.get_obs(None, data, self._data_indices.joint_qvel, backend),
-             ObservationType.SitePos.get_obs(None, data, self._data_indices.site_xpos, backend),
-             ObservationType.SiteRot.get_obs(None, data, self._data_indices.site_xmat, backend),
-             self._goal.get_obs(None, data, self._data_indices.goal, backend)])
-
+        obs = backend.concatenate([obs_type.get_obs(model, data, self._data_indices, backend)
+                                   for obs_type in ObservationType.list_all()])
         return obs
 
     @staticmethod

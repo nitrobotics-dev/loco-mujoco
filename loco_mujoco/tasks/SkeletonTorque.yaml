@@ -1,0 +1,8 @@
+SkeletonTorque.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward
+
+
+MjxSkeletonTorque.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward

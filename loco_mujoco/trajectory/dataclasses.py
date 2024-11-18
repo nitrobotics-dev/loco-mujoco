@@ -228,7 +228,7 @@ class TrajectoryInfo:
         Returns:
             A new instance of TrajectoryInfo with the specified joints removed.
         """
-        new_model = self.model.remove_joints(jnp.array([self.joint_name2ind_qpos[name] for name in joint_names]))
+        new_model = self.model.remove_joints(jnp.array([self.joint_names.index(name) for name in joint_names]))
         return replace(self,
                        joint_names=[name for name in self.joint_names if name not in joint_names],
                        model=new_model
@@ -980,8 +980,8 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
         """
         xmats_interpolated = []
         for i in  range(traj_data_slice.site_xmat.shape[1]):
-            xmat = xmats[:, i, :]
-            xquat = Rotation.from_matrix().as_quat()
+            xmat = xmats[:, i, :].reshape(-1, 3, 3)
+            xquat = Rotation.from_matrix(xmat).as_quat()
             xquat_interpolated = slerp_batch(xquat, times, new_times)
             xmat_interpolated = Rotation.from_quat(xquat_interpolated).as_matrix().reshape(-1, 9)
             xmats_interpolated.append(xmat_interpolated)

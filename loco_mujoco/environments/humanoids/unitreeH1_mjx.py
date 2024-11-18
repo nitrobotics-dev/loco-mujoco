@@ -19,8 +19,7 @@ class MjxUnitreeH1(UnitreeH1):
             del kwargs["model_option_conf"]
         super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
 
-    @staticmethod
-    def _modify_xml_for_mjx(xml_handle):
+    def _modify_xml_for_mjx(self, xml_handle):
         """
         Mjx is bad in handling many complex contacts. To speed-up simulation significantly we apply
         some changes to the XML:
@@ -56,27 +55,6 @@ class MjxUnitreeH1(UnitreeH1):
         l_foot_b = xml_handle.find("body", "left_ankle_link")
         l_foot_b.add("geom", name="left_foot1", **back_foot_attr)
         l_foot_b.add("geom", name="left_foot2", **front_foot_attr)
-
-        # back_foot_attr_1 = dict(type="sphere", pos=[-0.03, 0.01, -0.06], size=[0.001],
-        #                         rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        # back_foot_attr_2 = dict(type="sphere", pos=[-0.03, -0.01, -0.06], size=[0.001],
-        #                         rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        # front_foot_attr_1 = dict(type="sphere", pos=[0.14, 0.03, -0.06], size=[0.001],
-        #                          rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        # front_foot_attr_2 = dict(type="sphere", pos=[0.14, -0.03, -0.06], size=[0.001],
-        #                          rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        #
-        # r_foot_b = xml_handle.find("body", "right_ankle_link")
-        # r_foot_b.add("geom", name="right_foot1", **back_foot_attr_1)
-        # r_foot_b.add("geom", name="right_foot2", **back_foot_attr_2)
-        # r_foot_b.add("geom", name="right_foot3", **front_foot_attr_1)
-        # r_foot_b.add("geom", name="right_foot4", **front_foot_attr_2)
-        #
-        # r_foot_b = xml_handle.find("body", "left_ankle_link")
-        # r_foot_b.add("geom", name="left_foot1", **back_foot_attr_1)
-        # r_foot_b.add("geom", name="left_foot2", **back_foot_attr_2)
-        # r_foot_b.add("geom", name="left_foot3", **front_foot_attr_1)
-        # r_foot_b.add("geom", name="left_foot4", **front_foot_attr_2)
 
         # --- 2. disable all contacts in the collision geom class ---
         default = xml_handle.find_all("default")

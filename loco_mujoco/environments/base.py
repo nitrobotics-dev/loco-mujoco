@@ -15,10 +15,11 @@ import numpy as np
 from flax import struct
 import mujoco
 from dm_control import mjcf
+from scipy.spatial.transform import Rotation as np_R
 
 import loco_mujoco
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
-from loco_mujoco.core.utils import Box, VideoRecorder, Goal
+from loco_mujoco.core.utils import Box, VideoRecorder, Goal, HeightBasedTerminalStateHandler, RootPoseTrajTerminalStateHandler
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
@@ -46,9 +47,10 @@ class LocoEnv(Mjx):
     """
 
     def __init__(self, xml_handles, action_spec, observation_spec, enable_mjx=False,
-                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,  reward_type="NoReward", reward_params=None,
-                 goal_type="NoGoal", goal_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
-                 timestep=0.001, use_foot_forces=False, default_camera_mode="follow", use_absorbing_states=True,
+                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10, reward_type="NoReward", reward_params=None,
+                 goal_type="NoGoal", goal_params=None, terminal_state_handler_cls=None,
+                 terminal_state_handler_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
+                 timestep=0.001, use_foot_forces=False, default_camera_mode="follow",
                  domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
                  model_option_conf=None, **viewer_params):
         """
@@ -152,14 +154,20 @@ class LocoEnv(Mjx):
         # optionally use foot forces in the observation space
         self._use_foot_forces = use_foot_forces
 
-        # todo: delete this function once the grf are setup and -2 is not in observation
-        self.info.observation_space = Box(*self._get_observation_space())
-
         # the action space is supposed to be between -1 and 1, so we normalize it
         self._scale_action_space()
 
         # setup a running average window for the mean ground forces
         self.mean_grf = self._setup_ground_force_statistics()
+
+        # setup terminal state handler
+        if terminal_state_handler_cls is None:
+            self._terminal_state_handler = RootPoseTrajTerminalStateHandler(self._model, self._get_all_info_properties())
+        elif terminal_state_handler_cls is not None and terminal_state_handler_params is None:
+            self._terminal_state_handler = terminal_state_handler_cls(self._model, self._get_all_info_properties())
+        else:
+            self._terminal_state_handler = terminal_state_handler_cls(self._model, self._get_all_info_properties(),
+                                                                      **terminal_state_handler_params)
 
         # dataset dummy
         self._dataset = None
@@ -176,8 +184,6 @@ class LocoEnv(Mjx):
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
         self._use_fixed_start = True if fixed_start_conf is not None else False
-
-        self._use_absorbing_states = use_absorbing_states
 
     def set_actuation_spec(self, actuation_spec):
         """
@@ -229,6 +235,7 @@ class LocoEnv(Mjx):
             obs_entry.init_from_traj(self.th)
         self._goal.init_from_traj(self.th)
         self._reward_function.init_from_traj(self.th)
+        self._terminal_state_handler.init_from_traj(self.th)
 
     def _scale_action_space(self):
         """
@@ -296,11 +303,10 @@ class LocoEnv(Mjx):
             True, if the observation is an absorbing state; otherwise False;
 
         """
-        return self._has_fallen(obs, info, data) if self._use_absorbing_states else False
+        return self._terminal_state_handler.is_absorbing(obs, info, data, carry)
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
-        return jax.lax.cond(self._use_absorbing_states, lambda o, i, d, c: self._mjx_has_fallen(o, i, d, c),
-                            lambda o, i, d, c: jnp.array(False), obs, info, data, carry)
+        return self._terminal_state_handler.mjx_is_absorbing(obs, info, data, carry)
 
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = super()._mjx_is_done(obs, absorbing, info, data, carry)
@@ -353,18 +359,6 @@ class LocoEnv(Mjx):
         data = self._goal.set_data(data, backend=jnp, traj_data=self.th.traj.data, traj_state=carry.traj_state)
         return data, carry
 
-    def get_obs_idx(self, key):
-        """
-        Returns a list of indices corresponding to the respective key.
-
-        """
-
-        # shift by 2 to account for deleted x and y
-        idx = self.obs_container[key].obs_ind
-        idx = [i-2 for i in idx]
-
-        return idx
-
     def create_dataset(self, rng_key=None):
         """
         Creates a dataset from the specified trajectories.
@@ -409,10 +403,10 @@ class LocoEnv(Mjx):
                     carry = self._init_additional_carry(rng_key, traj_data_single)
                     traj_data_single = self._reset_init_data(traj_data_single, carry)
 
-                    observations = [self._create_observation(traj_data_single, carry)]
+                    observations = [self._create_observation(self._model, traj_data_single, carry)]
                     for j in range(1, self.len_trajectory(self.th.traj.data, i)):
                         traj_data_single = self.th.traj.data.get(i, j, np)
-                        observations.append(self._create_observation(traj_data_single, carry))
+                        observations.append(self._create_observation(self._model, traj_data_single, carry))
                         traj_data_single, carry = self._simulation_post_step(traj_data_single, carry)
 
                         # check if the current state is an absorbing state
@@ -486,6 +480,18 @@ class LocoEnv(Mjx):
         else:
             recorder = None
 
+        is_free_joint_qpos_quat, is_free_joint_qvel_rotvec = [], []
+        for i in range(self._model.njnt):
+            if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+                is_free_joint_qpos_quat.extend([False, False, False, True, True, True, True])
+                is_free_joint_qvel_rotvec.extend([False, False, False, True, True, True])
+            else:
+                is_free_joint_qpos_quat.append(False)
+                is_free_joint_qvel_rotvec.append(False)
+
+        is_free_joint_qpos_quat = np.array(is_free_joint_qpos_quat)
+        is_free_joint_qvel_rotvec = np.array(is_free_joint_qvel_rotvec)
+
         key, subkey = jax.random.split(key)
         self.reset(subkey)
         traj_no = 0
@@ -520,16 +526,36 @@ class LocoEnv(Mjx):
                 traj_data_sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self.th.traj.data,
                                                                                        traj_no, subtraj_step_no)
 
-                if from_velocity:
-                    qvel = traj_data_sample.qvel
-                    qpos = [qp + self.dt * qv for qp, qv in zip(self._data.qpos, qvel)]
+
+                if subtraj_step_no == 0:
+                    print("here")
+
+                if from_velocity and subtraj_step_no != 0:
+                    qpos = self._data.qpos
+                    qvel = np.array(traj_data_sample.qvel)
+
+                    qpos_quat = self._data.qpos[is_free_joint_qpos_quat]
+
+                    # Integrate angular velocity using rotation vector approach
+                    delta_q = np_R.from_rotvec(self.dt * qvel[is_free_joint_qvel_rotvec])
+
+                    # Apply the incremental rotation to the current quaternion orientation
+                    new_qpos = delta_q * np_R.from_quat(qpos_quat)
+
+                    #new_qpos = np_R.from_euler("xyz", self.dt * qvel[is_free_joint_qvel_rotvec]) * np_R.from_quat(qpos_quat)
+                    qpos_quat = new_qpos.as_quat()
+
+                    # qpos_quat = np_R.from_euler("xyz", qpos_rotvec).as_quat()
+
+                    # todo: implement for more than one free joint
+                    assert len(qpos_quat) <= 4, "currently only one free joints per scene is supported for replay."
+
+                    qpos[~is_free_joint_qpos_quat] = [qp + self.dt * qv for qp, qv in zip(self._data.qpos[~is_free_joint_qpos_quat],
+                                                                                          qvel[~is_free_joint_qvel_rotvec])]
+                    qpos[is_free_joint_qpos_quat] = qpos_quat
                     traj_data_sample = traj_data_sample.replace(qpos=jnp.array(qpos))
 
-                obs = self._create_observation(self._data, self._additional_carry)
-
-                if self._has_fallen(obs, {}, self._data):
-                    pass
-                    #print("Has fallen!")
+                obs = self._create_observation(self._model, self._data, self._additional_carry)
 
                 if render:
                     frame = self.render(record)
@@ -591,45 +617,6 @@ class LocoEnv(Mjx):
 
         return self._xml_handles
 
-    def _get_observation_space(self):
-        """
-        Returns a tuple of the lows and highs (np.array) of the observation space.
-
-        """
-
-        sim_low, sim_high = (self.info.observation_space.low[2:],
-                             self.info.observation_space.high[2:])
-
-        if self._use_foot_forces:
-            grf_low, grf_high = (-np.ones((self.grf_size,)) * np.inf,
-                                 np.ones((self.grf_size,)) * np.inf)
-            return (np.concatenate([sim_low, grf_low]),
-                    np.concatenate([sim_high, grf_high]))
-        else:
-            return sim_low, sim_high
-
-    def _create_observation(self, data, carry):
-        obs = super()._create_observation(data, carry)
-
-        if self._use_foot_forces:
-            obs = np.concatenate([obs[2:],
-                                  self.mean_grf.mean / 1000.,
-                                  ]).flatten()
-        else:
-            obs = np.concatenate([obs[2:],
-                                  ]).flatten()
-
-        return obs
-
-    def _mjx_create_observation(self, data, carry):
-        obs = super()._mjx_create_observation(data, carry)
-
-        # remove the first two entries and add foot forces if needed
-        # todo: foot forces not added yet for mjx
-        obs = jax.lax.cond(self._use_foot_forces, lambda o: obs[2:].flatten(),
-                           lambda o: obs[2:].flatten(), obs)
-        return obs
-
     def reset(self, key):
         key, subkey = jax.random.split(key)
         obs = super().reset(key)
@@ -643,7 +630,7 @@ class LocoEnv(Mjx):
             traj_sample = self._get_init_state_from_trajectory(carry.traj_state)      # get sample from trajectory state
             self._set_sim_state_from_traj_data(self._data, traj_sample)
 
-        self._obs = self._create_observation(self._data, carry)
+        self._obs = self._create_observation(self._model, self._data, carry)
 
         # todo: think whether a reset of the reward function is needed in future, right now it is not.
         # self._reward_function.reset(self._data, carry, np, self._jax_trajectory)
@@ -661,7 +648,7 @@ class LocoEnv(Mjx):
             # init simulation from trajectory state (traj state has been reset in init_additional_carry)
             traj_data_sample = self._get_init_state_from_trajectory(carry.traj_state)
             data = self._mjx_set_sim_state_from_traj_data(mjx_state.data, traj_data_sample)
-            mjx_state = mjx_state.replace(data=data, observation=self._mjx_create_observation(data, carry),
+            mjx_state = mjx_state.replace(data=data, observation=self._mjx_create_observation(self._model, data, carry),
                                           additional_carry=carry)
 
         # todo: think whether a reset of the reward function is needed in future, right now it is not.
@@ -699,7 +686,7 @@ class LocoEnv(Mjx):
                               running_avg_state=running_avg_state)
 
         # create new observation
-        obs = self._mjx_create_observation(data, carry)
+        obs = self._mjx_create_observation(self._model, data, carry)
 
         return state.replace(data=data, observation=obs, additional_carry=carry)
 
@@ -957,8 +944,20 @@ class LocoEnv(Mjx):
         return 12
 
     @info_property
+    def root_free_joint_xml_name(self):
+        return "root"
+
+    @info_property
     def upper_body_xml_name(self):
         raise NotImplementedError(f"Please implement the upper_body_xml_name property "
+                                  f"in the {type(self).__name__} environment.")
+
+    @info_property
+    def root_height_healthy_range(self):
+        """
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        """
+        raise NotImplementedError(f"Please implement the root_height_healthy_range property "
                                   f"in the {type(self).__name__} environment.")
 
     @staticmethod
@@ -1164,8 +1163,9 @@ class LocoEnv(Mjx):
             print(f"Trajectory files for env \"{env_name}\" and task \"{file_path.stem}\" not yet converted."
                   f" Trying to convert.\n")
             convert_single_dataset_of_env(env_name, file_path)
-        except:
-            raise ValueError(f"Trajectory file {traj_path} not found and could not be created.")
+        except Exception:
+            print(f"Trajectory file {traj_path} not found and could not be created.")
+            raise
 
         print(f"Conversion successful. Saving dataset to: {traj_path}.\n")
 
