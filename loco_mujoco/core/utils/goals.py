@@ -296,7 +296,7 @@ class GoalTrajMimic(Goal):
     @classmethod
     def get_obs(cls, model, data, data_ind_cont, backend):
 
-        if len(cls._rel_site_ids) > 0:
+        if len(cls._rel_site_ids) > 0 and data_ind_cont.GoalTrajMimic > 0:
 
             # get trajectory goal
             goal_traj = data.userdata[data_ind_cont.GoalTrajMimic]
