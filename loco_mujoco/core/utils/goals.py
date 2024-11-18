@@ -296,10 +296,10 @@ class GoalTrajMimic(Goal):
     @classmethod
     def get_obs(cls, model, data, data_ind_cont, backend):
 
-        if len(cls._rel_site_ids) > 0 and data_ind_cont.GoalTrajMimic > 0:
+        # get trajectory goal
+        goal_traj = data.userdata[data_ind_cont.GoalTrajMimic]
 
-            # get trajectory goal
-            goal_traj = data.userdata[data_ind_cont.GoalTrajMimic]
+        if len(cls._rel_site_ids) > 0 and goal_traj.size > 0:
 
             # get relative site quantities for current data
             rel_site_ids = cls._rel_site_ids
