@@ -5,6 +5,8 @@ import numpy as np
 import mujoco
 import jax.numpy as jnp
 
+from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
+
 
 def jnt_name2id(name, model):
     """
@@ -92,7 +94,7 @@ class Observation:
         self.name = obs_name
         self.obs_container = None
 
-        # these attributes will be initialized from MjData
+        # these attributes *must* be initialized in the _init_from_mj method
         self.obs_ind = None
         self.data_type_ind = None
         self.min, self.max = None, None
@@ -120,6 +122,12 @@ class Observation:
     def _init_from_mj(self, model, data, current_obs_size):
         """
         Initialize the observation type from the Mujoco data structure and model.
+        This method *must* initialize the following attributes:
+            - obs_ind: Indices of this observation in the observation space.
+            - data_type_ind: Indices of this observation in respective attribute
+                in the Mujoco data structure (like qpos, qvel, xpos, etc.).
+            - min: Minimum values of the observation in the observation space.
+            - max: Maximum values of the observation in the observation space.
 
         Args:
             model: The Mujoco model.
@@ -269,11 +277,8 @@ class BodyPos(SimpleObs):
         dim = len(data.body(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.body(self.xml_name).id)
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
-
+        self.data_type_ind = np.array(self.to_list(data.body(self.xml_name).id))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -295,10 +300,8 @@ class BodyRot(SimpleObs):
         dim = len(data.body(self.xml_name).cvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.body(self.xml_name).id)
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(self.to_list(data.body(self.xml_name).id))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -320,10 +323,8 @@ class BodyVel(SimpleObs):
         dim = len(data.body(self.xml_name).xquat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.body(self.xml_name).id)
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(self.to_list(data.body(self.xml_name).id))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -344,12 +345,8 @@ class FreeJointPos(SimpleObs):
     def _init_from_mj(self, model, data, current_obs_size):
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * FreeJointPos.dim, [np.inf] * FreeJointPos.dim
-        free_joint_id = data.joint(self.xml_name).id
-        start_addr = model.jnt_qposadr[free_joint_id]
-        data_type_ind = [i for i in range(start_addr, start_addr + FreeJointPos.dim)]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + FreeJointPos.dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(mj_jntname2qposid(self.xml_name, model))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + FreeJointPos.dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -396,7 +393,6 @@ class FreeJointPosNoXY(FreeJointPos):
 
     def _init_from_mj(self, model, data, current_obs_size):
         super()._init_from_mj(model, data, current_obs_size)
-
         self.min, self.max = self.min[2:], self.max[2:]
         self.data_type_ind = self.data_type_ind[2:]
         self.obs_ind = self.obs_ind[:-2]
@@ -425,11 +421,8 @@ class JointPos(SimpleObs):
             self.min, self.max = [jh.range[0]], [jh.range[1]]
         else:
             self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = [model.jnt_qposadr[jh.id]]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
-
+        self.data_type_ind = np.array(mj_jntid2qposid(jh.id, model))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -453,12 +446,8 @@ class FreeJointVel(SimpleObs):
         assert dim == self.dim
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        free_joint_id = data.joint(self.xml_name).id
-        start_addr = model.jnt_dofadr[free_joint_id]
-        data_type_ind = [i for i in range(start_addr, start_addr + FreeJointVel.dim)]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(mj_jntname2qvelid(self.xml_name, model))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -504,10 +493,8 @@ class JointVel(SimpleObs):
         dim = len(data.joint(self.xml_name).qvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = [model.jnt_dofadr[data.joint(self.xml_name).id]]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array([model.jnt_dofadr[data.joint(self.xml_name).id]])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -529,10 +516,8 @@ class SitePos(SimpleObs):
         dim = len(data.site(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.site(self.xml_name).id)
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(self.to_list(data.site(self.xml_name).id))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -556,10 +541,8 @@ class SiteRot(SimpleObs):
         dim = len(data.site(self.xml_name).xmat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
-        data_type_ind = self.to_list(data.site(self.xml_name).id)
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array(self.to_list(data.site(self.xml_name).id))
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
         self._initialized_from_mj = True
 
     @classmethod
@@ -592,10 +575,8 @@ class Force(Observation):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_geom_id1 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, self.xml_name_geom1)
         self.data_geom_id2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, self.xml_name_geom2)
-        data_type_ind = [self.data_geom_id1, self.data_geom_id2]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array([self.data_geom_id1, self.data_geom_id2])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._initialized_from_mj = True
 
     @classmethod

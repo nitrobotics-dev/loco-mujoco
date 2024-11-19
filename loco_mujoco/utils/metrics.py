@@ -9,6 +9,7 @@ from metriX import DistanceMeasures
 import mujoco
 from loco_mujoco.core.wrappers import SummaryMetrics
 from loco_mujoco.core.utils.math import calc_site_velocities, calculate_relative_site_quatities
+from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid, mj_jntname2qposid, mj_jntname2qvelid
 
 
 SUPPORTED_QUANTITIES = ["JointPosition", "JointVelocity", "BodyPosition", "BodyVelocity", "BodyOrientation",
@@ -67,12 +68,15 @@ class MetricsHandler:
 
         model = env.get_model()
         if rel_joint_names is not None:
-            self.rel_joint_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
-                                  for name in rel_joint_names if name not in joints_to_ignore]
-            assert -1 not in self.rel_joint_ids, f"Joint {rel_joint_names[self.rel_joint_ids.index(-1)]} not found."
+            self.rel_qpos_ids = [jnp.array(mj_jntid2qposid(name, model)) for name in rel_joint_names
+                                 if name not in joints_to_ignore]
+            self.rel_qvel_ids = [jnp.array(mj_jntid2qvelid(name, model)) for name in rel_joint_names
+                                 if name not in joints_to_ignore]
         else:
-            self.rel_joint_ids = [i for i in range(model.njnt)
-                                  if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) not in joints_to_ignore]
+            self.rel_qpos_ids = [jnp.array(mj_jntid2qposid(i, model)) for i in range(model.njnt)
+                                 if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) not in joints_to_ignore]
+            self.rel_qvel_ids = [jnp.array(mj_jntid2qvelid(i, model)) for i in range(model.njnt)
+                                 if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) not in joints_to_ignore]
 
         if rel_body_names is not None:
             self.rel_body_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
@@ -117,9 +121,14 @@ class MetricsHandler:
                                                            "relative quantities.")
 
         self._vec_calc_site_velocities = jax.vmap(jax.vmap(calc_site_velocities, in_axes=(None, 0, None, None, None, None)), in_axes=(None, 0, None, None, None, None))
-        self._vec_calc_rel_site_quantaties = jax.vmap(jax.vmap(calculate_relative_site_quatities, in_axes=(0, None, None, None, None)), in_axes=(0, None, None, None, None))
+        self._vec_calc_rel_site_quantities = jax.vmap(jax.vmap(calculate_relative_site_quatities, in_axes=(0, None, None, None, None)), in_axes=(0, None, None, None, None))
 
-        self.rel_joint_ids = jnp.array(self.rel_joint_ids)
+        # determine the quaternions in qpos
+        self._quat_in_qpos = jnp.concatenate([jnp.array([False]*3+[True]*4) if len(j) == 7 else jnp.array([False])
+                                              for j in self.rel_qpos_ids])
+        self._not_quat_in_qpos = jnp.invert(self._quat_in_qpos)
+        self.rel_qpos_ids = jnp.concatenate(self.rel_qpos_ids)
+        self.rel_qvel_ids = jnp.concatenate(self.rel_qvel_ids)
         self.rel_body_ids = jnp.array(self.rel_body_ids)
         self.rel_site_ids = jnp.array(self.rel_site_ids)
 
@@ -212,8 +221,20 @@ class MetricsHandler:
 
         # get from trajectory
         traj_qpos = self._traj_data.qpos[self.get_traj_indices(env_states)]
+        # filter for relevant joints
+        qpos, traj_qpos = qpos[..., self.rel_qpos_ids], traj_qpos[..., self.rel_qpos_ids]
 
-        return qpos[..., self.rel_joint_ids], traj_qpos[..., self.rel_joint_ids]
+        # there might be quaternions due to free joints, so we need to convert them
+        # to rotation vector to use metrics in the Euclidean space
+        quat, quat_traj = qpos[..., self._quat_in_qpos], traj_qpos[..., self._quat_in_qpos]
+        quat, quat_traj = quat.reshape(-1, 4), quat_traj.reshape(-1, 4)
+        rot_vec, rot_vec_traj = R.from_quat(quat).as_rotvec(), R.from_quat(quat_traj).as_rotvec()
+        qpos = jnp.concatenate([qpos[..., self._not_quat_in_qpos],
+                                rot_vec.reshape((*qpos.shape[:-1], 3))], axis=-1)
+        traj_qpos = jnp.concatenate([traj_qpos[..., self._not_quat_in_qpos],
+                                     rot_vec_traj.reshape((*traj_qpos.shape[:-1], 3))], axis=-1)
+
+        return qpos, traj_qpos
 
     def get_joint_velocities(self, env_states):
         # get from data
@@ -222,7 +243,7 @@ class MetricsHandler:
         # get from trajectory
         traj_qvel = self._traj_data.qvel[self.get_traj_indices(env_states)]
 
-        return qvel[..., self.rel_joint_ids], traj_qvel[..., self.rel_joint_ids]
+        return qvel[..., self.rel_qvel_ids], traj_qvel[..., self.rel_qvel_ids]
 
     def get_body_positions(self, env_states):
 
@@ -289,13 +310,13 @@ class MetricsHandler:
 
     def get_relative_site_quantities(self, env_states):
 
-        rel_site_pos, rel_site_rotvec, rel_site_vel = self._vec_calc_rel_site_quantaties(
+        rel_site_pos, rel_site_rotvec, rel_site_vel = self._vec_calc_rel_site_quantities(
             env_states.data, self.rel_site_ids, self._site_bodyid[self.rel_site_ids],
             self._body_rootid[self.rel_site_ids], jnp)
 
         traj_states = env_states.additional_carry.traj_state
         traj_data = self._traj_data.get(traj_states.traj_no, traj_states.subtraj_step_no)
-        traj_rel_site_pos, traj_rel_site_rotvec, traj_rel_site_vel = self._vec_calc_rel_site_quantaties(
+        traj_rel_site_pos, traj_rel_site_rotvec, traj_rel_site_vel = self._vec_calc_rel_site_quantities(
             traj_data, self.rel_site_ids, self._site_bodyid[self.rel_site_ids],
             self._body_rootid[self.rel_site_ids], jnp)
 

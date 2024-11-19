@@ -20,9 +20,6 @@ class Goal(Observation):
         self.visualize_goal = visualize_goal
         super().__init__(obs_name=self.__class__.__name__)
 
-    def _init_from_mj(self, model, data, current_obs_size):
-        raise NotImplementedError
-
     @property
     def has_visual(self):
         raise NotImplementedError
@@ -142,18 +139,12 @@ class GoalTrajArrow(Goal):
     def _init_from_mj(self, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         # todo: This will only work if userdata contains only a single goal and no other info.
-        data_type_ind = [i for i in range(data.userdata.size)]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._initialized_from_mj = True
 
     def init_from_traj(self, traj_handler):
-        pass
-        # todo: implement this correctly!
-        # assert trajectories is not None
-        # self._traj_goal_ind = np.concatenate([ind for k, ind in trajectories.keys2ind.items() if k == "VEL_2D"])
-        # self._initialized_from_traj = True
+        self._initialized_from_traj = True
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -237,10 +228,8 @@ class GoalTrajMimic(Goal):
 
     def _init_from_mj(self, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
-        data_type_ind = [i for i in range(data.userdata.size)]
-        obs_ind = [j for j in range(current_obs_size, current_obs_size + self.dim)]
-        self.data_type_ind = np.array(data_type_ind)
-        self.obs_ind = np.array(obs_ind)
+        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         for body_name in self._relevant_body_names:
             body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
             self._relevant_body_ids.append(body_id)

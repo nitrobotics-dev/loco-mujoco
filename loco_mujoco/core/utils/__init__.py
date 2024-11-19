@@ -5,6 +5,7 @@ from .observations import ObservationType, ObservationIndexContainer, Observatio
 from .goals import *
 from .terminal_state_handler import (TerminalStateHandler, HeightBasedTerminalStateHandler,
                                      RootPoseTrajTerminalStateHandler)
+from .mujoco import *
 
 # register all goals
 NoGoal.register()

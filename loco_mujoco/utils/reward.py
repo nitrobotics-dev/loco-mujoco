@@ -237,10 +237,9 @@ class MimicReward(Reward):
         rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
         rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
-        return self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
-
-        #return # self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward + self._rpos_w_sum * rpos_reward
-                #+ self._rquat_w_sum * rquat_reward + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
+        return (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward
+                + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
+                + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
 
     @property
     def requires_trajectory(self):
