@@ -109,79 +109,6 @@ class BaseSkeleton(LocoEnv):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
-    # def _has_fallen(self, obs,  info, data, return_err_msg=False):
-    #     """
-    #     Checks if a model has fallen.
-    #
-    #     Args:
-    #         obs (np.array): Current observation.
-    #         return_err_msg (bool): If True, an error message with violations is returned.
-    #
-    #     Returns:
-    #         True, if the model has fallen for the current observation, False otherwise.
-    #         Optionally an error message is returned.
-    #
-    #     """
-    #
-    #     (pelvis_condition, pelvis_height_condition, pelvis_tilt_condition,
-    #      pelvis_list_condition, pelvis_rotation_condition) = (self._has_fallen_compat(obs, info, data, np))
-    #
-    #     if return_err_msg:
-    #         error_msg = ""
-    #         if pelvis_height_condition:
-    #             error_msg += "pelvis_height_condition violated.\n"
-    #         if pelvis_tilt_condition:
-    #             error_msg += "pelvis_tilt_condition violated.\n"
-    #         if pelvis_list_condition:
-    #             error_msg += "pelvis_list_condition violated.\n"
-    #         if pelvis_rotation_condition:
-    #             error_msg += "pelvis_rotation_condition violated.\n"
-    #         return pelvis_condition, error_msg
-    #     else:
-    #         return pelvis_condition
-    #
-    # def _mjx_has_fallen(self, obs, info, data, carry):
-    #     pelvis_cond, _, _, _, _ = self._has_fallen_compat(obs, info, data, jnp)
-    #     return pelvis_cond
-    #
-    # def _has_fallen_compat(self, obs, info, data, backend):
-    #
-    #     if backend == np:
-    #         R = np_R
-    #     else:
-    #         R = jnp_R
-    #
-    #     # q_pelvis_y = self._get_from_obs(obs, "q_pelvis_tz")
-    #     # q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
-    #     # q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
-    #     # q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
-    #
-    #     q_root = self._get_from_obs(obs, "q_root")
-    #     q_pelvis_y = q_root[0]
-    #     q_root_quat = q_root[1:]
-    #     q_root_euler = R.from_quat(q_root_quat).as_euler("xyz")
-    #     q_pelvis_list, q_pelvis_tilt, q_pelvis_rotation = q_root_euler[0], q_root_euler[1], q_root_euler[2]
-    #
-    #     pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.46),
-    #                                        backend.greater(q_pelvis_y, 0.1))
-    #     pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
-    #                                           backend.greater(q_pelvis_tilt, backend.pi / 12))
-    #     pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12),
-    #                                           backend.greater(q_pelvis_list, backend.pi / 8))
-    #     pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 9),
-    #                                               backend.greater(q_pelvis_rotation, backend.pi / 9))
-    #
-    #     pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
-    #                                      backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
-    #
-    #     pelvis_cond = backend.squeeze(pelvis_cond)
-    #     pelvis_y_cond = backend.squeeze(pelvis_y_cond)
-    #     pelvis_tilt_cond = backend.squeeze(pelvis_tilt_cond)
-    #     pelvis_list_cond = backend.squeeze(pelvis_list_cond)
-    #     pelvis_rotation_cond = backend.squeeze(pelvis_rotation_cond)
-    #
-    #     return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
-
     @classmethod
     def generate(cls, task="walk", dataset_type="real", **kwargs):
         """
@@ -425,9 +352,7 @@ class BaseSkeleton(LocoEnv):
         """
         Mjx is bad in handling many complex contacts. To speed-up simulation significantly we apply
         some changes to the XML:
-            1. Replace the complex foot meshes with primitive shapes. Here, one foot mesh is replaced with
-               two capsules.
-            2. Disable all contacts except the ones between feet and the floor.
+            1. Disable all contacts except the ones between feet and the floor.
 
         Args:
             xml_handle: Handle to Mujoco XML.

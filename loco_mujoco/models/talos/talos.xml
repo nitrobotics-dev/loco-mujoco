@@ -9,13 +9,15 @@
 
 <mujoco model="talos">
   <compiler angle="radian" meshdir="./meshes/" autolimits="true"/>
-  <size njmax ="1000" nuserdata="600000"/>
   <default>
     <geom contype="0" conaffinity="1" group="1" rgba="0.5 0.6 0.7 0.2"/>
     <default class="viz">
 			<geom type="mesh" group="0" contype="0" conaffinity="0" density="0" rgba="0.5 0.5 0.5 1"/>
     </default>
-    <motor ctrllimited="true" ctrlrange="-0.95 0.95"/>
+    <default class="mimic">
+        <site group="4" type="box" size="0.075 0.05 0.025" rgba="1.0 0.0 0.0 0.5"/>
+    </default>
+    <motor ctrllimited="true" ctrlrange="-1.0 1.0"/>
   </default>
   <statistic meansize="0.16164" extent="1.99873" center="-0.0420473 -7.99469e-10 -0.214804"/>
   <asset>
@@ -98,25 +100,25 @@
   <worldbody>
     <geom name="floor" friction="1 .1 .1" pos="0 0 0" size="500 500 0.125" type="plane" material="MatPlane" condim="3" conaffinity="1" contype="1" group="2" rgba="0.8 0.9 0.8 1"></geom>
     <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1" castshadow="false"/>
-
     <body name="pelvis" pos="0 0 1.085">
+      <site name="pelvis_mimic" class="mimic"/>
       <geom class="viz" type="mesh" rgba="0.9 0.9 0.9 1" mesh="base_link"/>
       <geom type="mesh" mesh="base_link_collision"/>
-      <joint name="pelvis_tx" type="slide" pos="0 0 0" axis="       1        0        0" limited="false" range="      -500        500" ref="0" armature="0" damping="0" stiffness="0"></joint>
-      <joint name="pelvis_tz" type="slide" pos="0 0 0" axis="       0        1        0" limited="false" range="      -300        300" ref="0" armature="0" damping="0" stiffness="0"></joint>
-      <joint name="pelvis_ty" type="slide" pos="0 0 0" axis="       0        0        1" limited="false" range="      -100        200" ref="0" armature="0" damping="0" stiffness="0"></joint>
-      <joint name="pelvis_tilt" type="hinge" pos="0 0 0" axis="       0        -1        0" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>
-      <joint name="pelvis_list" type="hinge" pos="0 0 0" axis="       1        0        0" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>
-      <joint name="pelvis_rotation" type="hinge" pos="0 0 0" axis="       0        0        1" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>
-
+      <freejoint name="root"/>
+<!--      <joint name="pelvis_tx" type="slide" pos="0 0 0" axis="       1        0        0" limited="false" range="      -500        500" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
+<!--      <joint name="pelvis_tz" type="slide" pos="0 0 0" axis="       0        1        0" limited="false" range="      -300        300" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
+<!--      <joint name="pelvis_ty" type="slide" pos="0 0 0" axis="       0        0        1" limited="false" range="      -100        200" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
+<!--      <joint name="pelvis_tilt" type="hinge" pos="0 0 0" axis="       0        -1        0" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
+<!--      <joint name="pelvis_list" type="hinge" pos="0 0 0" axis="       1        0        0" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
+<!--      <joint name="pelvis_rotation" type="hinge" pos="0 0 0" axis="       0        0        1" limited="false" range=" -1.5708   1.5708" ref="0" armature="0" damping="0" stiffness="0"></joint>-->
       <body name="torso_1_link" pos="0 0 0.0722">
         <light name="spotlight" mode="trackcom" pos="0 -0.25 2"/>
         <camera name="track" mode="trackcom" pos="0 -2 0" xyaxes="1 0 0 0 0 1"/>
-
         <inertial pos="0.00078223 3.528e-05 -0.0178246" quat="0.703744 0.704233 0.0663452 -0.0663278" mass="2.29466" diaginertia="0.00639091 0.00622386 0.00410256"/>
         <joint name="back_bkz" pos="0 0 0" axis="0 0 1" range="-1.25664 1.25664" damping="1" frictionloss="1"/>
         <geom class="viz" rgba="0.9 0.9 0.9 1" mesh="torso_1"/>
         <body name="torso_2_link">
+          <site name="upper_body_mimic" class="mimic"  pos="0.05 0.0 0.2"/>
           <inertial pos="-0.0463 -0.000989647 0.145241" quat="0.704021 0.708473 0.0363665 -0.0331367" mass="16.984" diaginertia="0.444971 0.320913 0.299991"/>
           <joint name="back_bky" pos="0 0 0" axis="0 1 0" range="-0.226893 0.733038" damping="1" frictionloss="1"/>
 <!--          <joint name="back_bkx" pos="0 0 0" axis="1 0 0" range="-0.226893 0.733038" damping="1" frictionloss="1"/>-->
@@ -124,6 +126,7 @@
           <geom type="mesh" mesh="torso_2_collision"/>
           <geom class="viz" size="0.005 0.005 0.005" pos="0.04925 0 0.078" quat="0 0.707107 0.707107 0" type="box"/>
           <body name="head_1_link" pos="0.02 0 0.321">
+            <site name="head_mimic" class="mimic"  pos="0.05 0.0 0.2"/>
             <inertial pos="-0.00157211 -0.00157919 0.0217577" quat="0.679576 0.71147 -0.126684 0.126246" mass="0.73746" diaginertia="0.0022809 0.00202202 0.00110971"/>
 <!--            <joint name="head_1_joint" pos="0 0 0" axis="0 1 0" range="-0.20944 0.785398" damping="0.5" frictionloss="1"/>-->
             <geom class="viz" mesh="head_1"/>
@@ -138,6 +141,7 @@
             </body>
           </body>
           <body name="arm_left_1_link" pos="0 0.1575 0.232">
+            <site name="left_shoulder_mimic" class="mimic"  pos="0.0 0.135 0.0"/>
             <inertial pos="-0.0002762 0.100602 0.0443742" quat="0.509187 0.520076 -0.492016 0.477671" mass="2.71457" diaginertia="0.0135919 0.012374 0.00418528"/>
             <joint name="l_arm_shz" pos="0 0 0" axis="0 0 1" range="-1.5708 0.785398" damping="1" frictionloss="1"/>
             <geom class="viz" type="mesh" mesh="arm_1"/>
@@ -153,6 +157,7 @@
                 <geom class="viz" type="mesh" mesh="arm_3"/>
                 <geom type="mesh" mesh="arm_3_collision"/>
                 <body name="arm_left_4_link" pos="0.02 0 -0.273">
+                  <site name="left_elbow_mimic" class="mimic"/>
                   <inertial pos="-0.00742138 -0.0213895 -0.0331266" quat="0.714033 0.164017 0.00140055 0.680627" mass="0.877346" diaginertia="0.00285737 0.00258973 0.00103103"/>
                   <joint name="l_arm_elx" pos="0 0 0" axis="0 1 0" range="-2.23402 0.00349066" damping="1" frictionloss="1"/>
                   <geom class="viz" type="mesh" mesh="arm_4"/>
@@ -168,6 +173,7 @@
                       <geom class="viz" type="mesh" rgba="0.9 0.9 0.9 1" mesh="arm_6"/>
                       <geom type="mesh" rgba="0.9 0.9 0.9 0.2" mesh="arm_6_collision"/>
                       <body name="arm_left_7_link">
+                        <site name="left_hand_mimic" class="mimic" pos="0.0 0.0 -0.125"/>
                         <inertial pos="0.00215393 0.00361697 -0.0837948" quat="0.966304 0.0192407 0.0500561 -0.251755" mass="1.04198" diaginertia="0.00272916 0.00272305 0.0010485"/>
 <!--                        <joint name="arm_left_7_joint" pos="0 0 0" axis="0 1 0" range="-0.680678 0.680678" damping="1" frictionloss="1"/>-->
                         <geom class="viz" type="mesh" mesh="arm_7"/>
@@ -228,6 +234,7 @@
             </body>
           </body>
           <body name="arm_right_1_link" pos="0 -0.1575 0.232">
+            <site name="right_shoulder_mimic" class="mimic"  pos="0.0 -0.135 0.0"/>
             <inertial pos="-0.0002762 -0.100602 0.0443742" quat="0.520076 0.509187 -0.477671 0.492016" mass="2.71457" diaginertia="0.0135919 0.012374 0.00418528"/>
             <joint name="r_arm_shz" pos="0 0 0" axis="0 0 1" range="-0.785398 1.5708" damping="1" frictionloss="1"/>
             <geom class="viz" type="mesh" mesh="arm_11"/>
@@ -243,6 +250,7 @@
                 <geom class="viz" type="mesh" mesh="arm_31"/>
                 <geom type="mesh" mesh="arm_3_collision1"/>
                 <body name="arm_right_4_link" pos="0.02 0 -0.273">
+                  <site name="right_elbow_mimic" class="mimic"/>
                   <inertial pos="-0.00742138 0.0213895 -0.0331266" quat="0.680627 0.00140055 0.164017 0.714033" mass="0.877346" diaginertia="0.00285737 0.00258973 0.00103103"/>
                   <joint name="r_arm_elx" pos="0 0 0" axis="0 1 0" range="-2.23402 0.00349066" damping="1" frictionloss="1"/>
                   <geom class="viz" type="mesh" mesh="arm_41"/>
@@ -258,6 +266,7 @@
                       <geom class="viz" type="mesh" rgba="0.9 0.9 0.9 1" mesh="arm_61"/>
                       <geom type="mesh" rgba="0.9 0.9 0.9 0.2" mesh="arm_6_collision1"/>
                       <body name="arm_right_7_link">
+                        <site name="right_hand_mimic" class="mimic" pos="0.0 0.0 -0.125"/>
                         <inertial pos="0.0023011 -0.00361697 -0.0837948" quat="0.927123 -0.0149278 0.0465372 0.371557" mass="1.04198" diaginertia="0.00273131 0.00271696 0.00105108"/>
 <!--                        <joint name="arm_right_7_joint" pos="0 0 0" axis="0 1 0" range="-0.680678 0.680678" damping="1" frictionloss="1"/>-->
                         <geom class="viz" type="mesh" mesh="arm_71"/>
@@ -330,11 +339,13 @@
           <geom class="viz" type="mesh" mesh="hip_x_lo_res"/>
           <geom type="mesh" mesh="hip_x_collision"/>
           <body name="leg_left_3_link">
+            <site name="left_hip_mimic" class="mimic"  pos="0.0 0.125 0.0"/>
             <inertial pos="0.0058523 0.0636967 -0.183396" quat="0.995121 -0.0974306 -0.00559068 0.0145098" mass="6.23987" diaginertia="0.153409 0.140791 0.0256712"/>
             <joint name="hip_flexion_l" pos="0 0 0" axis="0 1 0" range="-2.095 0.7"/>
             <geom class="viz" type="mesh" mesh="hip_y_lo_res"/>
             <geom type="mesh" mesh="hip_y_collision"/>
             <body name="leg_left_4_link" pos="0 0 -0.38">
+              <site name="left_knee_mimic" class="mimic" pos="0 0.05 0.0"/>
               <inertial pos="0.0131772 0.0291751 -0.115946" quat="0.999357 0.00773677 -0.0135107 0.0322952" mass="3.75995" diaginertia="0.0429266 0.0359662 0.013621"/>
               <joint name="knee_angle_l" pos="0 0 0" axis="0 1 0" range="0 2.618"/>
               <geom class="viz" type="mesh" mesh="knee_lo_res"/>
@@ -345,6 +356,7 @@
                 <geom class="viz" type="mesh" rgba="0.7 0.7 0.7 1" mesh="ankle_Y_lo_res"/>
                 <geom type="mesh" rgba="0.7 0.7 0.7 0.2" mesh="ankle_Y_collision"/>
                 <body name="leg_left_6_link">
+                  <site name="left_foot_mimic" class="mimic" pos="0.0 0.0 -0.085"/>
                   <inertial pos="-0.0202201 -0.000511936 -0.0601674" quat="0.335692 0.614815 0.623132 0.347878" mass="1.60777" diaginertia="0.00755845 0.00633561 0.00378828"/>
 <!--                  <joint name="leg_left_6_joint" pos="0 0 0" axis="1 0 0" range="-0.5236 0.5236"/>-->
                   <geom class="viz" type="mesh" rgba="0.7 0.7 0.7 1." mesh="ankle_X_lo_res"/>
@@ -366,11 +378,13 @@
           <geom class="viz" type="mesh" mesh="hip_x_lo_res1"/>
           <geom type="mesh" mesh="hip_x_collision1"/>
           <body name="leg_right_3_link">
+            <site name="right_hip_mimic" class="mimic"  pos="0.0 -0.125 0.0"/>
             <inertial pos="0.0058523 -0.0636967 -0.183396" quat="0.995121 0.0974306 -0.00559068 -0.0145098" mass="6.23987" diaginertia="0.153409 0.140791 0.0256712"/>
             <joint name="hip_flexion_r" pos="0 0 0" axis="0 1 0" range="-2.095 0.7"/>
             <geom class="viz" type="mesh" mesh="hip_y_lo_res1"/>
             <geom type="mesh" mesh="hip_y_collision1"/>
             <body name="leg_right_4_link" pos="0 0 -0.38">
+              <site name="right_knee_mimic" class="mimic" pos="0 -0.05 0.0"/>
               <inertial pos="0.0131772 -0.0291751 -0.115946" quat="0.999357 -0.00773677 -0.0135107 -0.0322952" mass="3.75995" diaginertia="0.0429266 0.0359662 0.013621"/>
               <joint name="knee_angle_r" pos="0 0 0" axis="0 1 0" range="0 2.618"/>
               <geom class="viz" type="mesh" mesh="knee_lo_res1"/>
@@ -381,6 +395,7 @@
                 <geom class="viz" type="mesh" rgba="0.7 0.7 0.7 1" mesh="ankle_Y_lo_res1"/>
                 <geom type="mesh" rgba="0.7 0.7 0.7 0.2" mesh="ankle_Y_collision1"/>
                 <body name="leg_right_6_link">
+                  <site name="right_foot_mimic" class="mimic" pos="0.0 0.0 -0.085"/>
                   <inertial pos="-0.0202201 0.000511936 -0.0601674" quat="0.347878 0.623132 0.614815 0.335692" mass="1.60777" diaginertia="0.00755845 0.00633561 0.00378828"/>
 <!--                  <joint name="leg_right_6_joint" pos="0 0 0" axis="1 0 0" range="-0.5236 0.5236"/>-->
                   <geom class="viz" type="mesh" rgba="0.7 0.7 0.7 1" mesh="ankle_X_lo_res1"/>

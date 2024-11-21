@@ -1,5 +1,6 @@
 from .atlas import Atlas
 from .talos import Talos
+from .talos_mjx import MjxTalos
 from .unitreeH1 import UnitreeH1
 from .unitreeH1_mjx import MjxUnitreeH1
 from .unitreeG1 import UnitreeG1
@@ -10,6 +11,7 @@ from .skeletons import SkeletonTorque, MjxSkeletonTorque, HumanoidTorque, Humano
 # register environments in mushroom
 Atlas.register()
 Talos.register()
+MjxTalos.register()
 UnitreeH1.register()
 MjxUnitreeH1.register()
 UnitreeG1.register()
