@@ -1,0 +1,25 @@
+name: talos
+mjcf_file: loco_mujoco/environments/data/talos/talos.xml
+extend_config: []
+  
+    
+joint_macthes:
+  - ["pelvis", "Pelvis"]
+  - ["leg_left_1_link", "L_Hip"]
+  - ["leg_left_4_link", "L_Knee"]
+  - ["leg_left_5_link", "L_Ankle"]
+  - ["leg_right_1_link", "R_Hip"]
+  - ["leg_right_4_link", "R_Knee"]
+  - ["leg_right_5_link", "R_Ankle"]
+  - ["arm_left_1_link", "L_Shoulder"]
+  - ["arm_left_4_link", "L_Elbow"]
+  - ["arm_left_5_link", "L_Hand"]
+  - ["arm_right_1_link", "R_Shoulder"]
+  - ["arm_right_4_link", "R_Elbow"]
+  - ["arm_right_5_link", "R_Hand"]
+  - ["head_1_link", "Head"]
+
+smpl_pose_modifier:
+  - Pelvis: "[np.pi/2, np.pi/2, 0]"
+  - L_Shoulder: "[0, 0, -np.pi/2]"
+  - R_Shoulder: "[0, 0, np.pi/2]"

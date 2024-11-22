@@ -13,3 +13,4 @@ record_all/
 _build/
 wandb/
 ckpts/
+outputs/
