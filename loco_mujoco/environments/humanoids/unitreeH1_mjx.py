@@ -1,5 +1,6 @@
-import jax
-import jax.numpy as jnp
+import mujoco
+from mujoco import MjSpec
+
 from .unitreeH1 import UnitreeH1
 from loco_mujoco.environments import ValidTaskConf
 
@@ -13,13 +14,13 @@ class MjxUnitreeH1(UnitreeH1):
     
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
         if "model_option_conf" not in kwargs.keys():
-            model_option_conf = dict(iterations=2, ls_iterations=4)
+            model_option_conf = dict(iterations=2, ls_iterations=4, disableflags=mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
         else:
             model_option_conf = kwargs["model_option_conf"]
             del kwargs["model_option_conf"]
         super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
 
-    def _modify_xml_for_mjx(self, xml_handle):
+    def _modify_spec_for_mjx(self, spec: MjSpec):
         """
         Mjx is bad in handling many complex contacts. To speed-up simulation significantly we apply
         some changes to the XML:
@@ -28,46 +29,42 @@ class MjxUnitreeH1(UnitreeH1):
             2. Disable all contacts except the ones between feet and the floor.
 
         Args:
-            xml_handle: Handle to Mujoco XML.
+            spec (MjSpec): Mujoco specification.
 
         Returns:
-            Mujoco XML handle.
+            Modified Mujoco specification.
 
         """
 
         # --- 1. remove old feet and add new ones ---
         # remove original foot meshes
-        rf_handle = xml_handle.find("geom", "right_foot")
-        lf_handle = xml_handle.find("geom", "left_foot")
-        rf_handle.remove()
-        lf_handle.remove()
+        for g in spec.geoms:
+            if g.name in ["right_foot", "left_foot"]:
+                g.delete()
 
-        # add primitive foot shapes
-        back_foot_attr = dict(type="capsule", quat=[1.0, 0.0, 1.0, 0.0], pos=[-0.03, 0.0, -0.05],
-                              size=[0.015, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
-        front_foot_attr = dict(type="capsule", quat=[1.0, 1.0, 0.0, 0.0], pos=[0.15, 0.0, -0.054],
-                               size=[0.02, 0.025], rgba=[1.0, 1.0, 1.0, 0.2], contype=1, conaffinity=1)
+        # --- 2. Make all geoms have contype and conaffinity of 0 ---
+        for g in spec.geoms:
+            g.contype = 0
+            g.conaffinity = 0
 
-        r_foot_b = xml_handle.find("body", "right_ankle_link")
-        r_foot_b.add("geom", name="right_foot1", **back_foot_attr)
-        r_foot_b.add("geom", name="right_foot2", **front_foot_attr)
+        # --- 3. add primitive foot shapes ---
+        back_foot_attr = dict(type=mujoco.mjtGeom.mjGEOM_CAPSULE, quat=[1.0, 0.0, 1.0, 0.0], pos=[-0.03, 0.0, -0.05],
+                              size=[0.015, 0.025, 0.0], rgba=[1.0, 1.0, 1.0, 0.2], contype=0, conaffinity=0)
+        front_foot_attr = dict(type=mujoco.mjtGeom.mjGEOM_CAPSULE, quat=[1.0, 1.0, 0.0, 0.0], pos=[0.15, 0.0, -0.054],
+                               size=[0.02, 0.025, 0.0], rgba=[1.0, 1.0, 1.0, 0.2], contype=0, conaffinity=0)
 
-        l_foot_b = xml_handle.find("body", "left_ankle_link")
-        l_foot_b.add("geom", name="left_foot1", **back_foot_attr)
-        l_foot_b.add("geom", name="left_foot2", **front_foot_attr)
+        r_foot_b = spec.find_body("right_ankle_link")
+        r_foot_b.add_geom(name="right_foot1", **back_foot_attr)
+        r_foot_b.add_geom(name="right_foot2", **front_foot_attr)
 
-        # --- 2. disable all contacts in the collision geom class ---
-        default = xml_handle.find_all("default")
-        for d in default:
-            if d.dclass == "collision":
-                d.geom.contype = 0
-                d.geom.conaffinity = 0
+        l_foot_b = spec.find_body("left_ankle_link")
+        l_foot_b.add_geom(name="left_foot1", **back_foot_attr)
+        l_foot_b.add_geom(name="left_foot2", **front_foot_attr)
 
-        return xml_handle
+        # --- 4. Define specific contact pairs ---
+        spec.add_pair(geomname1="floor", geomname2="right_foot1")
+        spec.add_pair(geomname1="floor", geomname2="right_foot2")
+        spec.add_pair(geomname1="floor", geomname2="left_foot1")
+        spec.add_pair(geomname1="floor", geomname2="left_foot2")
 
-    def _get_collision_groups(self):
-        return []
-
-    def _mjx_has_fallen(self, obs, info, data, carry):
-        pelvis_cond, _, _, _, _ = self._has_fallen_compat(obs, info, data, jnp)
-        return pelvis_cond
+        return spec

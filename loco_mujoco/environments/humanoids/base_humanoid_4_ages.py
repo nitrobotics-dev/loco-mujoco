@@ -75,7 +75,7 @@ class BaseHumanoid4Ages(BaseSkeleton):
         # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._use_box_feet = use_box_feet
         self._disable_arms = disable_arms
-        joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups = self._get_xml_modifications()
+        joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups = self._get_spec_modifications()
 
         xml_handle = mjcf.from_path(xml_path)
         xml_handles = [self.scale_body(deepcopy(xml_handle), scaling, use_muscles) for scaling in self._scalings]
@@ -86,11 +86,11 @@ class BaseHumanoid4Ages(BaseSkeleton):
             action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
 
             for handle, scale in zip(xml_handles, self._scalings):
-                handle = self._delete_from_xml_handle(handle, joints_to_remove,
-                                                      motors_to_remove, equ_constr_to_remove)
+                handle = self._delete_from_spec(handle, joints_to_remove,
+                                                motors_to_remove, equ_constr_to_remove)
 
                 if use_box_feet:
-                    handle = self._add_box_feet_to_xml_handle(handle, alpha_box_feet, scale)
+                    handle = self._add_box_feet_to_spec(handle, alpha_box_feet, scale)
 
                 if disable_arms:
                     self._reorient_arms(handle)

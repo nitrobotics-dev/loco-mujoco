@@ -7,7 +7,7 @@ def experiment(seed=0):
 
     np.random.seed(seed)
 
-    mdp = LocoEnv.make("UnitreeG1.run")
+    mdp = LocoEnv.make("MjxUnitreeG1.onehopforward")
 
     mdp.play_trajectory(n_episodes=3, n_steps_per_episode=500)
 

@@ -1,13 +1,13 @@
 import warnings
 
 import mujoco
+from mujoco import MjSpec
 
+import loco_mujoco
 from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
 from loco_mujoco.environments.humanoids.base_humanoid_4_ages import BaseHumanoid4Ages
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.utils import check_validity_task_mode_dataset
-
-
 
 
 class SkeletonTorque(BaseSkeleton):
@@ -294,13 +294,43 @@ class SkeletonTorque(BaseSkeleton):
 
         super(SkeletonTorque, self).__init__(use_muscles=False, **kwargs)
 
+    @staticmethod
+    def _get_action_specification(spec: MjSpec):
+        """
+        Getter for the action space specification.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
+
+        Returns:
+            A list of actuator names.
+        """
+
+        action_spec = ["mot_lumbar_ext", "mot_lumbar_bend", "mot_lumbar_rot", "mot_shoulder_flex_r",
+                       "mot_shoulder_add_r", "mot_shoulder_rot_r", "mot_elbow_flex_r", "mot_pro_sup_r",
+                       "mot_wrist_flex_r", "mot_wrist_dev_r", "mot_shoulder_flex_l", "mot_shoulder_add_l",
+                       "mot_shoulder_rot_l", "mot_elbow_flex_l", "mot_pro_sup_l", "mot_wrist_flex_l",
+                       "mot_wrist_dev_l", "mot_hip_flexion_r", "mot_hip_adduction_r", "mot_hip_rotation_r",
+                       "mot_knee_angle_r", "mot_ankle_angle_r", "mot_subtalar_angle_r", "mot_mtp_angle_r",
+                       "mot_hip_flexion_l", "mot_hip_adduction_l", "mot_hip_rotation_l", "mot_knee_angle_l",
+                       "mot_ankle_angle_l", "mot_subtalar_angle_l", "mot_mtp_angle_l"]
+
+        return action_spec
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (loco_mujoco.PATH_TO_MODELS / "skeleton" / "skeleton_torque.xml").as_posix()
+
 
 class MjxSkeletonTorque(SkeletonTorque):
     mjx_enabled = True
 
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
         if "model_option_conf" not in kwargs.keys():
-            model_option_conf = dict(iterations=4, ls_iterations=8)
+            model_option_conf = dict(iterations=4, ls_iterations=8, disableflags=mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
         else:
             model_option_conf = kwargs["model_option_conf"]
             del kwargs["model_option_conf"]
@@ -766,28 +796,45 @@ class HumanoidMuscle(BaseSkeleton):
         super(HumanoidMuscle, self).__init__(use_muscles=True, **kwargs)
 
     @staticmethod
-    def generate(task="walk", dataset_type="real", **kwargs):
+    def _get_action_specification(spec: MjSpec):
+        """
+        Getter for the action space specification.
 
-        check_validity_task_mode_dataset(HumanoidMuscle.__name__, task, None, dataset_type,
-                                         *HumanoidMuscle.valid_task_confs.get_all())
+        Args:
+            spec (MjSpec): Specification of the environment.
 
-        if dataset_type == "real":
-            if task == "walk":
-                path = "datasets/humanoids/real/02-constspeed_reduced_humanoid.npz"
-            elif task == "run":
-                path = "datasets/humanoids/real/05-run_reduced_humanoid.npz"
-        elif dataset_type == "perfect":
-            if "use_foot_forces" in kwargs.keys():
-                assert kwargs["use_foot_forces"] is False
-            if "disable_arms" in kwargs.keys():
-                assert kwargs["disable_arms"] is True
-            if "use_box_feet" in kwargs.keys():
-                assert kwargs["use_box_feet"] is True
+        Returns:
+            A list of actuator names.
+        """
 
-            if task == "walk":
-                path = "datasets/humanoids/perfect/humanoid_muscle_walk/perfect_expert_dataset_det.npz"
+        action_spec = ["mot_shoulder_flex_r", "mot_shoulder_add_r", "mot_shoulder_rot_r", "mot_elbow_flex_r",
+                       "mot_pro_sup_r", "mot_wrist_flex_r", "mot_wrist_dev_r", "mot_shoulder_flex_l",
+                       "mot_shoulder_add_l", "mot_shoulder_rot_l", "mot_elbow_flex_l", "mot_pro_sup_l",
+                       "mot_wrist_flex_l", "mot_wrist_dev_l", "glut_med1_r", "glut_med2_r",
+                       "glut_med3_r", "glut_min1_r", "glut_min2_r", "glut_min3_r", "semimem_r", "semiten_r",
+                       "bifemlh_r", "bifemsh_r", "sar_r", "add_long_r", "add_brev_r", "add_mag1_r", "add_mag2_r",
+                       "add_mag3_r", "tfl_r", "pect_r", "grac_r", "glut_max1_r", "glut_max2_r", "glut_max3_r",
+                       "iliacus_r", "psoas_r", "quad_fem_r", "gem_r", "peri_r", "rect_fem_r", "vas_med_r",
+                       "vas_int_r", "vas_lat_r", "med_gas_r", "lat_gas_r", "soleus_r", "tib_post_r",
+                       "flex_dig_r", "flex_hal_r", "tib_ant_r", "per_brev_r", "per_long_r", "per_tert_r",
+                       "ext_dig_r", "ext_hal_r", "glut_med1_l", "glut_med2_l", "glut_med3_l", "glut_min1_l",
+                       "glut_min2_l", "glut_min3_l", "semimem_l", "semiten_l", "bifemlh_l", "bifemsh_l",
+                       "sar_l", "add_long_l", "add_brev_l", "add_mag1_l", "add_mag2_l", "add_mag3_l",
+                       "tfl_l", "pect_l", "grac_l", "glut_max1_l", "glut_max2_l", "glut_max3_l",
+                       "iliacus_l", "psoas_l", "quad_fem_l", "gem_l", "peri_l", "rect_fem_l",
+                       "vas_med_l", "vas_int_l", "vas_lat_l", "med_gas_l", "lat_gas_l", "soleus_l",
+                       "tib_post_l", "flex_dig_l", "flex_hal_l", "tib_ant_l", "per_brev_l", "per_long_l",
+                       "per_tert_l", "ext_dig_l", "ext_hal_l", "ercspn_r", "ercspn_l", "intobl_r",
+                       "intobl_l", "extobl_r", "extobl_l"]
 
-        return BaseHumanoid.generate(HumanoidMuscle, path, task, dataset_type, **kwargs)
+        return action_spec
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (loco_mujoco.PATH_TO_MODELS / "skeleton" / "skeleton_muscle.xml").as_posix()
 
 
 class HumanoidTorque4Ages(BaseSkeleton):

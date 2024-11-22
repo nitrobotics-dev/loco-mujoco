@@ -7,13 +7,7 @@ import os
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
-
-env = LocoEnv.make("MjxSkeletonTorque.walk", n_envs=50)
-
-
-# optionally replay trajectory
-#env.play_trajectory(n_episodes=10)
+env = LocoEnv.make("MjxSkeletonTorque.walk", n_envs=4000)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)
@@ -38,7 +32,7 @@ while i < 100000:
     action = rng_sample_uni_action(action_keys)*0.8
     state = rng_step(state, action)
 
-    env.mjx_render(state)
+    #env.mjx_render(state)
 
     step += env.info.n_envs
     if step % LOGGING_FREQUENCY == 0:

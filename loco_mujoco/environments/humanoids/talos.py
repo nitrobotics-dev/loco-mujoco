@@ -1,9 +1,8 @@
-from pathlib import Path
-from copy import deepcopy
-from dm_control import mjcf
+import mujoco
+from mujoco import MjSpec
 
+import loco_mujoco
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
-from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.core import ObservationType
 from loco_mujoco.utils import info_property
@@ -263,50 +262,44 @@ class Talos(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=True, disable_back_joint=False, **kwargs):
+    def __init__(self, disable_arms=True, disable_back_joint=False, xml_path=None, **kwargs):
         """
         Constructor.
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "talos" / "talos.xml").as_posix()
-
-        action_spec = self._get_action_specification()
-
-        observation_spec = self._get_observation_specification()
-
-        # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
 
-        xml_handle = mjcf.from_path(xml_path)
-        xml_handles = []
+        if xml_path is None:
+            xml_path = self.get_default_xml_file_path()
+
+        # load the model specification
+        spec = mujoco.MjSpec.from_file(xml_path)
+
+        # get the observation and action space
+        observation_spec = self._get_observation_specification(spec)
+        action_spec = self._get_action_specification(spec)
 
         if self.mjx_enabled:
-            xml_handle = self._modify_xml_for_mjx(xml_handle)
+            spec = self._modify_spec_for_mjx(spec)
 
-        if disable_arms:
+        if disable_arms or disable_back_joint:
+            joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_spec_modifications()
+            obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
+            observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
+            action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
 
-            if disable_arms or disable_back_joint:
-                joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_xml_modifications()
-                obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
-                observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
-                action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
+            spec = self._delete_from_spec(spec, joints_to_remove, motors_to_remove, equ_constr_to_remove)
+            if disable_arms:
+                spec = self._reorient_arms(spec)
 
-                xml_handle = self._delete_from_xml_handle(xml_handle, joints_to_remove,
-                                                          motors_to_remove, equ_constr_to_remove)
+        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
 
-                xml_handle = self._reorient_arms(xml_handle)
-                xml_handles.append(xml_handle)
-        else:
-            xml_handles.append(xml_handle)
-
-        super().__init__(xml_handles, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
-
-    def _get_xml_modifications(self):
+    def _get_spec_modifications(self):
         """
         Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco xml.
+        should be removed from the Mujoco spec.
 
         Returns:
             A tuple of lists consisting of names of joints to remove, names of motors to remove,
@@ -330,6 +323,13 @@ class Talos(BaseRobotHumanoid):
             motors_to_remove += ["back_bkz_actuator", "back_bky_actuator"]
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (loco_mujoco.PATH_TO_MODELS / "talos" / "talos.xml").as_posix()
 
     @info_property
     def grf_size(self):
@@ -358,36 +358,36 @@ class Talos(BaseRobotHumanoid):
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod
-    def _reorient_arms(xml_handle):
+    def _reorient_arms(spec: MjSpec):
         """
         Reorients the elbow to not collide with the hip.
 
         Args:
-            xml_handle: Handle to Mujoco XML.
+            spec: Mujoco specification.
 
         Returns:
-            Modified Mujoco XML handle.
+            Modified Mujoco specification.
 
         """
         # modify the arm orientation
-        arm_right_4_link = xml_handle.find("body", "arm_right_4_link")
+        arm_right_4_link = spec.find_body("arm_right_4_link")
         arm_right_4_link.quat = [1.0,  0.0, -0.25, 0.0]
-        arm_left_4_link = xml_handle.find("body", "arm_left_4_link")
+        arm_left_4_link = spec.find_body("arm_left_4_link")
         arm_left_4_link.quat = [1.0,  0.0, -0.25, 0.0]
 
-        return xml_handle
+        return spec
 
     @staticmethod
-    def _get_observation_specification():
+    def _get_observation_specification(spec: MjSpec):
         """
-        Getter for the observation space specification.
+        Returns the observation specification of the environment.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of tuples containing the specification of each observation
-            space entry.
-
+            A list of observation types.
         """
-
         observation_spec = [# ------------- JOINT POS -------------
                             ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
                             ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
@@ -445,16 +445,16 @@ class Talos(BaseRobotHumanoid):
         return observation_spec
 
     @staticmethod
-    def _get_action_specification():
+    def _get_action_specification(spec: MjSpec):
         """
         Getter for the action space specification.
 
+        Args:
+            spec (MjSpec): Specification of the environment.
+
         Returns:
-            A list of tuples containing the specification of each action
-            space entry.
-
+            A list of actuator names.
         """
-
         action_spec = ["back_bkz_actuator", "back_bky_actuator", "l_arm_shz_actuator",
                        "l_arm_shx_actuator", "l_arm_ely_actuator", "l_arm_elx_actuator", "l_arm_wry_actuator",
                        "l_arm_wrx_actuator", "r_arm_shz_actuator", "r_arm_shx_actuator",

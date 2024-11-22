@@ -6,6 +6,7 @@ from typing import List, Optional, Any, Dict
 from dataclasses import dataclass
 from functools import partial
 import mujoco
+from mujoco import MjSpec
 import numpy as np
 from dm_control import mjcf
 
@@ -36,8 +37,8 @@ class Mujoco:
                  n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1,
                  model_option_conf=None, **viewer_params):
 
-        # load the model and data
-        self._model = self.load_model(xml_file)
+        # load the model, spec and data
+        self._model, self._spec = self.load_model_and_spec(xml_file)
         self._modify_model(self._model, model_option_conf)
         self._data = mujoco.MjData(self._model)
 
@@ -278,33 +279,6 @@ class Mujoco:
         """
         return data, carry
 
-    def load_model(self, xml_file):
-        """
-        Takes an xml_file and compiles and loads the model.
-
-        Args:
-            xml_file (str/xml handle): A string with a path to the xml or an Mujoco xml handle.
-
-        Returns:
-            Mujoco model.
-
-        """
-        if type(xml_file) == mjcf.element.RootElement:
-            # load from xml handle
-            model = mujoco.MjModel.from_xml_string(xml=xml_file.to_xml_string(),
-                                                   assets=xml_file.get_assets())
-            # todo: activate this
-            #self._xml_handles = xml_file
-        elif type(xml_file) == str:
-            # load from path
-            model = mujoco.MjModel.from_xml_path(xml_file)
-            # todo: activate this
-            #self._xml_handles = mjcf.from_path(xml_file)
-        else:
-            raise ValueError(f"Unsupported type for xml_file {type(xml_file)}.")
-
-        return model
-
     def set_actuation_spec(self, actuation_spec):
         """
         Sets the actuation of the environment to overwrite the default one.
@@ -474,6 +448,31 @@ class Mujoco:
         return deepcopy(self._data)
 
     @staticmethod
+    def load_model_and_spec(xml_file):
+        """
+        Takes a xml_file and compiles and loads the model.
+
+        Args:
+            xml_file (str/MjSpec): A string with a path to the xml or a Mujoco specification.
+
+        Returns:
+            Mujoco model and the specification.
+
+        """
+        if type(xml_file) == MjSpec:
+            # compile from specification
+            model = xml_file.compile()
+            spec = xml_file
+        elif type(xml_file) == str:
+            # load from path
+            spec = mujoco.MjSpec.from_file(xml_file)
+            model = spec.compile()
+        else:
+            raise ValueError(f"Unsupported type for xml_file {type(xml_file)}.")
+
+        return model, spec
+
+    @staticmethod
     def _modify_model(model, option_config):
         if option_config is not None:
             for key, value in option_config.items():
@@ -549,20 +548,8 @@ class Mujoco:
         return c_array
 
     @property
-    def xml_handle(self):
-        """ Returns the XML handle of the environment. This will raise an error if the environment contains more
-            than one xml_handle. """
-
-        if len(self._xml_handles) > 1:
-            raise ValueError("This environment contains multiple models and hence multiple xml_handles. Use the "
-                             "property \"xml_handles\" instead.")
-        return self._xml_handles[0]
-
-    @property
-    def xml_handles(self):
-        """ Returns all XML handles of the environment. """
-
-        return self._xml_handles
+    def spec(self):
+        return self._spec
 
     @property
     def cur_step_in_episode(self):

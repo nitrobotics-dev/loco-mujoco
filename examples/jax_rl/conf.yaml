@@ -17,15 +17,15 @@ defaults:
 #      experiment.env_params.env_name: MjxUnitreeH1.walk, MjxUnitreeH1.run
 
 wandb:
-  project: "new_ppo_test"
+  project: "free_joint_test"
 
 experiment:
   env_params:
-    env_name: MjxUnitreeH1.walk
+    env_name: MjxAtlas.walk
     disable_arms: false
     horizon: 1000
     goal_type: GoalTrajMimic
-    reward_type: mimic
+    reward_type: MimicReward
     reward_params:
       qpos_w_sum: 0.0
       qvel_w_sum: 0.0

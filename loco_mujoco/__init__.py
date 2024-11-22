@@ -1,3 +1,5 @@
+from pathlib import Path
+
 __version__ = '0.3.0'
 
 try:
@@ -10,6 +12,8 @@ try:
 
     def get_registered_envs():
         return LocoEnv.registered_envs
+
+    PATH_TO_MODELS = Path(__file__).resolve().parent / "models"
 
 except ImportError as e:
     print(e)

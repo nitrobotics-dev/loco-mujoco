@@ -1,0 +1,34 @@
+Atlas.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: TargetVelocityTrajReward
+
+MjxAtlas.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: TargetVelocityTrajReward
+
+
+Atlas.walk.perfect:
+  goal_type: NoGoal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 1.25
+  mandatory:
+    disable_arms: true
+    disable_back_joint: false
+    hold_weight: false
+    use_foot_forces: false
+  dataset_path: loco_mujoco/dataset/UnitreeH1_walk_perfect
+
+
+Atlas.run.perfect:
+  goal_type: NoGoal
+  reward_type: target_velocity
+  reward_params:
+    target_velocity: 2.5
+  mandatory:
+    disable_arms: true
+    disable_back_joint: false
+    hold_weight: false
+    use_foot_forces: false
+  dataset_path: loco_mujoco/dataset/UnitreeH1_walk_perfect
+

@@ -14,12 +14,12 @@ import jax.numpy as jnp
 import numpy as np
 from flax import struct
 import mujoco
-from dm_control import mjcf
+from mujoco import MjSpec
 from scipy.spatial.transform import Rotation as np_R
 
 import loco_mujoco
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
-from loco_mujoco.core.utils import Box, VideoRecorder, Goal, HeightBasedTerminalStateHandler, RootPoseTrajTerminalStateHandler
+from loco_mujoco.core.utils import VideoRecorder, Goal, RootPoseTrajTerminalStateHandler
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
@@ -46,7 +46,7 @@ class LocoEnv(Mjx):
 
     """
 
-    def __init__(self, xml_handles, action_spec, observation_spec, enable_mjx=False,
+    def __init__(self, spec, action_spec, observation_spec, enable_mjx=False,
                  n_envs=1, gamma=0.99, horizon=1000, n_substeps=10, reward_type="NoReward", reward_params=None,
                  goal_type="NoGoal", goal_params=None, terminal_state_handler_cls=None,
                  terminal_state_handler_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
@@ -57,7 +57,7 @@ class LocoEnv(Mjx):
         Constructor.
 
         Args:
-            xml_handles : MuJoCo xml handles.
+            spec (MjSpec): MuJoCo specification.
             actuation_spec (list): A list specifying the names of the joints
                 which should be controllable by the agent. Can be left empty
                 when all actuators should be used;
@@ -104,10 +104,6 @@ class LocoEnv(Mjx):
 
         """
 
-        if type(xml_handles) != list:
-            xml_handles = [xml_handles]
-        self._xml_handles = xml_handles
-
         if use_foot_forces:
             n_intermediate_steps = n_substeps
             n_substeps = 1
@@ -118,20 +114,18 @@ class LocoEnv(Mjx):
             viewer_params["geom_group_visualization_on_startup"] = [0, 2]   # enable robot geom [0] and floor visual [2]
 
         if domain_randomization_config is not None:
-            self._domain_rand = DomainRandomizationHandler(xml_handles, domain_randomization_config, parallel_dom_rand,
+            # todo: this is deprecated
+            self._domain_rand = DomainRandomizationHandler(spec, domain_randomization_config, parallel_dom_rand,
                                                            N_worker_per_xml_dom_rand)
         else:
             self._domain_rand = None
 
-        # todo: xml_handles are currently not supported to be lists
-        xml_handles = xml_handles[0]
-
-        # add sites for goal to xml_handle
-        xml_handles, goal = self._setup_goal(xml_handles, goal_type, goal_params)
+        # add sites for goal to spec
+        spec, goal = self._setup_goal(spec, goal_type, goal_params)
 
         if enable_mjx:
             # call parent (Mjx) constructor
-            super(LocoEnv, self).__init__(n_envs, xml_file=xml_handles, actuation_spec=action_spec,
+            super(LocoEnv, self).__init__(n_envs, xml_file=spec, actuation_spec=action_spec,
                                           observation_spec=observation_spec, goal=goal, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
                                           n_intermediate_steps=n_intermediate_steps,
@@ -141,7 +135,7 @@ class LocoEnv(Mjx):
         else:
             assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
-            super(Mjx, self).__init__(xml_file=xml_handles, actuation_spec=action_spec,
+            super(Mjx, self).__init__(xml_file=spec, actuation_spec=action_spec,
                                       observation_spec=observation_spec, goal=goal, gamma=gamma,
                                       horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
                                       timestep=timestep,
@@ -601,22 +595,6 @@ class LocoEnv(Mjx):
         self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
                              record, recorder_params, callback_class, key)
 
-    @property
-    def xml_handle(self):
-        """ Returns the XML handle of the environment. This will raise an error if the environment contains more
-            than one xml_handle. """
-
-        if len(self._xml_handles) > 1:
-            raise ValueError("This environment contains multiple models and hence multiple xml_handles. Use the "
-                             "property \"xml_handles\" instead.")
-        return self._xml_handles[0]
-
-    @property
-    def xml_handles(self):
-        """ Returns all XML handles of the environment. """
-
-        return self._xml_handles
-
     def reset(self, key):
         key, subkey = jax.random.split(key)
         obs = super().reset(key)
@@ -812,8 +790,19 @@ class LocoEnv(Mjx):
 
         return reward
 
-    def _setup_goal(self, xml_handle, goal_type, goal_params):
+    def _setup_goal(self, spec, goal_type, goal_params):
+        """
+        Setup the goal.
 
+        Args:
+            spec (MjSpec): Specification of the environment.
+            goal_type (str): Type of the goal.
+            goal_params (dict): Parameters of the goal.
+
+        Returns:
+            MjSpec: Modified specification.
+            Goal: Goal
+        """
         # collect all info properties of the env (dict all @info_properties decorated function returns)
         info_props = self._get_all_info_properties()
 
@@ -822,10 +811,10 @@ class LocoEnv(Mjx):
         goal = goal_cls(info_props=info_props) if goal_params is None \
             else goal_cls(info_props=info_props, **goal_params)
 
-        # apply the modification to the xml needed
-        xml_handle = goal.apply_xml_modifications(xml_handle, self.root_body_name)
+        # apply the modification to the spec if needed
+        spec = goal.apply_spec_modifications(spec, self.root_body_name)
 
-        return xml_handle, goal
+        return spec, goal
 
     def _get_all_info_properties(self):
         """
@@ -887,7 +876,7 @@ class LocoEnv(Mjx):
     def _mjx_has_fallen(self, obs, info, data, carry):
         raise NotImplementedError
 
-    def _modify_xml_for_mjx(self, xml_handle):
+    def _modify_spec_for_mjx(self, spec: MjSpec):
         raise NotImplementedError
 
     def _check_reset_configuration(self):
@@ -934,6 +923,14 @@ class LocoEnv(Mjx):
 
         return env
 
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        raise NotImplementedError(f"Please implement the default_xml_file_path property "
+                                  f"in the {type(cls).__name__} environment.")
+
     @info_property
     def grf_size(self):
         """
@@ -959,6 +956,35 @@ class LocoEnv(Mjx):
         """
         raise NotImplementedError(f"Please implement the root_height_healthy_range property "
                                   f"in the {type(self).__name__} environment.")
+
+    @staticmethod
+    def _get_observation_specification(spec: MjSpec):
+        """
+        Returns the observation specification of the environment.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
+
+        Returns:
+            A list of observation types.
+        """
+        raise NotImplementedError(f"Please implement the _get_observation_specification method "
+                                  f"in the {type(spec).__name__} environment.")
+
+    @staticmethod
+    def _get_action_specification(spec: MjSpec):
+        """
+        Getter for the action space specification.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
+
+        Returns:
+            A list of actuator names.
+
+        """
+        raise NotImplementedError(f"Please implement the _get_action_specification method "
+                                  f"in the {type(spec).__name__} environment.")
 
     @staticmethod
     def get_task_config(config_key, **kwargs):
@@ -1077,59 +1103,32 @@ class LocoEnv(Mjx):
         return "pelvis"
 
     @staticmethod
-    def _delete_from_xml_handle(xml_handle, joints_to_remove, motors_to_remove, equ_constraints):
+    def _delete_from_spec(spec, joints_to_remove, actuators_to_remove, equ_constraints_to_remove):
         """
-        Deletes certain joints, motors and equality constraints from a Mujoco XML handle.
+        Deletes certain joints, motors and equality constraints from a Mujoco specification.
 
         Args:
-            xml_handle: Handle to Mujoco XML.
+            spec (MjSpec): Mujoco specification.
             joints_to_remove (list): List of joint names to remove.
-            motors_to_remove (list): List of motor names to remove.
-            equ_constraints (list): List of equality constraint names to remove.
+            actuators_to_remove (list): List of actuator names to remove.
+            equ_constraints_to_remove (list): List of equality constraint names to remove.
 
         Returns:
-            Modified Mujoco XML handle.
+            Modified Mujoco specification.
 
         """
 
-        for j in joints_to_remove:
-            j_handle = xml_handle.find("joint", j)
-            j_handle.remove()
-        for m in motors_to_remove:
-            m_handle = xml_handle.find("actuator", m)
-            m_handle.remove()
-        for e in equ_constraints:
-            e_handle = xml_handle.find("equality", e)
-            e_handle.remove()
+        for joint in spec.joints:
+            if joint.name in joints_to_remove:
+                joint.delete()
+        for actuator in spec.actuators:
+            if actuator.name in actuators_to_remove:
+                actuator.delete()
+        for equality in spec.equalities:
+            if equality.name in equ_constraints_to_remove:
+                equality.delete()
 
-        return xml_handle
-
-    @staticmethod
-    def _save_xml_handle(xml_handle, tmp_dir_name, file_name="tmp_model.xml"):
-        """
-        Save the Mujoco XML handle to a file at tmp_dir_name. If tmp_dir_name is None,
-        a temporary directory is created at /tmp.
-
-        Args:
-            xml_handle: Mujoco XML handle.
-            tmp_dir_name (str): Path to temporary directory. If None, a
-            temporary directory is created at /tmp.
-
-        Returns:
-            String of the save path.
-
-        """
-
-        if tmp_dir_name is not None:
-            assert os.path.exists(tmp_dir_name), "specified directory (\"%s\") does not exist." % tmp_dir_name
-
-        dir = mkdtemp(dir=tmp_dir_name)
-        file_path = os.path.join(dir, file_name)
-
-        # dump data
-        mjcf.export_with_assets(xml_handle, dir, file_name)
-
-        return file_path
+        return spec
 
     @staticmethod
     def raise_mjx_not_enabled_error(*args, **kwargs):

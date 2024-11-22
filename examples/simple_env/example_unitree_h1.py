@@ -1,13 +1,11 @@
 import numpy as np
 import jax
-from copy import deepcopy
 from loco_mujoco import LocoEnv
-from loco_mujoco.core.utils.math import calc_rel_positions, calc_rel_quaternions, calc_rel_body_velocities, calc_site_velocities
 
 
 # create the environment and task
-env = LocoEnv.make("UnitreeH1.walk", disable_arms=False,
-                   reward_type="mimic", goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=False))
+env = LocoEnv.make("MjxUnitreeH1.walk", disable_arms=False,
+                   reward_type="MimicReward", goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=True))
 
 # get the dataset for the chosen environment and task
 #expert_data = env.create_dataset()

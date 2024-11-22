@@ -1,14 +1,13 @@
+import os
 import jax
 import time
 
 from loco_mujoco import LocoEnv
 
-from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
-env = LocoEnv.make("MjxTalos.walk", n_envs=4000, disable_arms=True)
+os.environ['XLA_FLAGS'] = (
+    '--xla_gpu_triton_gemm_any=True ')
 
-
-# optionally replay trajectory
-#env.play_trajectory(n_episodes=10)
+env = LocoEnv.make("MjxTalos.walk", n_envs=4000, disable_arms=False)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)
@@ -41,5 +40,5 @@ while i < 100000:
         print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")
         previous_time = current_time
 
-    i+=1
+    i += 1
 

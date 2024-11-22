@@ -2,10 +2,10 @@ traj_conf:
   joint_conf:
     pelvis_tx: [0.725, 0.0]
     pelvis_tz: [-0.725, 0.0]
-    pelvis_ty: [0.725, -0.73]
-    pelvis_tilt: [0.5, -0.10]
-    pelvis_list: [0.5, 0.0]
-    pelvis_rotation: [1.0, 0.0]
+    pelvis_ty: [0.725, -0.9]
+    pelvis_tilt: [0.5, !expr "np.pi/2 - 0.10"]
+    pelvis_list: [0.5, !expr "np.pi/2"]
+    pelvis_rotation: [1.0, !expr "-np.pi/2"]
     lumbar_extension: [1.0, 0.25]
     lumbar_bending: [1.0, 0.0]
     lumbar_rotation: [1.0, 0.0]
@@ -30,6 +30,9 @@ traj_conf:
     knee_angle_r: [-1.0, 0.0]
     ankle_angle_r: [-1.0, -0.12]
   rename_map:
+    pelvis_tilt: pelvis_tilt
+    pelvis_rotation: pelvis_list
+    pelvis_list: pelvis_rotation
     lumbar_rotation: torso_joint
     hip_flexion_l: left_hip_pitch_joint
     hip_adduction_l: left_hip_roll_joint

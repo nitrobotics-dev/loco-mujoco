@@ -50,7 +50,6 @@ Modified by Firas Al-Hafez 2024.
     </default>
     <motor ctrllimited="true" ctrlrange="-0.95 0.95"/>
   </default>
-
   <asset>
     <material name="black" rgba="0.1 0.1 0.1 1"/>
     <material name="white" rgba="1 1 1 1"/>

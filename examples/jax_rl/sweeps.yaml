@@ -3,7 +3,7 @@ project : bayes_dtw
 method: bayes
 metric:
   goal: minimize
-  name: Validation Measures/dynamic_time_warping/site_rpos
+  name: Metric for Sweep
 parameters:
   experiment.init_std:
     min: 0.1

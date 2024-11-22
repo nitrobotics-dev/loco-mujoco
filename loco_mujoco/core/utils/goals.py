@@ -1,6 +1,7 @@
 import numpy as np
 import jax.numpy as jnp
 import mujoco
+from mujoco import MjSpec
 from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
 
@@ -40,8 +41,18 @@ class Goal(Observation):
         assert self.initialized
         return data
 
-    def apply_xml_modifications(self, xml_handle, root_body_name):
-        return xml_handle
+    def apply_spec_modifications(self, spec: MjSpec, root_body_name: str):
+        """
+        Apply modifications to the Mujoco XML specification to include the goal.
+
+        Args:
+            spec (MjSpec): Mujoco specification.
+            root_body_name (str): Name of the body to which the goal is attached.
+
+        Returns:
+            MjSpec: Modified Mujoco specification.
+        """
+        return spec
 
     def set_attr_data_compat(self, data, backend, attr, arr, ind):
         """
@@ -76,10 +87,10 @@ class Goal(Observation):
     def spec(self):
         return []
 
-    def allocate_user_data(self, xml_handle):
+    def allocate_user_data(self, spec):
         if self.size_user_data > 0:
-            xml_handle.size.nuserdata = self.size_user_data
-        return xml_handle
+            spec.nuserdata = self.size_user_data
+        return spec
 
     @property
     def size_user_data(self):
@@ -181,20 +192,20 @@ class GoalTrajArrow(Goal):
         data.site(self._site_name_keypoint_2).xpos = abs_target_arrow_pos
         return data
 
-    def apply_xml_modifications(self, xml_handle, root_body_name):
+    def apply_spec_modifications(self, spec, root_body_name):
         # apply the default modifications needed to store the goal in data
-        self.allocate_user_data(xml_handle)
+        self.allocate_user_data(spec)
         # optionally add sites for visualization
         if self.visualize_goal:
             # add sites for visualization
             root_body_name = self.upper_body_xml_name
-            root = xml_handle.find("body", root_body_name)
+            root = spec.find("body", root_body_name)
             # use two spheres to represent an arrow
             point_properties = dict(type="sphere", group=0, rgba=[1.0, 0.0, 0.0, 1.0])
             k1_pos, k2_pos = [0.0, 0.0, 1], [0.5, 0.0, 1]
             root.add("site", name=self._site_name_keypoint_1, pos=k1_pos, size=[0.05], **point_properties)
             root.add("site", name=self._site_name_keypoint_2, pos=k2_pos, size=[0.03], **point_properties)
-        return xml_handle
+        return spec
 
     @property
     def size_user_data(self):
@@ -242,12 +253,25 @@ class GoalTrajMimic(Goal):
         self.__class__._site_bodyid = model.site_bodyid
         self._initialized_from_traj = True
 
-    def apply_xml_modifications(self, xml_handle, root_body_name):
-        joints = xml_handle.find_all("joint")
+    def apply_spec_modifications(self, spec: MjSpec, root_body_name: str):
+        """
+        Apply modifications to the Mujoco XML specification to include the goal.
+
+        Args:
+            spec (MjSpec): Mujoco specification.
+            root_body_name (str): Name of the body to which the goal is attached.
+
+        Returns:
+            MjSpec: Modified Mujoco specification.
+        """
+        joints = spec.joints
         n_joints = len(joints)
-        for j in joints:
-            body = j.parent
-            if body.name not in self._relevant_body_names and body.name != self.main_body_name:
+        # for j in joints:
+        #     body = j.parent
+        #     if body.name not in self._relevant_body_names and body.name != self.main_body_name:
+        #         self._relevant_body_names.append(body.name)
+        for body in spec.bodies:
+            if body.name not in self._relevant_body_names and body.name != self.main_body_name and body.name != "world":
                 self._relevant_body_names.append(body.name)
         n_sites = len(self._info_props["sites_for_mimic"]) - 1   # number of sites to be considered, -1 because all quantities are relative to the main site
         size_for_joint_pos = (5 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 7 dim -2 to not incl. x and y
@@ -255,19 +279,24 @@ class GoalTrajMimic(Goal):
         size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
         self._size_user_data = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
         self._size_additional_observation = size_for_sites
-        self.allocate_user_data(xml_handle)
+        self.allocate_user_data(spec)
         if self.visualize_goal:
-            wb = xml_handle.worldbody
+            wb = spec.worldbody
+            mimic_site_defaults = None
+            # visualize mimic sites todo: the red sites of the robot should also be visible
+            for site in spec.sites:
+                if "mimic" in site.name:
+                    site.group = 0
+                    if mimic_site_defaults is None:
+                        mimic_site_defaults = site.default()
+
             for body_name in self._info_props["sites_for_mimic"]:
                 name = "visual_goal_" + body_name
-                visual_goal = wb.add("body", name=name, mocap=True)
-                visual_goal.add("site", dclass="mimic", rgba=[0.0, 1.0, 0.0, 0.5])
-            # visualize mimic sites todo: the red sites of the robot should also be visible
-            sites = xml_handle.find_all("site")
-            for site in sites:
-                if site.dclass == "mimic":
-                    site.group = 0
-        return xml_handle
+                visual_goal = wb.add_body(name=name, mocap=True)
+                visual_goal.set_default(mimic_site_defaults)
+                visual_goal.add_site(name=name, rgba=[0.0, 1.0, 0.0, 0.5], group=0)
+
+        return spec
 
     def init_from_traj(self, traj_handler):
         # focus on joints in the observation space
@@ -341,8 +370,8 @@ class GoalTrajMimic(Goal):
         data = self.set_attr_data_compat(data, backend, "userdata", goal_obs, self.data_type_ind)
         if self.visualize_goal:
             # todo: this currently only works with normal Mujoco since Mjx does not support mocap bodies yet.
-            if backend == jnp:
-                raise NotImplementedError("mocap_pos and mocap_quat are not supported in MJX yet.")
+            # if backend == jnp:
+            #     raise NotImplementedError("mocap_pos and mocap_quat are not supported in MJX yet.")
             data = self.set_visual_data(data, backend, traj_data, traj_state)
         return data
 

@@ -1,10 +1,7 @@
-from pathlib import Path
+import mujoco
+from mujoco import MjSpec
 
-import numpy as np
-from dm_control import mjcf
-from jax.scipy.spatial.transform import Rotation as jnp_R
-from scipy.spatial.transform import Rotation as np_R
-
+import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.environments import ValidTaskConf
@@ -234,168 +231,68 @@ class UnitreeH1(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=False, disable_back_joint=False, **kwargs):
+    def __init__(self, disable_arms=False, disable_back_joint=False, xml_path=None, **kwargs):
         """
         Constructor.
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent.parent / "models" / "unitree_h1" / "h1.xml").as_posix()
-
-        action_spec = self._get_action_specification()
-
-        observation_spec = self._get_observation_specification()
-
-        # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
 
-        xml_handles = []
-        xml_handle = mjcf.from_path(xml_path)
+        if xml_path is None:
+            xml_path = self.get_default_xml_file_path()
 
+        # load the model specification
+        spec = mujoco.MjSpec.from_file(xml_path)
+
+        # get the observation and action space
+        observation_spec = self._get_observation_specification(spec)
+        action_spec = self._get_action_specification(spec)
+
+        # modify the specification if needed
         if self.mjx_enabled:
-            xml_handle = self._modify_xml_for_mjx(xml_handle)
-
+            spec = self._modify_spec_for_mjx(spec)
         if disable_arms or disable_back_joint:
+            joints_to_remove, actuators_to_remove, equ_constraints_to_remove = self._get_spec_modifications()
+            obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
+            observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
+            action_spec = [ac for ac in action_spec if ac not in actuators_to_remove]
+            spec = self._delete_from_spec(spec, joints_to_remove,
+                                          actuators_to_remove, equ_constraints_to_remove)
+            if disable_arms:
+                spec = self._reorient_arms(spec)
 
-            if disable_arms or disable_back_joint:
-                joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_xml_modifications()
-                obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
-                observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
-                action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
-
-                xml_handle = self._delete_from_xml_handle(xml_handle, joints_to_remove,
-                                                          motors_to_remove, equ_constr_to_remove)
-
-                xml_handle = self._reorient_arms(xml_handle)
-
-                xml_handles.append(xml_handle)
-        else:
-            xml_handles.append(xml_handle)
-
-        super().__init__(xml_handles, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
+        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
                          **kwargs)
 
-    @info_property
-    def grf_size(self):
-        """
-        Returns the size of the ground force vector.
-
-        """
-
-        return 6
-
-    @info_property
-    def upper_body_xml_name(self):
-        return "torso_link"
-
-    @info_property
-    def root_free_joint_xml_name(self):
-        return "root"
-
-    @info_property
-    def root_height_healthy_range(self):
-        """
-        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
-        """
-        return (0.0, 1.0)
-
-    def _get_xml_modifications(self):
+    def _get_spec_modifications(self):
         """
         Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco xml.
+        should be removed from the Mujoco specification.
 
         Returns:
-            A tuple of lists consisting of names of joints to remove, names of motors to remove,
+            A tuple of lists consisting of names of joints to remove, names of actuators to remove,
              and names of equality constraints to remove.
 
         """
 
         joints_to_remove = []
-        motors_to_remove = []
+        actuators_to_remove = []
         equ_constr_to_remove = []
 
         if self._disable_arms:
             joints_to_remove += ["l_arm_shy", "l_arm_shx", "l_arm_shz", "left_elbow", "r_arm_shy",
                                  "r_arm_shx", "r_arm_shz", "right_elbow"]
-            motors_to_remove += ["l_arm_shy_actuator", "l_arm_shx_actuator", "l_arm_shz_actuator",
-                                 "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
-                                 "r_arm_shz_actuator", "right_elbow_actuator"]
+            actuators_to_remove += ["l_arm_shy_actuator", "l_arm_shx_actuator", "l_arm_shz_actuator",
+                                    "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
+                                    "r_arm_shz_actuator", "right_elbow_actuator"]
 
         if self._disable_back_joint:
             joints_to_remove += ["back_bkz"]
-            motors_to_remove += ["back_bkz_actuator"]
+            actuators_to_remove += ["back_bkz_actuator"]
 
-        return joints_to_remove, motors_to_remove, equ_constr_to_remove
-
-    # def _has_fallen(self, obs, info, data, return_err_msg=False):
-    #     """
-    #     Checks if a model has fallen.
-    #
-    #     Args:
-    #         obs (np.array): Current observation.
-    #         return_err_msg (bool): If True, an error message with violations is returned.
-    #
-    #     Returns:
-    #         True, if the model has fallen for the current observation, False otherwise.
-    #         Optionally an error message is returned.
-    #     """
-    #
-    #     pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond = (
-    #         self._has_fallen_compat(obs, info, data, np))
-    #
-    #     if return_err_msg:
-    #         error_msg = ""
-    #         if pelvis_y_cond:
-    #             error_msg += "pelvis_y_condition violated.\n"
-    #         elif pelvis_tilt_cond:
-    #             error_msg += "pelvis_tilt_condition violated.\n"
-    #         elif pelvis_list_cond:
-    #             error_msg += "pelvis_list_condition violated.\n"
-    #         elif pelvis_rotation_cond:
-    #             error_msg += "pelvis_rotation_condition violated.\n"
-    #         return pelvis_cond, error_msg
-    #     else:
-    #
-    #         return pelvis_cond
-    #
-    # def _has_fallen_compat(self, obs, info, data, backend):
-    #
-    #     if backend == np:
-    #         R = np_R
-    #     else:
-    #         R = jnp_R
-    #
-    #     q_root = self._get_from_obs(obs, "q_root")
-    #     q_pelvis_y = q_root[2]
-    #     q_root_quat = q_root[3:7]
-    #     q_root_euler = R.from_quat(q_root_quat).as_euler("xyz")
-    #     q_pelvis_tilt, q_pelvis_list, q_pelvis_rotation = q_root_euler[0], q_root_euler[1], q_root_euler[2]
-    #
-    #     # q_pelvis_y = self._get_from_obs(obs, "q_pelvis_ty")
-    #     # q_pelvis_tilt = self._get_from_obs(obs, "q_pelvis_tilt")
-    #     # q_pelvis_list = self._get_from_obs(obs, "q_pelvis_list")
-    #     # q_pelvis_rotation = self._get_from_obs(obs, "q_pelvis_rotation")
-    #
-    #     pelvis_y_cond = backend.logical_or(backend.less(q_pelvis_y, -0.3),
-    #                                        backend.greater(q_pelvis_y, 0.1))
-    #     pelvis_tilt_cond = backend.logical_or(backend.less(q_pelvis_tilt, -backend.pi / 4.5),
-    #                                           backend.greater(q_pelvis_tilt, backend.pi / 12))
-    #     pelvis_list_cond = backend.logical_or(backend.less(q_pelvis_list, -backend.pi / 12),
-    #                                           backend.greater(q_pelvis_list, backend.pi / 8))
-    #     pelvis_rotation_cond = backend.logical_or(backend.less(q_pelvis_rotation, -backend.pi / 8),
-    #                                               backend.greater(q_pelvis_rotation, backend.pi / 8))
-    #
-    #     pelvis_cond = backend.logical_or(backend.logical_or(pelvis_y_cond, pelvis_tilt_cond),
-    #                                      backend.logical_or(pelvis_list_cond, pelvis_rotation_cond))
-    #
-    #     pelvis_cond = backend.squeeze(pelvis_cond)
-    #     pelvis_y_cond = backend.squeeze(pelvis_y_cond)
-    #     pelvis_tilt_cond = backend.squeeze(pelvis_tilt_cond)
-    #     pelvis_list_cond = backend.squeeze(pelvis_list_cond)
-    #     pelvis_rotation_cond = backend.squeeze(pelvis_rotation_cond)
-    #
-    #     return pelvis_cond, pelvis_y_cond, pelvis_tilt_cond, pelvis_list_cond, pelvis_rotation_cond
+        return joints_to_remove, actuators_to_remove, equ_constr_to_remove
 
     @classmethod
     def generate(cls, task="walk", dataset_type="real", **kwargs):
@@ -403,11 +300,11 @@ class UnitreeH1(BaseRobotHumanoid):
         Returns an environment corresponding to the specified task.
 
         Args:
-        task (str): Main task to solve.
-        dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
-        reference trajectory. This data does not perfectly match the kinematics
-        and dynamics of this environment, hence it is more challenging. "perfect" uses
-        a perfect dataset.
+            task (str): Main task to solve.
+            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
+                reference trajectory. This data does not perfectly match the kinematics
+                and dynamics of this environment, hence it is more challenging. "perfect" uses
+                a perfect dataset.
 
         """
 
@@ -415,40 +312,40 @@ class UnitreeH1(BaseRobotHumanoid):
                                           clip_trajectory_to_joint_ranges=True, **kwargs)
 
     @staticmethod
-    def _reorient_arms(xml_handle):
+    def _reorient_arms(spec: MjSpec):
         """
         Reorients the elbow to not collide with the hip. Is used when disable_arms is set to True.
 
         Args:
-            xml_handle: Handle to Mujoco XML.
+            spec (MjSpec): Mujoco specification.
 
         Returns:
-            Modified Mujoco XML handle.
+            Modified Mujoco specification.
 
         """
         # modify the arm orientation
-        left_shoulder_pitch_link = xml_handle.find("body", "left_shoulder_pitch_link")
+        left_shoulder_pitch_link = spec.find_body("left_shoulder_pitch_link")
         left_shoulder_pitch_link.quat = [1.0, 0.25, 0.1, 0.0]
-        right_elbow_link = xml_handle.find("body", "right_elbow_link")
+        right_elbow_link = spec.find_body("right_elbow_link")
         right_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
-        right_shoulder_pitch_link = xml_handle.find("body", "right_shoulder_pitch_link")
+        right_shoulder_pitch_link = spec.find_body("right_shoulder_pitch_link")
         right_shoulder_pitch_link.quat = [1.0, -0.25, 0.1, 0.0]
-        left_elbow_link = xml_handle.find("body", "left_elbow_link")
+        left_elbow_link = spec.find_body("left_elbow_link")
         left_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
 
-        return xml_handle
+        return spec
 
     @staticmethod
-    def _get_observation_specification():
+    def _get_observation_specification(spec: MjSpec):
         """
-        Getter for the observation space specification.
+        Returns the observation specification of the environment.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of tuples containing the specification of each observation
-            space entry.
-
+            A list of observation types.
         """
-
         observation_spec = [# ------------- JOINT POS -------------
                             ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
                             ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
@@ -496,16 +393,16 @@ class UnitreeH1(BaseRobotHumanoid):
         return observation_spec
 
     @staticmethod
-    def _get_action_specification():
+    def _get_action_specification(spec: MjSpec):
         """
         Getter for the action space specification.
 
+        Args:
+            spec (MjSpec): Specification of the environment.
+
         Returns:
-            A list of tuples containing the specification of each action
-            space entry.
-
+            A list of actuator names.
         """
-
         action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
                        "l_arm_shz_actuator", "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
                        "r_arm_shz_actuator", "right_elbow_actuator", "hip_flexion_r_actuator",
@@ -514,3 +411,34 @@ class UnitreeH1(BaseRobotHumanoid):
                        "hip_rotation_l_actuator", "knee_angle_l_actuator", "ankle_angle_l_actuator"]
 
         return action_spec
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (loco_mujoco.PATH_TO_MODELS / "unitree_h1" / "h1.xml").as_posix()
+
+    @info_property
+    def grf_size(self):
+        """
+        Returns the size of the ground force vector.
+
+        """
+
+        return 6
+
+    @info_property
+    def upper_body_xml_name(self):
+        return "torso_link"
+
+    @info_property
+    def root_free_joint_xml_name(self):
+        return "root"
+
+    @info_property
+    def root_height_healthy_range(self):
+        """
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        """
+        return (0.0, 1.0)

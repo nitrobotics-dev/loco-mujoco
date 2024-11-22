@@ -81,3 +81,20 @@ def mj_jntid2qvelid(j_id, model):
         qvel_id = [start_qvel_id]
 
     return qvel_id
+
+
+def mj_spec_find_geom_id(spec, geom_name):
+    """
+    Find geom id in mujoco specification.
+
+    Args:
+        spec (MjSpec): Mujoco specification.
+        geom_name (str): geom name.
+
+    Returns:
+        int: geom id in Mujoco specification.
+    """
+    for i, g in enumerate(spec.geoms):
+        if g.name == geom_name:
+            return i
+    raise ValueError(f"Geom {geom_name} not found in spec.")
