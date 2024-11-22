@@ -107,6 +107,7 @@ class Mjx(Mujoco):
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         data = mjx.put_data(self._model, self._data)
+        data = mjx.forward(self.sys, data)
 
         carry = self._init_additional_carry(key, data)
 

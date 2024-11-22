@@ -1,9 +1,8 @@
-mushroom-rl>=1.10.0
 numpy
 scipy
-mujoco==2.3.7
+mujoco>=3.2.5
+mujoco-mjx>=3.2.5
 gymnasium
-dm_control
 pyyaml
 wget
 hydra-core
