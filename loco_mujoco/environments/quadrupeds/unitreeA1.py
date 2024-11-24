@@ -3,7 +3,7 @@ import warnings
 from pathlib import Path
 from copy import deepcopy
 
-from dm_control import mjcf
+#from dm_control import mjcf
 
 import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf

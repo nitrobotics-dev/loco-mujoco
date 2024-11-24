@@ -2,7 +2,6 @@ import yaml
 import mujoco
 import numpy as np
 from copy import deepcopy
-from dm_control import mjcf
 from multiprocessing import Queue, Pool
 
 
