@@ -11,6 +11,7 @@ from .metrics import MetricsHandler, ValidationSummary
 # register all rewards
 NoReward.register()
 PosReward.register()
+TargetVelocityGoalReward.register()
 TargetXVelocityReward.register()
 TargetVelocityTrajReward.register()
 CustomReward.register()

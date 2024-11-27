@@ -20,7 +20,7 @@ def experiment(config: DictConfig):
         env = LocoEnv.make(goal_params=dict(visualize_goal=True), **config.experiment.env_params)
 
         # load train state
-        path = "/examples/jax_rl_mimic/outputs/2024-11-27/16-12-21/PPOJax_saved.pkl"
+        path = "/examples/jax_rl_mimic/outputs/2024-11-22/17-07-26/PPOJax_saved.pkl"
         agent_conf, agent_state = PPOJax.load_agent(path)
 
         # run eval

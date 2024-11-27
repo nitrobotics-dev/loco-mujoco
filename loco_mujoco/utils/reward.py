@@ -1,8 +1,11 @@
 import numpy as np
 import mujoco
 
+from jax.scipy.spatial.transform import Rotation as jnp_R
+from scipy.spatial.transform import Rotation as np_R
+
 from loco_mujoco.core import ObservationType
-from loco_mujoco.core.utils.math import  calculate_relative_site_quatities, quaternion_angular_distance
+from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quaternion_angular_distance
 
 
 class Reward:
@@ -145,6 +148,50 @@ class TargetVelocityTrajReward(Reward):
         return backend.exp(-backend.square(x_vel - target_vel))
 
 
+class TargetVelocityGoalReward(Reward):
+
+    def __init__(self, obs_container, free_jnt_vel_name="dq_root", w_exp=10.0, **kwargs):
+        free_jnt_vel = obs_container[free_jnt_vel_name]
+        self._w_exp = w_exp
+
+        assert type(free_jnt_vel) is ObservationType.FreeJointVel, (f"FreeJointVel observation is required "
+                                                                    f"for the reward{self.__class__.__name__}.")
+
+        self._vel_idx = obs_container[free_jnt_vel_name].data_type_ind
+
+        # find the goal velocity observation
+        try:
+            goal_vel_obs = obs_container["GoalRandomRootVelocity"]
+        except KeyError:
+            raise ValueError(f"GoalRandomRootVelocity is the required goal for the reward {self.__class__.__name__}")
+
+        self._goal_vel_idx = goal_vel_obs.data_type_ind
+        super().__init__(obs_container, **kwargs)
+        self._free_jnt_name = self._info_props["root_free_joint_xml_name"]
+
+    def __call__(self, state, action, next_state, absorbing, info, model, data, carry, backend, traj_data=None):
+        if backend == np:
+            R = np_R
+        else:
+            R = jnp_R
+
+        # get root orientation
+        root_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, self._free_jnt_name)
+        assert root_jnt_id != -1, f"Joint {self._free_jnt_name} not found in the model."
+        root_jnt_qpos_start_id = model.jnt_qposadr[root_jnt_id]
+        root_qpos = backend.squeeze(data.qpos[root_jnt_qpos_start_id:root_jnt_qpos_start_id+7])
+        root_quat = R.from_quat(root_qpos[3:7])
+
+        # get current local vel of root
+        x_vel_global = backend.squeeze(data.qvel[self._vel_idx])[:3]
+        x_vel_local = root_quat.apply(x_vel_global)
+
+        # vel in goal
+        goal_vel = backend.squeeze(data.userdata[self._goal_vel_idx])
+
+        return backend.exp(-self._w_exp*backend.mean(backend.square(x_vel_local[:2] - goal_vel)))
+
+
 class MimicReward(Reward):
 
     def __init__(self, obs_dict, qpos_w_exp=10.0, qvel_w_exp=2.0, rpos_w_exp=100.0,
@@ -202,8 +249,6 @@ class MimicReward(Reward):
         self._quat_in_qpos = np.array([True if q in quat_in_qpos else False for q in self._qpos_ind])
 
     def __call__(self, state, action, next_state, absorbing, info, model, data, carry, backend, traj_data=None):
-
-
 
         # get all quantities from trajectory
         traj_data_single = traj_data.get(carry.traj_state.traj_no, carry.traj_state.subtraj_step_no)

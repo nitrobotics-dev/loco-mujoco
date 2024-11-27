@@ -31,18 +31,16 @@ def experiment(config: DictConfig):
         run = wandb.init(project=config.wandb.project, config=config_dict)
 
         # create env
-        from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
-        env = LocoEnv.make(terminal_state_handler_cls=HeightBasedTerminalStateHandler,
-                           **config.experiment.env_params)
+        env = LocoEnv.make(**config.experiment.env_params)
 
         # get initial agent configuration
         agent_conf = PPOJax.init_agent_conf(env, config)
 
         # setup metric handler (optional)
-        #mh = MetricsHandler(config, env)
+        mh = MetricsHandler(config, env)
 
         # build training function
-        train_fn = PPOJax.build_train_fn(env, agent_conf)
+        train_fn = PPOJax.build_train_fn(env, agent_conf, mh=mh)
 
         # jit and vmap training function
         train_fn = jax.jit(jax.vmap(train_fn)) if config.experiment.n_seeds > 1 else jax.jit(train_fn)

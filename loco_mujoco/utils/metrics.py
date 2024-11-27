@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from flax import struct
 from jax.scipy.spatial.transform import Rotation as R
 
-from metriX import DistanceMeasures
+from metrix import DistanceMeasures
 import mujoco
 from loco_mujoco.core.wrappers import SummaryMetrics
 from loco_mujoco.core.utils.math import calc_site_velocities, calculate_relative_site_quatities

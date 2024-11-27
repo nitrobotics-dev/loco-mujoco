@@ -341,27 +341,6 @@ class UnitreeG1(BaseRobotHumanoid):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
-    @classmethod
-    def generate(cls, task="walk", dataset_type="real", **kwargs):
-        """
-        Generates an environment corresponding to the specified task.
-
-        Args:
-            task (str): Main task to solve. Either "walk", "run" or "carry". The latter is walking while carrying
-                an unknown weight, which makes the task partially observable.
-            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
-                reference trajectory. This data does not perfectly match the kinematics
-                and dynamics of this environment, hence it is more challenging. "perfect" uses
-                a perfect dataset.
-
-        Returns:
-            Returns an environment corresponding to the specified task.
-
-        """
-
-        return BaseRobotHumanoid.generate(cls, task, dataset_type,
-                                          clip_trajectory_to_joint_ranges=True, **kwargs)
-
     @staticmethod
     def _get_observation_specification(spec):
         """

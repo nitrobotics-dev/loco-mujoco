@@ -9,5 +9,6 @@ from .mujoco import *
 
 # register all goals
 NoGoal.register()
+GoalRandomRootVelocity.register()
 GoalTrajArrow.register()
 GoalTrajMimic.register()

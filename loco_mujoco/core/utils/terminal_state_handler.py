@@ -140,6 +140,8 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
             th (TrajectoryHandler): The trajectory handler containing the trajectory.
 
         """
+        assert th is not None, f"{self.__class__.__name__} requires a TrajectoryHandler to be initialized."
+
         traj = th.traj
         root_ind = traj.info.joint_name2ind_qpos[self.root_joint_name]
         self.root_height_ind = root_ind[2]

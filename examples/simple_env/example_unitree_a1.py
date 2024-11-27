@@ -1,22 +1,35 @@
 import numpy as np
+import jax
 from loco_mujoco import LocoEnv
+from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
 
+# create the environment and task
+env = LocoEnv.make("MjxUnitreeA1",
+                   terminal_state_handler_cls=HeightBasedTerminalStateHandler,
+                   goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
+                   reward_type="TargetVelocityGoalReward")
 
-env = LocoEnv.make("UnitreeA1.simple")
+# get the dataset for the chosen environment and task
+#expert_data = env.create_dataset()
 
 action_dim = env.info.action_space.shape[0]
 
-env.reset()
+key = jax.random.key(0)
+key, _rng = jax.random.split(key)
+
+env.reset(_rng)
+
 env.render()
 absorbing = False
 i = 0
 
 while True:
     if i == 1000 or absorbing:
-        env.reset()
+        key, _rng = jax.random.split(key)
+        env.reset(_rng)
         i = 0
-    action = np.random.randn(action_dim) * 3
-    nstate, _, absorbing, _ = env.step(action)
+    action = np.random.randn(action_dim)*0.0
+    nstate, reward, absorbing, done, info = env.step(action)
 
     env.render()
     i += 1

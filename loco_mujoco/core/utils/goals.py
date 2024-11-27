@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 import jax.numpy as jnp
 import mujoco
 from mujoco import MjSpec
@@ -33,11 +34,11 @@ class Goal(Observation):
     def data_type(cls):
         return "userdata"
 
-    def reset(self, data, backend, trajectory=None, traj_state=None):
+    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
         assert self.initialized
         return data
 
-    def set_data(self, data, backend, traj_data=None, traj_state=None):
+    def set_data(self, data, backend, traj_handler=None, traj_state=None):
         assert self.initialized
         return data
 
@@ -112,9 +113,10 @@ class NoGoal(Goal):
         self.data_type_ind = np.array([])
         self.obs_ind = np.array([])
         self._initialized_from_mj = True
+        self._initialized_from_traj = True
 
     def init_from_traj(self, traj_handler):
-        self._initialized_from_traj = True
+        pass
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -124,12 +126,105 @@ class NoGoal(Goal):
     def has_visual(self):
         return False
 
-    def reset(self, data, backend, trajectory=None, traj_state=None):
+    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
         return data
 
     @property
     def size_user_data(self):
         return 0
+
+
+class GoalRandomRootVelocity(Goal):
+
+    _site_name_keypoint_1 = "goal_visual_k1"
+    _site_name_keypoint_2 = "goal_visual_k2"
+    _site_name_capsule = "goal_visual_cap"
+    _name_goal_dict = "VEL_2D"
+    _arrow_to_goal_ratio = 0.3
+
+    def __init__(self, info_props, max_x_vel=2.0, max_y_vel=1.0, **kwargs):
+        self._traj_goal_ind = None
+        self.max_x_vel = max_x_vel
+        self.max_y_vel = max_y_vel
+        self.upper_body_xml_name = info_props["upper_body_xml_name"]
+        self._z_offset = np.array([0.0, 0.0, 0.3])
+
+        # to be initialized from mj
+        self._root_body_id = None
+        self._keypoint_2_id = None
+
+        super().__init__(info_props, **kwargs)
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
+        self._initialized_from_mj = True
+
+    @classmethod
+    def get_obs(cls, model, data, ind, backend):
+        return backend.ravel(data.userdata[ind.GoalRandomRootVelocity])
+
+    @property
+    def has_visual(self):
+        return True
+
+    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+        if backend == np:
+            # sample random goal velocity
+            goal_vel = np.random.uniform([-self.max_x_vel, -self.max_y_vel], [self.max_x_vel, self.max_y_vel])
+        elif backend == jnp:
+            goal_vel = jax.random.uniform(key, shape=(2,), minval=jnp.array([-self.max_x_vel, -self.max_y_vel]),
+                                          maxval=jnp.array([self.max_x_vel, self.max_y_vel]))
+        data = self.set_attr_data_compat(data, backend, "userdata", goal_vel, self.data_type_ind)
+        return data
+
+    def set_data(self, data, backend, traj_handler=None, traj_state=None):
+        # set the visual data
+        if self.visualize_goal:
+            data = self.set_visual_data(data, backend)
+        return data
+
+    def set_visual_data(self, data, backend):
+        goal_vel = backend.concatenate([data.userdata[self.data_type_ind], np.array([0.0])])
+
+        # get root pos
+        root_pos = data.xpos[self._root_body_id]
+
+        # calculate the desired position of the arrow
+        target_pos_k1 = root_pos + self._z_offset
+        target_pos_k2 = root_pos + self._z_offset + goal_vel * self._arrow_to_goal_ratio
+
+        # set the absolute position of the arrow
+        data = self.set_attr_data_compat(data, backend, "mocap_pos", target_pos_k1, self._keypoint_1_id)
+        data = self.set_attr_data_compat(data, backend, "mocap_pos", target_pos_k2, self._keypoint_2_id)
+
+        return data
+
+    def apply_spec_modifications(self, spec, root_body_name):
+        # apply the default modifications needed to store the goal in data
+        self.allocate_user_data(spec)
+        # optionally add sites for visualization
+        if self.visualize_goal:
+            wb = spec.worldbody
+            # add sites for visualization
+            root_body_name = self.upper_body_xml_name
+            root = spec.find_body(root_body_name)
+            # use two spheres to represent an arrow
+            point_properties = dict(type=mujoco.mjtGeom.mjGEOM_SPHERE, group=0, rgba=[1.0, 0.0, 0.0, 1.0])
+            k1_pos = k2_pos = root.pos + self._z_offset
+            k1 = wb.add_body(name=self._site_name_keypoint_1, pos=k1_pos, mocap=True)
+            k1.add_site(name=self._site_name_keypoint_1+"_site", size=[0.05, 0.0, 0.0], **point_properties)
+            k2 = wb.add_body(name=self._site_name_keypoint_2, pos=k2_pos, mocap=True)
+            k2.add_site(name=self._site_name_keypoint_2+"_site", size=[0.03, 0.0, 0.0], **point_properties)
+            self._keypoint_1_id = 0
+            self._keypoint_2_id = 1
+        return spec
+
+    @property
+    def size_user_data(self):
+        return 2
 
 
 class GoalTrajArrow(Goal):
@@ -155,6 +250,7 @@ class GoalTrajArrow(Goal):
         self._initialized_from_mj = True
 
     def init_from_traj(self, traj_handler):
+        assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
         self._initialized_from_traj = True
 
     @classmethod
@@ -169,10 +265,13 @@ class GoalTrajArrow(Goal):
     def requires_trajectory(self):
         return True
 
-    def reset(self, data, backend, traj_data=None, traj_state=None):
-        return self.set_data(data, backend, trajectory, traj_state)
+    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+        return self.set_data(data, backend, traj_handler, traj_state)
 
-    def set_data(self, data, backend, traj_data=None, traj_state=None):
+    def set_data(self, data, backend, traj_handler=None, traj_state=None):
+        # get trajectory data
+        traj_data = traj_handler.traj.data
+
         assert self._traj_goal_ind is not None
         # get the goal from the trajectory
         traj_goal = traj_data[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no]
@@ -299,6 +398,7 @@ class GoalTrajMimic(Goal):
         return spec
 
     def init_from_traj(self, traj_handler):
+        assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
         # focus on joints in the observation space
         self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self.obs_container.entries()
                                          if (type(obs) is ObservationType.JointPos) or
@@ -341,10 +441,13 @@ class GoalTrajMimic(Goal):
     def requires_trajectory(self):
         return True
 
-    def reset(self, data, backend, trajectory=None, traj_state=None):
-        return self.set_data(data, backend, trajectory, traj_state)
+    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+        return self.set_data(data, backend, traj_handler, traj_state)
 
-    def set_data(self, data, backend, traj_data=None, traj_state=None):
+    def set_data(self, data, backend, traj_handler=None, traj_state=None):
+
+        # get trajectory data
+        traj_data = traj_handler.traj.data
 
         # get traj_data for current time step
         traj_data_single = traj_data.get(traj_state.traj_no, traj_state.subtraj_step_no, backend)

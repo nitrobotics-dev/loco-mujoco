@@ -4,7 +4,7 @@ from loco_mujoco import LocoEnv
 
 # create the environment and task
 env = LocoEnv.make("MjxUnitreeG1.walk", disable_arms=False,
-                   reward_type="MimicReward", goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=False))
+                   reward_type="MimicReward", goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=True))
 
 # get the dataset for the chosen environment and task
 #expert_data = env.create_dataset()
