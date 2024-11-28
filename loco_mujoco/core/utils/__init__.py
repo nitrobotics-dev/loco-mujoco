@@ -12,3 +12,8 @@ NoGoal.register()
 GoalRandomRootVelocity.register()
 GoalTrajArrow.register()
 GoalTrajMimic.register()
+
+# register all terminal state handlers
+HeightBasedTerminalStateHandler.register()
+RootPoseTrajTerminalStateHandler.register()
+

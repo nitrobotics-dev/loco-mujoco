@@ -19,7 +19,7 @@ from scipy.spatial.transform import Rotation as np_R
 
 import loco_mujoco
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
-from loco_mujoco.core.utils import VideoRecorder, Goal, RootPoseTrajTerminalStateHandler, HeightBasedTerminalStateHandler
+from loco_mujoco.core.utils import VideoRecorder, Goal, TerminalStateHandler
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
 from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
@@ -48,8 +48,8 @@ class LocoEnv(Mjx):
 
     def __init__(self, spec, action_spec, observation_spec, enable_mjx=False,
                  n_envs=1, gamma=0.99, horizon=1000, n_substeps=10, reward_type="NoReward", reward_params=None,
-                 goal_type="NoGoal", goal_params=None, terminal_state_handler_cls=None,
-                 terminal_state_handler_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
+                 goal_type="NoGoal", goal_params=None, terminal_state_type=None,
+                 terminal_state_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
                  timestep=0.001, use_foot_forces=False, default_camera_mode="follow",
                  domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
                  model_option_conf=None, **viewer_params):
@@ -155,13 +155,16 @@ class LocoEnv(Mjx):
         self.mean_grf = self._setup_ground_force_statistics()
 
         # setup terminal state handler
-        if terminal_state_handler_cls is None:
-            self._terminal_state_handler = RootPoseTrajTerminalStateHandler(self._model, self._get_all_info_properties())
-        elif terminal_state_handler_cls is not None and terminal_state_handler_params is None:
-            self._terminal_state_handler = terminal_state_handler_cls(self._model, self._get_all_info_properties())
+        if terminal_state_type is None:
+            self._terminal_state_handler = TerminalStateHandler.make("RootPoseTrajTerminalStateHandler",
+                                                                     self._model, self._get_all_info_properties())
+        elif terminal_state_type is not None and terminal_state_params is None:
+            self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type,
+                                                                     self._model, self._get_all_info_properties())
         else:
-            self._terminal_state_handler = terminal_state_handler_cls(self._model, self._get_all_info_properties(),
-                                                                      **terminal_state_handler_params)
+            self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type,
+                                                                     self._model, self._get_all_info_properties(),
+                                                                     **terminal_state_params)
 
         # dataset dummy
         self._dataset = None
