@@ -82,7 +82,7 @@ class Trajectory:
             if key in TrajectoryInfo.get_attribute_names():
                 converted_info[key] = None if is_none_object_array(value) else value.tolist()
             elif key in TrajectoryModel.get_attribute_names():
-                converted_model[key] = jnp.array(value)
+                converted_model[key] = None if is_none_object_array(value) else jnp.array(value)
             elif key in TrajectoryData.get_attribute_names():
                 converted_data[key] = jnp.array(value)
             elif key in TrajectoryTransitions.get_attribute_names():

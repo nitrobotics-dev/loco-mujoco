@@ -652,8 +652,8 @@ class LocoEnv(Mjx):
     def _reset_trajectory_state(self, key):
 
         # check that th is not None if random_start or fixed_start is set to true
-        assert ((self.th is not None) == (self._random_start or self._use_fixed_start)), \
-            "If random_start or fixed_start is set to True, a trajectory has to be loaded."
+        if self._random_start or self._use_fixed_start:
+            assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
 
         if self._random_start:
             k1, k2 = jax.random.split(key)
