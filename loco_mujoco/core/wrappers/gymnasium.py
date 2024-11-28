@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 
 from loco_mujoco import LocoEnv
 
@@ -63,9 +64,9 @@ class GymnasiumWrapper(Env):
 
         """
 
-        obs, reward, absorbing, info = self._env.step(action)
+        obs, reward, absorbing, done, info = self._env.step(action)
 
-        return obs, reward, absorbing, False, info
+        return obs, reward, absorbing, done, info
 
     def reset(self, *, seed=None, options=None):
         """
@@ -77,7 +78,10 @@ class GymnasiumWrapper(Env):
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
 
-        return self._env.reset(), {}
+        # get a jax key
+        key = jax.random.PRNGKey(seed) if seed is not None else jax.random.PRNGKey(0)
+
+        return self._env.reset(key), {}
 
     def render(self):
         """

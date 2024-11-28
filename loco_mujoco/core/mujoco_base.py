@@ -38,7 +38,7 @@ class Mujoco:
                  model_option_conf=None, **viewer_params):
 
         # load the model, spec and data
-        self._model, self._spec = self.load_model_and_spec(xml_file)
+        self._model, self._mjspec = self.load_model_and_spec(xml_file)
         self._modify_model(self._model, model_option_conf)
         self._data = mujoco.MjData(self._model)
 
@@ -548,8 +548,8 @@ class Mujoco:
         return c_array
 
     @property
-    def spec(self):
-        return self._spec
+    def mjspec(self):
+        return self._mjspec
 
     @property
     def cur_step_in_episode(self):

@@ -21,7 +21,7 @@ wandb:
 
 experiment:
   env_params:
-    env_name: MjxAtlas.walk
+    env_name: MjxUnitreeH1.walk
     disable_arms: false
     horizon: 1000
     goal_type: GoalTrajMimic

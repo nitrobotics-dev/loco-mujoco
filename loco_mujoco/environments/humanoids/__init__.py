@@ -32,5 +32,5 @@ from gymnasium import register
 
 # register gymnasium wrapper environment
 register("LocoMujoco",
-         entry_point="loco_mujoco.environments.gymnasium:GymnasiumWrapper"
+         entry_point="loco_mujoco.core.wrappers.gymnasium:GymnasiumWrapper"
          )

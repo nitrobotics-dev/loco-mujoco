@@ -7,8 +7,7 @@ from loco_mujoco import LocoEnv
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-env = LocoEnv.make("MjxUnitreeH1.walk", n_envs=50,
-                   disable_arms=True)
+env = LocoEnv.make("MjxUnitreeH1.walk", n_envs=50)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)

@@ -147,11 +147,13 @@ class GoalRandomRootVelocity(Goal):
         self.max_x_vel = max_x_vel
         self.max_y_vel = max_y_vel
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
+        self.free_jnt_name = info_props["root_free_joint_xml_name"]
         self._z_offset = np.array([0.0, 0.0, 0.3])
 
         # to be initialized from mj
         self._root_body_id = None
         self._keypoint_2_id = None
+        self._root_jnt_qpos_start_id = None
 
         super().__init__(info_props, **kwargs)
 
@@ -161,6 +163,10 @@ class GoalRandomRootVelocity(Goal):
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
         self._initialized_from_mj = True
+
+        root_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, self.free_jnt_name)
+        assert root_jnt_id != -1, f"Joint {self.free_jnt_name} not found in the model."
+        self._root_jnt_qpos_start_id = model.jnt_qposadr[root_jnt_id]
 
     @classmethod
     def get_obs(cls, model, data, ind, backend):
@@ -189,12 +195,25 @@ class GoalRandomRootVelocity(Goal):
     def set_visual_data(self, data, backend):
         goal_vel = backend.concatenate([data.userdata[self.data_type_ind], np.array([0.0])])
 
+
+        if backend == np:
+            R = np_R
+        else:
+            R = jnp_R
+
+        # get root orientation
+        root_qpos = backend.squeeze(data.qpos[self._root_jnt_qpos_start_id:self._root_jnt_qpos_start_id+7])
+        root_quat = R.from_quat(root_qpos[3:7])
+
+        # goal vel in local
+        goal_vel_local = root_quat.as_matrix().T @ goal_vel
+
         # get root pos
         root_pos = data.xpos[self._root_body_id]
 
         # calculate the desired position of the arrow
         target_pos_k1 = root_pos + self._z_offset
-        target_pos_k2 = root_pos + self._z_offset + goal_vel * self._arrow_to_goal_ratio
+        target_pos_k2 = root_pos + self._z_offset + goal_vel_local * self._arrow_to_goal_ratio
 
         # set the absolute position of the arrow
         data = self.set_attr_data_compat(data, backend, "mocap_pos", target_pos_k1, self._keypoint_1_id)

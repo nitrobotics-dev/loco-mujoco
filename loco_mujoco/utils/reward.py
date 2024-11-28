@@ -184,12 +184,16 @@ class TargetVelocityGoalReward(Reward):
 
         # get current local vel of root
         x_vel_global = backend.squeeze(data.qvel[self._vel_idx])[:3]
-        x_vel_local = root_quat.apply(x_vel_global)
+        x_vel_local = root_quat.as_matrix().T @ x_vel_global
 
         # vel in goal
         goal_vel = backend.squeeze(data.userdata[self._goal_vel_idx])
 
-        return backend.exp(-self._w_exp*backend.mean(backend.square(x_vel_local[:2] - goal_vel)))
+        tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(x_vel_local[:2] - goal_vel)))
+
+        action_penalty = 0.25*backend.mean(backend.abs(action))
+
+        return tracking_reward - action_penalty
 
 
 class MimicReward(Reward):

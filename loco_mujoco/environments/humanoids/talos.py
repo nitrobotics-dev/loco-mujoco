@@ -371,6 +371,7 @@ class Talos(BaseRobotHumanoid):
         Returns:
             A list of observation types.
         """
+
         observation_spec = [# ------------- JOINT POS -------------
                             ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
                             ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
