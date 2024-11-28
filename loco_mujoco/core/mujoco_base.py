@@ -8,6 +8,7 @@ from functools import partial
 import mujoco
 from mujoco import MjSpec
 import numpy as np
+from dm_control import mjcf
 
 from mujoco import mjx
 from flax import struct

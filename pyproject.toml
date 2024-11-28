@@ -6,18 +6,15 @@ name = "loco-mujoco"
 dependencies = [
     "numpy",
     "scipy",
-    "mujoco>=3.2.5",
-    "mujoco-mjx>=3.2.5",
+    "mujoco",
     "jax",
     "flax",
     "orbax",
     "distrax",
     "gymnasium",
+    "dm_control",
     "pyyaml",
-    "wget",
-    "opencv-python",
-    "tqdm",
-    "omegaconf"]
+    "wget"]
 
 requires-python = ">=3.8"
 authors = [{name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]
