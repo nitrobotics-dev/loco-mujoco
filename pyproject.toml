@@ -6,7 +6,9 @@ name = "loco-mujoco"
 dependencies = [
     "numpy",
     "scipy",
-    "mujoco",
+    "mujoco>=3.2.5",
+    "mujoco-mjx>=3.2.5",
+    "hydra-core",
     "jax",
     "flax",
     "orbax",
