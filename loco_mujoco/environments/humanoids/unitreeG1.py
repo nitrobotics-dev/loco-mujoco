@@ -464,5 +464,4 @@ class UnitreeG1(BaseRobotHumanoid):
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
-        # todo: check the range
-        return (0.0, 1.0)
+        return (0.5, 1.0)
