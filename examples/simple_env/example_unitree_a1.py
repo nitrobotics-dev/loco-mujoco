@@ -1,11 +1,10 @@
 import numpy as np
 import jax
 from loco_mujoco import LocoEnv
-from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
 
 # create the environment and task
 env = LocoEnv.make("MjxUnitreeA1",
-                   terminal_state_handler_cls=HeightBasedTerminalStateHandler,
+                   terminal_state_type="HeightBasedTerminalStateHandler",
                    goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
                    reward_type="TargetVelocityGoalReward")
 

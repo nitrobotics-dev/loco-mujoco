@@ -8,11 +8,10 @@ from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-terminal_state_handler_cls=HeightBasedTerminalStateHandler,
 env = LocoEnv.make("MjxUnitreeA1",
                    goal_type="GoalRandomRootVelocity",
                    reward_type="TargetVelocityGoalReward",
-                   terminal_state_handler_cls=HeightBasedTerminalStateHandler,
+                   terminal_state_type="HeightBasedTerminalStateHandler",
                    n_envs=50)
 
 key = jax.random.key(0)
