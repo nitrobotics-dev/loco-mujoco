@@ -48,6 +48,8 @@ class GymnasiumWrapper(Env):
         self.observation_space = self._convert_space(self._env.info.observation_space)
         self.action_space = self._convert_space(self._env.info.action_space)
 
+        self._np_random, _ = seeding.np_random(0)
+
     def step(self, action):
         """
         Run one timestep of the environment's dynamics.
@@ -79,7 +81,8 @@ class GymnasiumWrapper(Env):
             self._np_random, seed = seeding.np_random(seed)
 
         # get a jax key
-        key = jax.random.PRNGKey(seed) if seed is not None else jax.random.PRNGKey(0)
+        # todo: added randomly sampled seed for jax key as a temporary solution, this is not reproducible
+        key = jax.random.PRNGKey(np.random.randint(0, np.iinfo(np.int32).max))
 
         return self._env.reset(key), {}
 
