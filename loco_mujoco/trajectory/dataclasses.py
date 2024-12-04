@@ -12,7 +12,7 @@ import mujoco
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
 
-from loco_mujoco.core.utils import ObservationContainer
+from loco_mujoco.core.observations.base import ObservationContainer
 
 
 @dataclass
@@ -493,6 +493,18 @@ class TrajectoryModel:
     def get_attribute_names(cls):
         return [field.name for field in fields(cls)]
 
+    def to_numpy(self):
+        dic = flax.serialization.to_state_dict(self)
+        for key, value in dic.items():
+            dic[key] = np.array(value) if (isinstance(value, jax.Array) or isinstance(value, np.ndarray)) else value
+        return TrajectoryModel(**dic)
+
+    def to_jax(self):
+        dic = flax.serialization.to_state_dict(self)
+        for key, value in dic.items():
+            dic[key] = jnp.array(value) if (isinstance(value, jax.Array) or isinstance(value, np.ndarray)) else value
+        return TrajectoryModel(**dic)
+
 
 @struct.dataclass
 class SingleData:
@@ -559,15 +571,15 @@ class TrajectoryData(SingleData):
         ind = start_idx + sub_traj_index
 
         return SingleData(
-            qpos=backend.squeeze(self.qpos[ind]),
-            qvel=backend.squeeze(self.qvel[ind]),
-            xpos=backend.squeeze(self.xpos[ind]) if self.xpos.size > 0 else backend.empty((1, 0))[ind],
-            xquat=backend.squeeze(self.xquat[ind]) if self.xquat.size > 0 else backend.empty((1, 0))[ind],
-            cvel=backend.squeeze(self.cvel[ind]) if self.cvel.size > 0 else backend.empty((1, 0))[ind],
-            subtree_com=backend.squeeze(self.subtree_com[ind]) if self.subtree_com.size > 0 else backend.empty((1, 0))[ind],
-            site_xpos=backend.squeeze(self.site_xpos[ind]) if self.site_xpos.size > 0 else backend.empty((1, 0))[ind],
-            site_xmat=backend.squeeze(self.site_xmat[ind]) if self.site_xmat.size > 0 else backend.empty((1, 0))[ind],
-            userdata=backend.squeeze(self.userdata[ind]) if self.userdata.size > 0 else backend.empty((1, 0))[ind]
+            qpos=backend.squeeze(self.qpos[ind].copy()),
+            qvel=backend.squeeze(self.qvel[ind].copy()),
+            xpos=backend.squeeze(self.xpos[ind].copy()) if self.xpos.size > 0 else backend.empty((1, 0))[ind],
+            xquat=backend.squeeze(self.xquat[ind].copy()) if self.xquat.size > 0 else backend.empty((1, 0))[ind],
+            cvel=backend.squeeze(self.cvel[ind].copy()) if self.cvel.size > 0 else backend.empty((1, 0))[ind],
+            subtree_com=backend.squeeze(self.subtree_com[ind].copy()) if self.subtree_com.size > 0 else backend.empty((1, 0))[ind],
+            site_xpos=backend.squeeze(self.site_xpos[ind].copy()) if self.site_xpos.size > 0 else backend.empty((1, 0))[ind],
+            site_xmat=backend.squeeze(self.site_xmat[ind].copy()) if self.site_xmat.size > 0 else backend.empty((1, 0))[ind],
+            userdata=backend.squeeze(self.userdata[ind].copy()) if self.userdata.size > 0 else backend.empty((1, 0))
         )
 
     @classmethod
@@ -605,7 +617,7 @@ class TrajectoryData(SingleData):
 
     @staticmethod
     def _np_dynamic_slice_in_dim(arr, start, length):
-        return arr[start:start+length]
+        return arr[start:start+length].copy()
 
     @staticmethod
     def _get_single_attribute(attribute, split_points, traj_index, sub_traj_index, backend):
@@ -614,7 +626,7 @@ class TrajectoryData(SingleData):
         """
         # Calculate start index
         start_idx = split_points[traj_index] + sub_traj_index
-        return backend.squeeze(attribute[start_idx])
+        return backend.squeeze(attribute[start_idx].copy())
 
     def _dynamic_slice_in_dim_single(self, attribute, split_points, traj_index, sub_traj_index, slice_length, backend):
         """
@@ -930,6 +942,12 @@ class TrajectoryData(SingleData):
         dic = flax.serialization.to_state_dict(self)
         for key, value in dic.items():
             dic[key] = np.array(value)
+        return TrajectoryData(**dic)
+
+    def to_jax(self):
+        dic = flax.serialization.to_state_dict(self)
+        for key, value in dic.items():
+            dic[key] = jnp.array(value)
         return TrajectoryData(**dic)
 
 

@@ -74,7 +74,7 @@ class Mjx(Mujoco):
         data, carry = self._mjx_simulation_post_step(data, carry)
 
         # create the observation
-        cur_obs = self._mjx_create_observation(self._model, data, carry)
+        cur_obs, carry = self._mjx_create_observation(self._model, data, carry)
 
         # modify the observation and the data if needed (does nothing by default)
         cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, data, cur_info, carry)
@@ -109,11 +109,13 @@ class Mjx(Mujoco):
         data = mjx.put_data(self._model, self._data)
         data = mjx.forward(self.sys, data)
 
-        carry = self._init_additional_carry(key, data)
-
+        carry = self._init_additional_carry(key, self._model, data, jnp)
         data = self._mjx_reset_init_data(data, carry)
 
-        obs = self._mjx_create_observation(self._model, data, carry)
+        # reset all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
+
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
         reward = 0.0
         absorbing = jnp.array(False, dtype=bool)
         done = jnp.array(False, dtype=bool)
@@ -123,24 +125,37 @@ class Mjx(Mujoco):
                         info=info, additional_carry=carry)
 
     def _mjx_reset_in_step(self, state: MjxState):
+        key = state.additional_carry.key
+        key, _k = jax.random.split(key)
         carry = state.additional_carry
         data = self._mjx_reset_init_data(carry.first_data, carry)
-        carry = carry.replace(cur_step_in_episode=1,
+        carry = carry.replace(key=key,
+                              cur_step_in_episode=1,
                               final_observation=state.observation,
-                              final_info=state.info)
+                              final_info=state.info,
+                              observation_states=self.obs_container.init_state(self, _k, self._model, data, jnp))
         # create new observation
-        obs = self._mjx_create_observation(self._model, data, carry)
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
 
         return state.replace(data=data, observation=obs, additional_carry=carry)
 
     def _mjx_create_observation(self, model, data, carry):
-        # get the base observation defined in observation_spec and the goal
-        obs = self._create_observation_compat(model, data, jnp)
-        return self._mjx_order_observation(obs)
+        """
+        Creates the observation array by concatenating the observation extracted from all observation types.
+        """
+        # fast getter for all simple non-stateful observations
+        obs_not_stateful = jnp.concatenate([obs_type.get_all_obs_of_type(self, model, data, self._data_indices, jnp)
+                                            for obs_type in ObservationType.list_all_non_stateful()])
+        # order non-stateful obs the way they were in obs_spec
+        obs_not_stateful = obs_not_stateful.at[self._obs_indices.concatenated_indices].set(obs_not_stateful)
 
-    def _mjx_order_observation(self, obs):
-        obs = obs.at[self._obs_indices.concatenated_indices].set(obs)
-        return obs
+        # get all stateful observations
+        obs_stateful = []
+        for obs in self.obs_container.list_all_stateful():
+            obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, jnp)
+            obs_stateful.append(obs_s)
+
+        return jnp.concatenate([obs_not_stateful, *obs_stateful]), carry
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
         return {}
@@ -183,7 +198,8 @@ class Mjx(Mujoco):
         """
         return obs, data, info, carry
 
-    def _mjx_set_sim_state_from_traj_data(self, data, traj_data):
+    @staticmethod
+    def _mjx_set_sim_state_from_traj_data(data, traj_data):
         """
         Sets the simulation state from the trajectory data.
         """
@@ -239,10 +255,12 @@ class Mjx(Mujoco):
                 mujoco.mj_forward(self._model, self._data)
                 self._viewer.render(self._data, record)
 
-    def _init_additional_carry(self, key, data):
+    def _init_additional_carry(self, key, model, data, backend):
         return MjxAdditionalCarry(key=key, cur_step_in_episode=1,
-                                  final_observation=jnp.zeros(self.info.observation_space.shape),
-                                  first_data=data, final_info={})
+                                  final_observation=backend.zeros(self.info.observation_space.shape),
+                                  first_data=data, final_info={},
+                                  observation_states=self.obs_container.init_state(self, key, self._model,
+                                                                                   data, backend))
 
     @property
     def n_envs(self):

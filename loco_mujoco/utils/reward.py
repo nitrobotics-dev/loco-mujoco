@@ -187,7 +187,8 @@ class TargetVelocityGoalReward(Reward):
         x_vel_local = root_quat.as_matrix().T @ x_vel_global
 
         # vel in goal
-        goal_vel = backend.squeeze(data.userdata[self._goal_vel_idx])
+        #goal_vel = backend.squeeze(data.userdata[self._goal_vel_idx])
+        goal_vel = backend.squeeze(np.zeros(2))
 
         tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(x_vel_local[:2] - goal_vel)))
 

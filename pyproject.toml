@@ -16,6 +16,7 @@ dependencies = [
     "gymnasium",
     "dm_control",
     "pyyaml",
+    "opencv-python",
     "wget"]
 
 requires-python = ">=3.8"

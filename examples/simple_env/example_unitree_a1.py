@@ -3,7 +3,7 @@ import jax
 from loco_mujoco import LocoEnv
 
 # create the environment and task
-env = LocoEnv.make("MjxUnitreeA1",
+env = LocoEnv.make("UnitreeA1",
                    terminal_state_type="HeightBasedTerminalStateHandler",
                    goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
                    reward_type="TargetVelocityGoalReward")

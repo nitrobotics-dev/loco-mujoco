@@ -1,11 +1,24 @@
 from __future__ import annotations
+
+import dataclasses
 from copy import deepcopy
 
+import jax
 import numpy as np
 import mujoco
 import jax.numpy as jnp
+from dataclasses import make_dataclass
+from flax import struct
 
+from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
+
+from dataclasses import dataclass
+
+
+@dataclass
+class tol:
+    ein: jax.Array
 
 
 def jnt_name2id(name, model):
@@ -21,7 +34,7 @@ def jnt_name2id(name, model):
 
 class ObservationIndexContainer:
     """
-    Container for indices of different observation types, used to store indices
+    Container for indices of different non-stateful observation types, used to store indices
     related to observations within Mujoco data structures or observations
     created in an environment.
     """
@@ -29,7 +42,7 @@ class ObservationIndexContainer:
     def __init__(self):
 
         # add attributes for the different observation types
-        for obs_type in ObservationType.list_all():
+        for obs_type in ObservationType.list_all_non_stateful():
             setattr(self, obs_type.__name__, [])
 
         self.concatenated_indices = None
@@ -57,11 +70,29 @@ class ObservationContainer(dict):
     Container for observations. This is a dictionary with additional functionality to set the container reference
     for each observation.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._stateful_obs = []
+        self._locked = False
+
     def __setitem__(self, key, observation: Observation):
-        # Set the container reference before adding to dict
-        if isinstance(observation, Observation):
-            observation.obs_container = self
-        super().__setitem__(key, observation)
+
+        if not self._locked:
+
+            if observation.name in self.keys():
+                raise KeyError("Duplicate keys are not allowed. Key: ", observation.name)
+
+            # Set the container reference before adding to dict
+            if isinstance(observation, Observation):
+                observation.obs_container = self
+            # Add the observation to the container
+            super().__setitem__(key, observation)
+            # Add the observation also to the stateful_obs container if it is a stateful observation
+            if isinstance(observation, StatefulObservation):
+                self._stateful_obs.append(observation)
+        else:
+            raise ValueError("Container is locked and cannot be modified.")
 
     def names(self):
         """Return a view of the dictionary's keys, same as keys()."""
@@ -81,6 +112,42 @@ class ObservationContainer(dict):
         types_are_the_same = type_self == type_other
 
         return keys_are_the_same and types_are_the_same
+
+    def list_all_stateful(self):
+        """
+        Returns a list of all stateful observations in the container.
+        """
+        return self._stateful_obs
+
+    def init_state(self, env, key, model, data, backend):
+        """
+        Builds a dataclass from the stateful observations in the container.
+        """
+
+        # Get all stateful observations
+        stateful_obs = self.list_all_stateful()
+        # Create a dictionary with the stateful observations
+        stateful_obs_dict = {obs.name: obs.init_state(env, key, model, data, backend) for obs in stateful_obs}
+        # Dynamically create a class with fields from the dictionary
+        dynamic_class = make_dataclass("ObservationStates", stateful_obs_dict.keys())
+        # convert to flax dataclass
+        dynamic_class = struct.dataclass(dynamic_class, frozen=False)
+        # create instance
+        return dynamic_class(**stateful_obs_dict)
+
+    def reset_state(self, env, model, data, carry, backend):
+        # Get all stateful observations
+        stateful_obs = self.list_all_stateful()
+        # Reset the state of each stateful observation
+        for obs in stateful_obs:
+             data, carry = obs.reset_state(env, model, data, carry, backend)
+        return data, carry
+
+    def lock(self):
+        """
+        Lock the container to prevent further modifications.
+        """
+        self._locked = True
 
 
 class Observation:
@@ -171,11 +238,12 @@ class Observation:
         obs_ind_cont_attr.extend(deepcopy(self.obs_ind.tolist()))
 
     @classmethod
-    def get_obs(cls, model, data, data_ind_cont, backend):
+    def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
         """
         Default getter for all the observations from the Mujoco data structure.
 
         Args:
+            env: The environment.
             model: The Mujoco model.
             data: The Mujoco data structure.
             data_ind_cont (ObservationIndexContainer): The indices of *all* observations of all types.
@@ -261,6 +329,47 @@ class SimpleObs(Observation):
     def __init__(self, obs_name: str, xml_name: str):
         self.xml_name = xml_name
         super().__init__(obs_name)
+
+
+class StatefulObservation(Observation, StatefulObject):
+
+    def init_from_mj(self, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
+                     obs_ind_cont: ObservationIndexContainer):
+        """
+        Initialize the observation type from the Mujoco data structure and model.
+
+        Args:
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            current_obs_size: The current size of the observation space.
+            data_ind_cont (ObservationIndexContainer): The data indices container.
+            obs_ind_cont (ObservationIndexContainer): The observation indices container.
+
+        """
+        # extract all information from data and model
+        self._init_from_mj(model, data, current_obs_size)
+
+    @classmethod
+    def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
+        """ this function is not allowed to be called in this class. """
+        raise NotImplementedError("Stateful observations do not support this function.")
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        """
+        Get the observation and update the state.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            carry: The state carry.
+            backend: The backend to use, either np or jnp.
+
+        Returns:
+            The observation and the updated state.
+
+        """
+        raise NotImplementedError
 
 
 class BodyPos(SimpleObs):
@@ -580,7 +689,7 @@ class Force(Observation):
         self._initialized_from_mj = True
 
     @classmethod
-    def get_obs(cls, model, data, data_ind_cont, backend):
+    def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
         ind = data_ind_cont.Force
         if backend == np:
             return backend.ravel(cls.mj_collision_force(model, data, ind))
@@ -655,5 +764,13 @@ class ObservationType:
         List all observation types.
         """
         return [getattr(ObservationType, obs_type) for obs_type in dir(cls) if not obs_type.startswith("__")
-                and obs_type not in ["register", "list_all"]]
+                and obs_type not in ["register", "list_all", "list_all_non_stateful"]]
 
+    @classmethod
+    def list_all_non_stateful(cls):
+        """
+        List all observation types, which are not stateful.
+        """
+        return [getattr(ObservationType, obs_type) for obs_type in dir(cls) if not obs_type.startswith("__")
+                and obs_type not in ["register", "list_all", "list_all_non_stateful"]
+                and not issubclass(getattr(ObservationType, obs_type), StatefulObservation)]

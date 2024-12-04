@@ -7,7 +7,7 @@ from loco_mujoco import LocoEnv
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-env = LocoEnv.make("MjxUnitreeH1.walk", n_envs=50)
+env = LocoEnv.make("MjxUnitreeH1.walk", n_envs=4000, disable_arms=True)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)
@@ -32,7 +32,7 @@ while i < 100000:
     action = rng_sample_uni_action(action_keys)
     state = rng_step(state, action)
 
-    env.mjx_render(state)
+    #env.mjx_render(state)
 
     step += env.info.n_envs
     if step % LOGGING_FREQUENCY == 0:

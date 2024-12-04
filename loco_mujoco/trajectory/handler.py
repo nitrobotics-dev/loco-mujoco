@@ -1,11 +1,22 @@
 from dataclasses import replace
 import mujoco
+import numpy as np
+import jax
 import jax.numpy as jnp
+from flax import struct
 
+from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.trajectory.dataclasses import Trajectory, interpolate_trajectories
 
 
-class TrajectoryHandler:
+@struct.dataclass
+class TrajState:
+    traj_no: int
+    subtraj_step_no: int
+    subtraj_step_no_init: int
+
+
+class TrajectoryHandler(StatefulObject):
     """
     General class to handle Trajectory. It filters and extends the trajectory data to match
     the current model's joints, bodies and sites. The key idea is to ensure that TrajectoryData has the same
@@ -14,8 +25,8 @@ class TrajectoryHandler:
     interpolates the trajectory to the desired control frequency.
 
     """
-    def __init__(self, model, traj_path=None, traj: Trajectory = None, control_dt=0.01,
-                 clip_trajectory_to_joint_ranges=False, warn=True):
+    def __init__(self, model, traj_path=None, traj: Trajectory = None, control_dt=0.01, random_start=True,
+                 fixed_start_conf=None, clip_trajectory_to_joint_ranges=False, warn=True):
         """
         Constructor.
 
@@ -46,12 +57,17 @@ class TrajectoryHandler:
         # todo: implement this in observation types in init_from_traj!
         #self.check_if_trajectory_is_in_range(low, high, keys, joint_pos_idx, warn, clip_trajectory_to_joint_ranges)
 
+        self._random_start = random_start
+        self._fixed_start_conf = fixed_start_conf
+        self._use_fixed_start = True if fixed_start_conf is not None else False
+
         self.traj_dt = 1 / traj_info.frequency
         self.control_dt = control_dt
 
         if self.traj_dt != self.control_dt:
             traj_data, traj_info = interpolate_trajectories(traj_data, traj_info, 1.0 / self.control_dt)
 
+        self._is_numpy = True if isinstance(traj_data.qpos, np.ndarray) else False
         self.traj = replace(traj, data=traj_data, info=traj_info)
 
     def len_trajectory(self, traj_ind):
@@ -212,6 +228,77 @@ class TrajectoryHandler:
         traj_data = traj_data.set_userdata(model.nuserdata)
 
         return traj_data, traj_info
+
+    def init_state(self, env, key, model, data, backend):
+        return TrajState(0, 0, 0)
+
+    def reset_state(self, env, model, data, carry, backend):
+
+        key = carry.key
+
+        if self._random_start:
+            if backend == jnp:
+                key, _k1, _k2 = jax.random.split(key, 3)
+                traj_idx = jax.random.randint(_k1, shape=(1,), minval=0, maxval=self.n_trajectories)
+                subtraj_step_idx = jax.random.randint(_k2, shape=(1,), minval=0, maxval=self.len_trajectory(traj_idx))
+                idx = [traj_idx[0], subtraj_step_idx[0]]
+            else:
+                traj_idx = np.random.randint(0, self.n_trajectories)
+                subtraj_step_idx = np.random.randint(0, self.len_trajectory(traj_idx))
+                idx = [traj_idx, subtraj_step_idx]
+        elif self._use_fixed_start:
+            idx = self._fixed_start_conf
+        else:
+            idx = [0, 0]
+
+        new_traj_no, new_subtraj_step_no = idx
+        new_subtraj_step_no_init = new_subtraj_step_no
+
+        return data, carry.replace(key=key, traj_state=TrajState(new_traj_no, new_subtraj_step_no,
+                                                                 new_subtraj_step_no_init))
+
+    def update_state(self, env, model, data, carry, backend):
+
+        traj_state = carry.traj_state
+        traj_no = traj_state.traj_no
+        subtraj_step_no = traj_state.subtraj_step_no
+
+        length_trajectory = self.len_trajectory(traj_no)
+
+        subtraj_step_no += 1
+
+        # set to zero once exceeded
+        next_subtraj_step_no = backend.mod(subtraj_step_no, length_trajectory)
+
+        if backend == jnp:
+            # check whether to go to the next trajectory
+            next_traj_no = jax.lax.cond(next_subtraj_step_no == 0, lambda t, nt: jnp.mod(t+1, nt),
+                                        lambda t, nt: t, traj_no, self.n_trajectories)
+        else:
+            next_traj_no = traj_no if next_subtraj_step_no != 0 else (traj_no + 1) % self.n_trajectories
+
+        traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
+
+        return carry.replace(traj_state=traj_state)
+
+    def get_current_traj_data(self, carry, backend):
+        traj_no = carry.traj_state.traj_no
+        subtraj_step_no = carry.traj_state.subtraj_step_no
+        return self.traj.data.get(traj_no, subtraj_step_no, backend)
+
+    def to_numpy(self):
+        if not self._is_numpy:
+            traj_model = self.traj.info.model.to_numpy()
+            traj_info = replace(self.traj.info, model=traj_model)
+            self.traj = replace(self.traj, data=self.traj.data.to_numpy(), info=traj_info)
+            self._is_numpy = True
+
+    def to_jax(self):
+        if self._is_numpy:
+            traj_model = self.traj.info.model.to_numpy()
+            traj_info = replace(self.traj.info, model=traj_model)
+            self.traj = replace(self.traj, data=self.traj.data.to_jax(), info=traj_info)
+            self._is_numpy = False
 
     # def check_if_trajectory_is_in_range(self, low, high, keys, j_idx, warn, clip_trajectory_to_joint_ranges):
     #

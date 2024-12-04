@@ -18,26 +18,19 @@ from mujoco import MjSpec
 from scipy.spatial.transform import Rotation as np_R
 
 import loco_mujoco
+from loco_mujoco.core.observations import Goal
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
-from loco_mujoco.core.utils import VideoRecorder, Goal, TerminalStateHandler
+from loco_mujoco.core.utils import VideoRecorder, TerminalStateHandler
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.utils import Reward, DomainRandomizationHandler
-from loco_mujoco.utils import info_property, RunningAveragedWindow, RunningAverageWindowState
-from loco_mujoco.trajectory import Trajectory, TrajectoryInfo, TrajectoryModel, TrajectoryData, TrajectoryTransitions
+from loco_mujoco.utils import info_property, RunningAveragedWindow
+from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
 from loco_mujoco.datasets.data_generation import convert_single_dataset_of_env, PATH_RAW_DATASET
-
-
-@struct.dataclass
-class TrajState:
-    traj_no: int
-    subtraj_step_no: int
-    subtraj_step_no_init: int
 
 
 @struct.dataclass
 class LocoCarry(MjxAdditionalCarry):
     traj_state: TrajState
-    running_avg_state: RunningAverageWindowState
 
 
 class LocoEnv(Mjx):
@@ -151,9 +144,6 @@ class LocoEnv(Mjx):
         # the action space is supposed to be between -1 and 1, so we normalize it
         self._scale_action_space()
 
-        # setup a running average window for the mean ground forces
-        self.mean_grf = self._setup_ground_force_statistics()
-
         # setup terminal state handler
         if terminal_state_type is None:
             self._terminal_state_handler = TerminalStateHandler.make("RootPoseTrajTerminalStateHandler",
@@ -180,7 +170,6 @@ class LocoEnv(Mjx):
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
-        self._use_fixed_start = True if fixed_start_conf is not None else False
 
     def set_actuation_spec(self, actuation_spec):
         """
@@ -219,7 +208,8 @@ class LocoEnv(Mjx):
                 self.convert_dataset_for_env(traj_path)
 
         self.th = TrajectoryHandler(model=self._model, warn=warn, traj_path=traj_path,
-                                    traj=traj, control_dt=self.dt)
+                                    traj=traj, control_dt=self.dt, random_start=self._random_start,
+                                    fixed_start_conf=self._fixed_start_conf)
 
         if self.th.traj.obs_container is not None:
             assert self.obs_container == self.th.traj.obs_container, \
@@ -286,7 +276,7 @@ class LocoEnv(Mjx):
             # either the goal or the reward function requires the trajectory at each step, so we need to check
             # if the end of the trajectory is reached, if so, we set done to True
             traj_state = carry.traj_state
-            len_traj = self.len_trajectory(self.th.traj.data, traj_state.traj_no)
+            len_traj = self.th.len_trajectory(traj_state.traj_no)
             reached_end_of_traj = jax.lax.cond(jnp.greater_equal(traj_state.subtraj_step_no, len_traj - 1),
                                                lambda: True, lambda: False)
             done = jnp.logical_or(done, reached_end_of_traj)
@@ -313,8 +303,8 @@ class LocoEnv(Mjx):
 
         """
         if self.th is not None:
-            carry = self._update_trajectory_state(carry)
-        data = self._goal.set_data(data, backend=np, traj_handler=self.th, traj_state=carry.traj_state)
+            carry = self.th.update_state(self, self._model, data, carry, np)
+        data = self._goal.set_data(self, self._model, data, carry, backend=np)
 
         return data, carry
 
@@ -324,8 +314,8 @@ class LocoEnv(Mjx):
 
         """
         if self.th is not None:
-            carry = self._update_trajectory_state(carry)
-        data = self._goal.set_data(data, backend=jnp, traj_handler=self.th, traj_state=carry.traj_state)
+            carry = self.th.update_state(self, self._model, data, carry, jnp)
+        data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
 
         return data, carry
 
@@ -370,7 +360,7 @@ class LocoEnv(Mjx):
 
                     self.th.traj = replace(self.th.traj, data=self.th.traj.data.to_numpy())
                     traj_data_single = self.th.traj.data.get(i, 0, np)
-                    carry = self._init_additional_carry(rng_key, traj_data_single)
+                    carry = self._init_additional_carry(rng_key, traj_data_single, np)
                     traj_data_single = self._reset_init_data(traj_data_single, carry)
 
                     observations = [self._create_observation(self._model, traj_data_single, carry)]
@@ -572,6 +562,7 @@ class LocoEnv(Mjx):
                              record, recorder_params, callback_class, key)
 
     def reset(self, key):
+        self.th.to_numpy()
         key, subkey = jax.random.split(key)
         obs = super().reset(key)
         carry = self._additional_carry
@@ -579,19 +570,30 @@ class LocoEnv(Mjx):
         # some sanity checks
         self._check_reset_configuration()
 
+        # reset data
+        data = carry.first_data
+
+        # reset trajectory state
+        data, carry = self.th.reset_state(self, self._model, data, carry, jnp)
+
         if self._random_start or self._use_fixed_start:
-            # init simulation from trajectory state (traj state has been reset in init_additional_carry)
-            traj_sample = self._get_init_state_from_trajectory(carry.traj_state)      # get sample from trajectory state
-            self._set_sim_state_from_traj_data(self._data, traj_sample)
+            # init simulation from trajectory
+            curr_traj_data = self.th.get_current_traj_data(carry, np)
+            data = self._set_sim_state_from_traj_data(data, curr_traj_data)
 
-        self._obs = self._create_observation(self._model, self._data, carry)
+        # apply general modifications on reset
+        data = self._reset_init_data(data, carry)
 
-        # reset goal if needed
-        self._data = self._goal.reset(self._data, subkey, backend=np, traj_handler=self.th, traj_state=carry.traj_state)
+        # reset all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
+
+        self._obs, self._additional_carry = self._create_observation(self._model, data, carry)
+        self._data = data
 
         return self._obs
 
     def mjx_reset(self, key):
+        self.th.to_jax()
         key, subkey = jax.random.split(key)
         mjx_state = super().mjx_reset(key)
         carry = mjx_state.additional_carry
@@ -599,57 +601,73 @@ class LocoEnv(Mjx):
         # some sanity checks
         jax.debug.callback(self._check_reset_configuration)
 
+        # reset data
+        data = carry.first_data
+
+        # reset trajectory state
+        data, carry = self.th.reset_state(self, self._model, data, carry, jnp)
+
         if self._random_start or self._use_fixed_start:
-            # init simulation from trajectory state (traj state has been reset in init_additional_carry)
-            traj_data_sample = self._get_init_state_from_trajectory(carry.traj_state)
-            data = self._mjx_set_sim_state_from_traj_data(mjx_state.data, traj_data_sample)
-        else:
-            data = mjx_state.data
+            # init simulation from trajectory
+            curr_traj_data = self.th.get_current_traj_data(carry, jnp)
+            data = self._mjx_set_sim_state_from_traj_data(data, curr_traj_data)
 
-        # reset goal if needed
-        data = self._goal.reset(data, subkey, backend=jnp, traj_handler=self.th, traj_state=carry.traj_state)
+        # apply general modifications on reset
+        data = self._mjx_reset_init_data(data, carry)
 
-        mjx_state = mjx_state.replace(data=data, observation=self._mjx_create_observation(self._model, data, carry),
-                                      additional_carry=carry)
+        # reset all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
+
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
+        mjx_state = mjx_state.replace(data=data, observation=obs, additional_carry=carry)
 
         return mjx_state
 
     def _mjx_reset_in_step(self, state: MjxState):
 
-        # reset traj_state
         carry = state.additional_carry
         key = carry.key
-        key, _k1, _k2 = jax.random.split(key, 3)
-        traj_state = self._reset_trajectory_state(_k1)
+        key, _k1 = jax.random.split(key)
 
         # reset data
+        data = carry.first_data
+
+        # reset trajectory state
+        data, carry = self.th.reset_state(self, self._model, data, carry, jnp)
+
         if self._random_start or self._use_fixed_start:
-            # init simulation from trajectory state
-            traj_data_sample = self._get_init_state_from_trajectory(traj_state)  # get sample from trajectory state
-            # set current data
-            data = self._mjx_set_sim_state_from_traj_data(carry.first_data, traj_data_sample)
-        else:
-            data = carry.first_data
+            # init simulation from trajectory
+            curr_traj_data = self.th.get_current_traj_data(carry, jnp)
+            data = self._mjx_set_sim_state_from_traj_data(data, curr_traj_data)
 
         # apply general modifications on reset
         data = self._mjx_reset_init_data(data, carry)
 
         # reset carry
-        running_avg_state = RunningAverageWindowState(storage=jnp.zeros((self._n_substeps, self.grf_size)))
         carry = carry.replace(key=key,
                               cur_step_in_episode=1,
                               final_observation=state.observation,
-                              final_info=state.info,
-                              traj_state=traj_state,
-                              running_avg_state=running_avg_state)
+                              final_info=state.info)
 
-        # reset goal if needed
-        data = self._goal.reset(data, _k2, backend=jnp, traj_handler=self.th, traj_state=traj_state)
+        # update all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
 
         # create new observation
-        obs = self._mjx_create_observation(self._model, data, carry)
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
 
         return state.replace(data=data, observation=obs, additional_carry=carry)
+
+    @staticmethod
+    def _set_sim_state_from_traj_data(data, traj_data):
+        # set x and y to 0
+        traj_data.qpos[0:2] = 0.0
+        return Mjx._set_sim_state_from_traj_data(data, traj_data)
+
+    @staticmethod
+    def _mjx_set_sim_state_from_traj_data(data, traj_data):
+        # set x and y to 0
+        traj_data = traj_data.replace(qpos=traj_data.qpos.at[0:2].set(0.0))
+        return Mjx._mjx_set_sim_state_from_traj_data(data, traj_data)
 
     @partial(jax.jit, static_argnums=(0,))
     def _reset_trajectory_state(self, key):
@@ -713,47 +731,29 @@ class LocoEnv(Mjx):
         unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
         return unnormalized_action
 
-    def _init_additional_carry(self, key, data):
+    def _init_additional_carry(self, key, model, data, backend):
 
-        key, subkey = jax.random.split(key)
-
-        # reset trajectory state
-        traj_state = self._reset_trajectory_state(subkey)
-
-        # reset running average window for ground forces
-        running_avg_state = RunningAverageWindowState(storage=jnp.zeros((self._n_substeps,
-                                                                        self.grf_size)))
+        key, _k1, _k2 = jax.random.split(key, 3)
 
         # create additional carry
         carry = LocoCarry(key=key,
-                          traj_state=traj_state,
-                          running_avg_state=running_avg_state,
+                          traj_state=self.th.init_state(self, _k1, model, data, backend),
                           cur_step_in_episode=1,
                           first_data=data,
                           final_info={},
-                          final_observation=jnp.zeros(self.info.observation_space.shape)
+                          final_observation=backend.zeros(self.info.observation_space.shape),
+                          observation_states=self.obs_container.init_state(self, _k2, model, data, backend)
                           )
 
         return carry
 
     def _reset_init_data(self, data, carry):
-        data = self._goal.set_data(data, backend=np, traj_handler=self.th, traj_state=carry.traj_state)
+        data = self._goal.set_data(self, self._model, data, carry, backend=np)
         return data
 
     def _mjx_reset_init_data(self, data, carry):
-        data = self._goal.set_data(data, backend=jnp, traj_handler=self.th, traj_state=carry.traj_state)
+        data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
         return data
-
-    def _setup_ground_force_statistics(self):
-        """
-        Returns a running average method for the mean ground forces.  By default, 4 ground force sensors are used.
-        Environments that use more or less have to override this function.
-
-        """
-
-        mean_grf = RunningAveragedWindow(shape=(self.grf_size,), window_size=self._n_intermediate_steps)
-
-        return mean_grf
 
     def _setup_reward(self, reward_type, reward_params):
         """
@@ -872,7 +872,7 @@ class LocoEnv(Mjx):
             raise ValueError("Random start not possible without trajectory data.")
         elif not self.th and self._use_fixed_start:
             raise ValueError("Setting an initial start is not possible without trajectory data.")
-        elif self._use_fixed_start and self._random_start:
+        elif self.th._use_fixed_start and self._random_start:
             raise ValueError("Either use a random start or set a fixed initial start, but not both.")
 
     @classmethod
@@ -1065,14 +1065,6 @@ class LocoEnv(Mjx):
     @jax.jit
     def get_traj_current_sample(traj_data, traj_no, subtraj_step_no):
         return traj_data.get(traj_no, subtraj_step_no)
-
-    @staticmethod
-    def n_trajectories(traj_data):
-        return len(traj_data.split_points) - 1
-
-    @staticmethod
-    def len_trajectory(traj_data, traj_ind):
-        return traj_data.split_points[traj_ind+1] - traj_data.split_points[traj_ind]
 
     @staticmethod
     def list_registered_loco_mujoco():

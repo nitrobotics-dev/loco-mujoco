@@ -1,3 +1,4 @@
+from typing import Union
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -5,12 +6,13 @@ import mujoco
 from mujoco import MjSpec
 from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
+from flax import struct
 
-from loco_mujoco.core.utils.observations import Observation, ObservationType
+from loco_mujoco.core.observations.base import StatefulObservation, ObservationType
 from loco_mujoco.core.utils.math import calculate_relative_site_quatities
 
 
-class Goal(Observation):
+class Goal(StatefulObservation):
 
     def __init__(self, info_props, visualize_goal=False):
 
@@ -32,13 +34,13 @@ class Goal(Observation):
 
     @classmethod
     def data_type(cls):
-        return "userdata"
+        return None
 
-    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+    def reset_state(self, env, model, data, carry, backend):
         assert self.initialized
-        return data
+        return data, carry
 
-    def set_data(self, data, backend, traj_handler=None, traj_state=None):
+    def set_data(self, env, model, data, carry, backend):
         assert self.initialized
         return data
 
@@ -55,23 +57,25 @@ class Goal(Observation):
         """
         return spec
 
-    def set_attr_data_compat(self, data, backend, attr, arr, ind):
+    def set_attr_compat(self, data, backend, attr, arr, ind=None):
         """
-        Setter for different attributes in data that is compatible with Mujoco and MJX data structures.
-
+        Setter for different attributes in a dataclass that is compatible with numpy and jax.numpy.
 
         Args:
             data: The data structure to modify.
-            backend (str): The backend to use for the modification (either numpy or jax-numpy).
+            backend: The backend to use for the modification (either np or jnp).
             attr (str): The attribute to modify.
-            arr (object): The array to set.
-            ind (list(ind)): The index to set.
+            arr: The array to set.
+            ind (list(ind)): The index to set. If None, the whole array is set.
 
 
         Returns:
             The modified data structure.
 
         """
+        if ind is None:
+            ind = backend.arange(len(arr))
+
         if backend == np:
             getattr(data, attr)[ind] = arr
         elif backend == jnp:
@@ -88,18 +92,9 @@ class Goal(Observation):
     def spec(self):
         return []
 
-    def allocate_user_data(self, spec):
-        if self.size_user_data > 0:
-            spec.nuserdata = self.size_user_data
-        return spec
-
-    @property
-    def size_user_data(self):
-        raise NotImplementedError
-
     @property
     def dim(self):
-        return self.size_user_data
+        raise NotImplementedError
 
     @classmethod
     def list_goals(cls):
@@ -118,20 +113,21 @@ class NoGoal(Goal):
     def init_from_traj(self, traj_handler):
         pass
 
-    @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.array([])
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        return backend.array([]), carry
 
     @property
     def has_visual(self):
         return False
 
-    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
-        return data
-
     @property
-    def size_user_data(self):
+    def dim(self):
         return 0
+
+
+@struct.dataclass
+class GoalRandomRootVelocityState:
+    goal_vel: Union[np.ndarray, jnp.ndarray]
 
 
 class GoalRandomRootVelocity(Goal):
@@ -152,6 +148,7 @@ class GoalRandomRootVelocity(Goal):
 
         # to be initialized from mj
         self._root_body_id = None
+        self._keypoint_1_id = None
         self._keypoint_2_id = None
         self._root_jnt_qpos_start_id = None
 
@@ -168,33 +165,41 @@ class GoalRandomRootVelocity(Goal):
         assert root_jnt_id != -1, f"Joint {self.free_jnt_name} not found in the model."
         self._root_jnt_qpos_start_id = model.jnt_qposadr[root_jnt_id]
 
-    @classmethod
-    def get_obs(cls, model, data, ind, backend):
-        return backend.ravel(data.userdata[ind.GoalRandomRootVelocity])
-
     @property
     def has_visual(self):
         return True
 
-    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+    def init_state(self, env, key, model, data, backend):
+        return GoalRandomRootVelocityState(jnp.array([0.0, 0.0]))
+
+    def reset_state(self, env, model, data, carry, backend):
+
+        key = carry.key
         if backend == np:
             # sample random goal velocity
             goal_vel = np.random.uniform([-self.max_x_vel, -self.max_y_vel], [self.max_x_vel, self.max_y_vel])
-        elif backend == jnp:
-            goal_vel = jax.random.uniform(key, shape=(2,), minval=jnp.array([-self.max_x_vel, -self.max_y_vel]),
+        else:
+            key, _k = jax.random.split(key)
+            goal_vel = jax.random.uniform(_k, shape=(2,), minval=jnp.array([-self.max_x_vel, -self.max_y_vel]),
                                           maxval=jnp.array([self.max_x_vel, self.max_y_vel]))
-        data = self.set_attr_data_compat(data, backend, "userdata", goal_vel, self.data_type_ind)
-        return data
 
-    def set_data(self, data, backend, traj_handler=None, traj_state=None):
+        observation_states = carry.observation_states.replace(**{self.name: GoalRandomRootVelocityState(goal_vel)})
+        return data, carry.replace(key=key, observation_states=observation_states)
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        goal_vel = getattr(carry.observation_states, self.name).goal_vel
+        return goal_vel, carry
+
+    def set_data(self, env,  model, data, carry, backend):
+        goal_vel = getattr(carry.observation_states, self.name).goal_vel
         # set the visual data
         if self.visualize_goal:
-            data = self.set_visual_data(data, backend)
+            data = self.set_visual_data(goal_vel, data, backend)
         return data
 
-    def set_visual_data(self, data, backend):
-        goal_vel = backend.concatenate([data.userdata[self.data_type_ind], np.array([0.0])])
+    def set_visual_data(self, goal_vel, data, backend):
 
+        goal_vel = backend.concatenate([goal_vel, np.array([0.0])])
 
         if backend == np:
             R = np_R
@@ -216,14 +221,12 @@ class GoalRandomRootVelocity(Goal):
         target_pos_k2 = root_pos + self._z_offset + goal_vel_local * self._arrow_to_goal_ratio
 
         # set the absolute position of the arrow
-        data = self.set_attr_data_compat(data, backend, "mocap_pos", target_pos_k1, self._keypoint_1_id)
-        data = self.set_attr_data_compat(data, backend, "mocap_pos", target_pos_k2, self._keypoint_2_id)
+        data = self.set_attr_compat(data, backend, "mocap_pos", target_pos_k1, self._keypoint_1_id)
+        data = self.set_attr_compat(data, backend, "mocap_pos", target_pos_k2, self._keypoint_2_id)
 
         return data
 
     def apply_spec_modifications(self, spec, root_body_name):
-        # apply the default modifications needed to store the goal in data
-        self.allocate_user_data(spec)
         # optionally add sites for visualization
         if self.visualize_goal:
             wb = spec.worldbody
@@ -242,7 +245,7 @@ class GoalRandomRootVelocity(Goal):
         return spec
 
     @property
-    def size_user_data(self):
+    def dim(self):
         return 2
 
 
@@ -273,7 +276,7 @@ class GoalTrajArrow(Goal):
         self._initialized_from_traj = True
 
     @classmethod
-    def get_obs(cls, model, data, ind, backend):
+    def get_all_obs_of_type(cls, model, data, ind, backend):
         return backend.ravel(data.userdata[ind.GoalTrajArrow])
 
     @property
@@ -284,7 +287,7 @@ class GoalTrajArrow(Goal):
     def requires_trajectory(self):
         return True
 
-    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
+    def reset(self, env, model, data, carry, backend):
         return self.set_data(data, backend, traj_handler, traj_state)
 
     def set_data(self, data, backend, traj_handler=None, traj_state=None):
@@ -295,7 +298,7 @@ class GoalTrajArrow(Goal):
         # get the goal from the trajectory
         traj_goal = traj_data[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no]
         # set the goal in the userdata
-        data = self.set_attr_data_compat(data, backend, "userdata", traj_goal, self.data_type_ind)
+        data = self.set_attr_compat(data, backend, "userdata", traj_goal, self.data_type_ind)
         # set the visual data
         if self.visualize_goal:
             data = self.set_visual_data(data, backend, traj_goal)
@@ -352,7 +355,6 @@ class GoalTrajMimic(Goal):
         # these will be calculated during initialization
         self._qpos_ind = None
         self._qvel_ind = None
-        self._size_user_data = None
         self._size_additional_observation = None
 
     def _init_from_mj(self, model, data, current_obs_size):
@@ -369,7 +371,7 @@ class GoalTrajMimic(Goal):
         self.__class__.main_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.main_body_name)
         self.__class__._body_rootid = model.body_rootid
         self.__class__._site_bodyid = model.site_bodyid
-        self._initialized_from_traj = True
+        self._initialized_from_mj = True
 
     def apply_spec_modifications(self, spec: MjSpec, root_body_name: str):
         """
@@ -395,9 +397,8 @@ class GoalTrajMimic(Goal):
         size_for_joint_pos = (5 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 7 dim -2 to not incl. x and y
         size_for_joint_vel = (6 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 6 dim
         size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
-        self._size_user_data = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
+        self._dim = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
         self._size_additional_observation = size_for_sites
-        self.allocate_user_data(spec)
         if self.visualize_goal:
             wb = spec.worldbody
             mimic_site_defaults = None
@@ -430,43 +431,11 @@ class GoalTrajMimic(Goal):
                                          (type(obs) is ObservationType.FreeJointVel)])
         self._initialized_from_traj = True
 
-    @classmethod
-    def get_obs(cls, model, data, data_ind_cont, backend):
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
 
         # get trajectory goal
-        goal_traj = data.userdata[data_ind_cont.GoalTrajMimic]
-
-        if len(cls._rel_site_ids) > 0 and goal_traj.size > 0:
-
-            # get relative site quantities for current data
-            rel_site_ids = cls._rel_site_ids
-            rel_body_ids = cls._site_bodyid[rel_site_ids]
-            site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids,
-                                                                                   cls._body_rootid, backend)
-
-            # concatenate all relevant information
-            return backend.concatenate([backend.ravel(site_rpos),
-                                        backend.ravel(site_rangles),
-                                        backend.ravel(site_rvel),
-                                        backend.ravel(goal_traj)])
-        else:
-            return backend.array([])
-
-    @property
-    def has_visual(self):
-        return True
-
-    @property
-    def requires_trajectory(self):
-        return True
-
-    def reset(self, data, key, backend, traj_handler=None, traj_state=None):
-        return self.set_data(data, backend, traj_handler, traj_state)
-
-    def set_data(self, data, backend, traj_handler=None, traj_state=None):
-
-        # get trajectory data
-        traj_data = traj_handler.traj.data
+        traj_data = env.th.traj.data
+        traj_state = carry.traj_state
 
         # get traj_data for current time step
         traj_data_single = traj_data.get(traj_state.traj_no, traj_state.subtraj_step_no, backend)
@@ -478,23 +447,73 @@ class GoalTrajMimic(Goal):
         # get relative site quantities
         rel_site_ids = self._rel_site_ids
         rel_body_ids = self._site_bodyid[rel_site_ids]
-        site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(traj_data_single, rel_site_ids, rel_body_ids,
+        site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(traj_data_single, rel_site_ids,
+                                                                               rel_body_ids,
                                                                                self._body_rootid, backend)
 
         # setup goal observation
-        goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
-                                        qvel_traj[self._qvel_ind],
-                                        backend.ravel(site_rpos),
+        traj_goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
+                                             qvel_traj[self._qvel_ind],
+                                             backend.ravel(site_rpos),
+                                             backend.ravel(site_rangles),
+                                             backend.ravel(site_rvel)])
+
+        # add site information of the current time step to the observation (usually not part of observation spec)
+        if len(self._rel_site_ids) > 0:
+
+            # get relative site quantities for current data
+            rel_site_ids = self._rel_site_ids
+            rel_body_ids = self._site_bodyid[rel_site_ids]
+            site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids,
+                                                                                   self._body_rootid, backend)
+
+            # concatenate all relevant information
+            goal = backend.concatenate([backend.ravel(site_rpos),
                                         backend.ravel(site_rangles),
-                                        backend.ravel(site_rvel)])
+                                        backend.ravel(site_rvel),
+                                        backend.ravel(traj_goal_obs)])
+
+            return goal, carry
+        else:
+            return traj_goal_obs, carry
+
+    @property
+    def has_visual(self):
+        return True
+
+    @property
+    def requires_trajectory(self):
+        return True
+
+    def set_data(self, env, model, data, carry, backend):
+
+        # # get trajectory data
+        # traj_data = traj_handler.traj.data
+        #
+        # # get traj_data for current time step
+        # traj_data_single = traj_data.get(traj_state.traj_no, traj_state.subtraj_step_no, backend)
+        #
+        # # get joint positions and velocities
+        # qpos_traj = traj_data_single.qpos
+        # qvel_traj = traj_data_single.qvel
+        #
+        # # get relative site quantities
+        # rel_site_ids = self._rel_site_ids
+        # rel_body_ids = self._site_bodyid[rel_site_ids]
+        # site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(traj_data_single, rel_site_ids, rel_body_ids,
+        #                                                                        self._body_rootid, backend)
+        #
+        # # setup goal observation
+        # goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
+        #                                 qvel_traj[self._qvel_ind],
+        #                                 backend.ravel(site_rpos),
+        #                                 backend.ravel(site_rangles),
+        #                                 backend.ravel(site_rvel)])
 
         # set the goal in the userdata
-        data = self.set_attr_data_compat(data, backend, "userdata", goal_obs, self.data_type_ind)
+        # data = self.set_attr_compat(data, backend, "userdata", goal_obs, self.data_type_ind)
         if self.visualize_goal:
-            # todo: this currently only works with normal Mujoco since Mjx does not support mocap bodies yet.
-            # if backend == jnp:
-            #     raise NotImplementedError("mocap_pos and mocap_quat are not supported in MJX yet.")
-            data = self.set_visual_data(data, backend, traj_data, traj_state)
+            data = self.set_visual_data(data, backend, env.th.traj.data, carry.traj_state)
         return data
 
     def set_visual_data(self, data, backend, traj_data, traj_state):
@@ -504,23 +523,20 @@ class GoalTrajMimic(Goal):
         else:
             R = jnp_R
 
-        qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init)
-        site_xpos = traj_data.get_site_xpos(traj_state.traj_no, traj_state.subtraj_step_no)
-        site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no)
+        qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
+        site_xpos = traj_data.get_site_xpos(traj_state.traj_no, traj_state.subtraj_step_no, backend)
+        site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no, backend)
         site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat()
         s_ids = jnp.array(self._rel_site_ids)
-        site_xpos = site_xpos.at[:, :2].add(-qpos_init[:2]) # reset to the initial position
-        data = self.set_attr_data_compat(data, backend, "mocap_pos", site_xpos[s_ids], jnp.arange(len(s_ids)))
-        data = self.set_attr_data_compat(data, backend, "mocap_quat", site_xquat[s_ids], jnp.arange(len(s_ids)))
+        if backend == jnp:
+            site_xpos = site_xpos.at[:, :2].add(-qpos_init[:2]) # reset to the initial position
+        else:
+            site_xpos[:, :2] -= qpos_init[:2]
+        data = self.set_attr_compat(data, backend, "mocap_pos", site_xpos[s_ids], jnp.arange(len(s_ids)))
+        data = self.set_attr_compat(data, backend, "mocap_quat", site_xquat[s_ids], jnp.arange(len(s_ids)))
 
         return data
 
     @property
     def dim(self):
-        return self.size_user_data + self._size_additional_observation
-
-    @property
-    def size_user_data(self):
-        if self._size_user_data is None:
-            raise NotImplementedError
-        return self._size_user_data
+        return self._dim + self._size_additional_observation

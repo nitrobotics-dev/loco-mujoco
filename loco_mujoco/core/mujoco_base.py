@@ -15,14 +15,15 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import (Box, MDPInfo, MujocoViewer, ObservationType,
-                                    ObservationIndexContainer, ObservationContainer)
+from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer
+from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
 
 
 @struct.dataclass
 class AdditionalCarry:
     key: jax.Array
     cur_step_in_episode: int
+    observation_states: jax.Array
 
 
 class Mujoco:
@@ -106,9 +107,12 @@ class Mujoco:
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
-        self._additional_carry = self._init_additional_carry(key, self._data)
+        self._additional_carry = self._init_additional_carry(key, self._model, self._data, np)
         self._data = self._reset_init_data(self._data, self._additional_carry)
-        self._obs = self._create_observation(self._model, self._data, self._additional_carry)
+        # reset all stateful entities
+        self._data, self._additional_carry = self.obs_container.reset_state(self, self._model, self._data,
+                                                                            self._additional_carry, jnp)
+        self._obs, self._additional_carry = self._create_observation(self._model, self._data, self._additional_carry)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         return self._obs
 
@@ -142,11 +146,11 @@ class Mujoco:
 
             # recompute thef action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
-                cur_obs = self._create_observation(self._model, self._data, carry)
+                cur_obs, carry = self._create_observation(self._model, self._data, carry)
 
         # create the final observation
         if not self._recompute_action_per_step:
-            cur_obs = self._create_observation(self._model, self._data, carry)
+            cur_obs, carry = self._create_observation(self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._data, cur_info, carry)
@@ -189,7 +193,6 @@ class Mujoco:
         return action
 
     def get_all_observation_keys(self):
-        from loco_mujoco.core.utils import Goal
         return [k for k, elem in self.obs_container.items() if not issubclass(elem.__class__, Goal)]
 
     def _is_absorbing(self, obs, info, data, carry):
@@ -338,12 +341,11 @@ class Mujoco:
         for obs in observation_spec:
             # initialize the observation type and get all relevant data indices
             obs.init_from_mj(model, data, i, data_ind, obs_ind)
-
             i += obs.dim
-            if obs.name in obs_container.keys():
-                raise KeyError("Duplicate keys are not allowed. Key: ", obs.name)
-
             obs_container[obs.name] = obs
+
+        # lock container to avoid unwanted modifications
+        obs_container.lock()
 
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
@@ -355,24 +357,22 @@ class Mujoco:
         return 0.0
 
     def _create_observation(self, model, data, carry):
-        # get the base observation defined in observation_spec and the goal
-        obs = self._create_observation_compat(model, data, np)
-        return self._order_observation(obs)
-
-    def _order_observation(self, obs):
-        """
-        order the indices to match the order in observation_spec + goal
-        """
-        obs[self._obs_indices.concatenated_indices] = obs
-        return obs
-
-    def _create_observation_compat(self, model, data, backend):
         """
         Creates the observation array by concatenating the observation extracted from all observation types.
         """
-        obs = backend.concatenate([obs_type.get_obs(model, data, self._data_indices, backend)
-                                   for obs_type in ObservationType.list_all()])
-        return obs
+        # fast getter for all simple non-stateful observations
+        obs_not_stateful = np.concatenate([obs_type.get_all_obs_of_type(self, model, data, self._data_indices, np)
+                                   for obs_type in ObservationType.list_all_non_stateful()])
+        # order non-stateful obs the way they were in obs_spec
+        obs_not_stateful[self._obs_indices.concatenated_indices] = obs_not_stateful
+
+        # get all stateful observations
+        obs_stateful = []
+        for obs in self.obs_container.list_all_stateful():
+            obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, np)
+            obs_stateful.append(obs_s)
+
+        return np.concatenate([obs_not_stateful, *obs_stateful]), carry
 
     @staticmethod
     def _set_sim_state_from_traj_data(data, traj_data):
@@ -438,8 +438,10 @@ class Mujoco:
         obs_max = np.concatenate([np.array(entry.max) for entry in self.obs_container.values()])
         return obs_min, obs_max
 
-    def _init_additional_carry(self, key, data):
-        return AdditionalCarry(key=key, cur_step_in_episode=1)
+    def _init_additional_carry(self, key, model, data, backend):
+        return AdditionalCarry(key=key,
+                               cur_step_in_episode=1,
+                               observation_states=self.obs_container.init_state(self, key, model, data, backend))
 
     def get_model(self):
         return deepcopy(self._model)
