@@ -22,7 +22,7 @@ class Reward(StatefulObject):
 
     registered = dict()
 
-    def __init__(self, obs_container, info_props, model, data):
+    def __init__(self, obs_container, info_props, model, data, **kwargs):
         self._obs_container = obs_container
         self._info_props = info_props
         self.initialized = False
