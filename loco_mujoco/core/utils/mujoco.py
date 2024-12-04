@@ -1,4 +1,7 @@
 import mujoco
+import numpy as np
+import jax
+import jax.numpy as jnp
 
 
 def mj_jntname2qposid(j_name, model):
@@ -98,3 +101,36 @@ def mj_spec_find_geom_id(spec, geom_name):
         if g.name == geom_name:
             return i
     raise ValueError(f"Geom {geom_name} not found in spec.")
+
+
+def mj_check_collisions(geom_id1, geom_id2, data, backend):
+    """
+    Check if two geoms collide.
+
+    Args:
+        geom_id1 (int): geom id in Mujoco model.
+        geom_id2 (int): geom id in Mujoco model.
+        data: Mujoco data structure.
+        backend: np or jnp.
+
+    Returns:
+        bool: True if geoms collide, False otherwise.
+    """
+
+    def _mjx_is_in_contact(con_id, res):
+        is_in_contact = jnp.logical_or(jnp.logical_and(data.contact.geom1[con_id] == geom_id1,
+                                                       data.contact.geom2[con_id] == geom_id2),
+                                       jnp.logical_and(data.contact.geom1[con_id] == geom_id2,
+                                                       data.contact.geom2[con_id] == geom_id1))
+        return jnp.logical_or(res, is_in_contact)
+
+    def _is_in_contact(con_id, res):
+        con = data.contact[con_id]
+        is_in_contact = np.logical_or(np.logical_and(con.geom1 == geom_id1, con.geom2 == geom_id2),
+                                      np.logical_and(con.geom1 == geom_id2, con.geom2 == geom_id1))
+        return np.logical_or(res, is_in_contact)
+
+    if backend == jnp:
+        return jax.lax.fori_loop(0, data.ncon, _mjx_is_in_contact, False)
+    else:
+        return np.any([_is_in_contact(i, False) for i in range(data.ncon)])

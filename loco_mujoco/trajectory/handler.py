@@ -59,7 +59,7 @@ class TrajectoryHandler(StatefulObject):
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
-        self._use_fixed_start = True if fixed_start_conf is not None else False
+        self.use_fixed_start = True if fixed_start_conf is not None else False
 
         self.traj_dt = 1 / traj_info.frequency
         self.control_dt = control_dt
@@ -246,7 +246,7 @@ class TrajectoryHandler(StatefulObject):
                 traj_idx = np.random.randint(0, self.n_trajectories)
                 subtraj_step_idx = np.random.randint(0, self.len_trajectory(traj_idx))
                 idx = [traj_idx, subtraj_step_idx]
-        elif self._use_fixed_start:
+        elif self.use_fixed_start:
             idx = self._fixed_start_conf
         else:
             idx = [0, 0]

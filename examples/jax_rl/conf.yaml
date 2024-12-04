@@ -25,7 +25,7 @@ experiment:
     horizon: 1000
     terminal_state_type: HeightBasedTerminalStateHandler
     goal_type: GoalRandomRootVelocity
-    reward_type: TargetVelocityGoalReward
+    reward_type: LocomotionReward
     random_start: false
   hidden_layers: [512, 256]
   lr: 1e-4

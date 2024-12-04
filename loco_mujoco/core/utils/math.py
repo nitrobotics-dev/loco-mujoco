@@ -406,3 +406,17 @@ def quat2angle(quat, backend):
     else:
         R = jnp_R
     return R.from_quat(quat).as_rotvec()
+
+
+def quat_scalarfirst2scalarlast(quat, backend):
+    """
+    Converts a quaternion from scalar-first to scalar-last representation.
+    """
+    return backend.array([quat[1], quat[2], quat[3], quat[0]])
+
+
+def quat_scalarlast2scalarfirst(quat, backend):
+    """
+    Converts a quaternion from scalar-last to scalar-first representation.
+    """
+    return backend.array([quat[3], quat[0], quat[1], quat[2]])

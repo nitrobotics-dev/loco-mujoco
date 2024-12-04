@@ -86,7 +86,7 @@ class Mjx(Mujoco):
         absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data, carry)
 
         # calculate the reward
-        reward = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
+        reward, carry = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
 
         # check if done
         done = self._mjx_is_done(cur_obs, absorbing, cur_info, data, carry)
@@ -163,8 +163,8 @@ class Mjx(Mujoco):
     def _mjx_update_info_dictionary(self, info, obs, data, carry):
         return info
 
-    def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data):
-        return 0.0
+    def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
+        return 0.0, carry
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
         return False

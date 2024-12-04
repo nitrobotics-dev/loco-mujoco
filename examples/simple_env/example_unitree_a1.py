@@ -6,7 +6,7 @@ from loco_mujoco import LocoEnv
 env = LocoEnv.make("UnitreeA1",
                    terminal_state_type="HeightBasedTerminalStateHandler",
                    goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
-                   reward_type="TargetVelocityGoalReward")
+                   reward_type="LocomotionReward")
 
 # get the dataset for the chosen environment and task
 #expert_data = env.create_dataset()

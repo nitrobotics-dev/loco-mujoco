@@ -1,6 +1,6 @@
 import atexit
 from copy import deepcopy
-import types
+from typing import Union
 from enum import Enum
 from typing import List, Optional, Any, Dict
 from dataclasses import dataclass
@@ -23,7 +23,8 @@ from loco_mujoco.core.observations import ObservationType, ObservationIndexConta
 class AdditionalCarry:
     key: jax.Array
     cur_step_in_episode: int
-    observation_states: jax.Array
+    observation_states: Union[np.ndarray, jax.Array]
+    reward_state: Union[np.ndarray, jax.Array]
 
 
 class Mujoco:
@@ -162,7 +163,7 @@ class Mujoco:
         absorbing = self._is_absorbing(cur_obs, cur_info, self._data, carry)
 
         # calculate the reward
-        reward = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data, carry)
+        reward, carry = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data, carry)
 
         # calculate flag indicating whether this is the last obs before resetting
         done = self._is_done(cur_obs, absorbing, cur_info, self._data, carry)
@@ -354,7 +355,7 @@ class Mujoco:
         return obs_container, data_ind, obs_ind
 
     def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
-        return 0.0
+        return 0.0, carry
 
     def _create_observation(self, model, data, carry):
         """
