@@ -14,6 +14,7 @@ try:
         return LocoEnv.registered_envs
 
     PATH_TO_MODELS = Path(__file__).resolve().parent / "models"
+    PATH_TO_SMPL_CONF = Path(__file__).resolve().parent / "smpl" / "conf_paths.yaml"
 
 except ImportError as e:
     print(e)

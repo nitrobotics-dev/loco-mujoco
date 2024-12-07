@@ -1,4 +1,5 @@
 import os
+import argparse
 
 import scipy.spatial.transform
 import wget
@@ -9,6 +10,7 @@ from pathlib import Path
 import scipy.io as sio
 from scipy.spatial.transform import Rotation as R
 import loco_mujoco
+import yaml
 
 
 def download_all_datasets():
@@ -207,3 +209,41 @@ def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_fir
     dataset["frequency"] = float(np.squeeze(data["fsKin"]))
 
     return dataset
+
+
+def set_amass_path():
+    """
+    Set the path to the AMASS dataset.
+    """
+    parser = argparse.ArgumentParser(description="Set the AMASS dataset path.")
+    parser.add_argument("--path", type=str, help="Path to the AMASS dataset.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_AMASS_PATH")
+
+
+def set_smpl_model_path():
+    """
+    Set the path to the SMPL model.
+    """
+    parser = argparse.ArgumentParser(description="Set the SMPL model path.")
+    parser.add_argument("--path", type=str, help="Path to the SMPL model.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH")
+
+
+def _set_path_in_yaml_conf(path: str, attr: str):
+    """
+    Set the path in the yaml configuration file.
+    """
+    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+
+    # load yaml file
+    with open(path_to_conf, "r") as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+
+    # set the path
+    data[attr] = path
+
+    # save the yaml file
+    with open(path_to_conf, "w") as file:
+        yaml.dump(data, file)

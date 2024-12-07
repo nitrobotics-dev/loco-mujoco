@@ -4,21 +4,24 @@ from pathlib import Path
 from easydict import EasyDict
 import xml.etree.ElementTree as ETree
 from lxml.etree import XMLParser, parse
+from mujoco import MjSpec
 
 import torch
 import numpy as np
 import scipy.ndimage.filters as filters
 
 import loco_mujoco
+from loco_mujoco import PATH_TO_MODELS
 from loco_mujoco.smpl.utils import rotation_conversion as tRot
 from loco_mujoco.smpl.utils import rotation3d as pRot
 
 
 class ForwardKinematicsHumanoidTorch:
 
-    def __init__(self, cfg, device = torch.device("cpu")):
+    def __init__(self, cfg, device=torch.device("cpu")):
         self.cfg = cfg
-        self.mjcf_file = Path(loco_mujoco.__file__).parent / "environments/data" / cfg.mjcf_file
+        test = PATH_TO_MODELS
+        self.mjcf_file = PATH_TO_MODELS / cfg.mjcf_file
         self.mjcf_data = mjcf_data = self.from_mjcf(self.mjcf_file)
         self.joint_names = copy.deepcopy(mjcf_data['node_names'])
         self._parents = mjcf_data['parent_indices']
@@ -29,18 +32,24 @@ class ForwardKinematicsHumanoidTorch:
         self._remove_idx = 0
         self.num_extend_dof = self.num_dof
         
-        parser = XMLParser(remove_blank_text=True)
-        tree = parse(BytesIO(open(self.mjcf_file, "rb").read()), parser=parser,)
+        #parser = XMLParser(remove_blank_text=True)
+        #tree = parse(BytesIO(open(self.mjcf_file, "rb").read()), parser=parser,)
+        spec = MjSpec.from_file(str(self.mjcf_file))
         self.dof_axis = []
-        
-        if tree.getroot().find("worldbody").findall('.//joint')[0].attrib['type'] == "free":
-            for j in tree.getroot().find("worldbody").findall('.//joint')[1:]:
-                self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
-            self.has_freejoint = True
-        else:
-            for j in tree.getroot().find("worldbody").findall('.//joint')[6:]:
-                self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
-            self.has_freejoint = False
+
+        for joint in spec.joints:
+            if joint.type != "free":
+                self.dof_axis.append(joint.axis)
+                self.has_freejoint = True
+        #
+        # if tree.getroot().find("worldbody").findall('.//joint')[0].attrib['type'] == "free":
+        #     for j in tree.getroot().find("worldbody").findall('.//joint')[1:]:
+        #         self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
+        #     self.has_freejoint = True
+        # else:
+        #     for j in tree.getroot().find("worldbody").findall('.//joint')[6:]:
+        #         self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
+        #     self.has_freejoint = False
         
         self.dof_axis = torch.tensor(self.dof_axis)
 

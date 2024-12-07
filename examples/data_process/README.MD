@@ -34,6 +34,22 @@ smpl_pose_modifier:
 `smpl_pose_modifier`: the modifier for the SMPL pose to match the initial pose of the robot. 
 
 
+## Set the Path To The AMASS Data and SMPL Model 
+
+
+
+``` 
+loco-mujoco-set-amass-path --path "/path/to/amass/data"
+```
+
+e.g., `/home/moore/AMASS/AMASS/SMPL+H G`. 
+
+```
+loco-mujoco-set-smpl-model-path --path "/path/to/smpl/models"
+```
+path to the smpl models. 
+
+
 ## Body Shape Fitting 
 Using the following command to fit the body shape for your robot. 
 

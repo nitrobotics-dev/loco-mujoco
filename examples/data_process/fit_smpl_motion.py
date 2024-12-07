@@ -1,5 +1,7 @@
+import os
 import glob
 from pathlib import Path
+import yaml
 
 import joblib
 from tqdm import tqdm
@@ -11,7 +13,7 @@ import torch
 from torch.autograd import Variable
 
 import loco_mujoco
-from loco_mujoco.smpl import SMPL_Parser
+from loco_mujoco.smpl import SMPL_Parser, SMPLX_Parser
 from loco_mujoco.smpl.utils import torch_utils
 from loco_mujoco.smpl import SMPL_BONE_ORDER_NAMES
 from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
@@ -41,15 +43,23 @@ def load_amass_data(data_path):
 
 
 @hydra.main(version_base=None, config_path="../../loco_mujoco/cfg", config_name="config")
-def main(cfg : DictConfig) -> None:
+def main(cfg: DictConfig) -> None:
     device = torch.device("cpu")
+
+    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+
+    # read paths from yaml file
+    with open(path_to_conf, "r") as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+        path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
+        path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+
+    assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
+    assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
 
     # path to loco-mujoco robot models
     loco_mujoco_path = Path(loco_mujoco.__file__).parent
-    path_to_models = loco_mujoco_path / "environments" / "data"
-    path_to_amass_datasets = loco_mujoco_path.parent / "data"
-    path_to_all_amass_files = path_to_amass_datasets / "AMASS/SMPL+H G/**/*.npz"
-    cfg.robot.mjcf_file = str(path_to_models / cfg.robot.mjcf_file)
+    path_to_all_amass_files = path_to_amass_datasets + "/**/*.npz"
 
     humanoid_fk = ForwardKinematicsHumanoidTorch(cfg.robot) # load forward kinematics model
     num_augment_joint = len(cfg.robot.extend_config)
@@ -58,7 +68,7 @@ def main(cfg : DictConfig) -> None:
     robot_joint_names_augment = humanoid_fk.joint_names_augment 
     robot_joint_pick = [i[0] for i in cfg.robot.joint_matches]
     smpl_joint_pick = [i[1] for i in cfg.robot.joint_matches]
-    robot_joint_pick_idx = [ robot_joint_names_augment.index(j) for j in robot_joint_pick]
+    robot_joint_pick_idx = [robot_joint_names_augment.index(j) for j in robot_joint_pick]
     smpl_joint_pick_idx = [SMPL_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
 
     all_pkls = glob.glob(str(path_to_all_amass_files), recursive=True)
@@ -68,7 +78,9 @@ def main(cfg : DictConfig) -> None:
     #data_key = "0-Transitions_mocap_mazen_c3d_dance_stand_poses"
     data_key = "0-Transitions_mocap_mazen_c3d_airkick_jumpinplace_poses"
 
-    smpl_parser_n = SMPL_Parser(model_path=loco_mujoco_path.parent / "data" / "smpl", gender="neutral")
+    # todo: SMPLX_Parser works for python 3.11 but SMPL_Parser not!
+    _test = SMPLX_Parser(model_path=path_to_smpl_model, gender="neutral")
+    smpl_parser_n = SMPL_Parser(model_path=path_to_smpl_model, gender="neutral")
 
     amass_data = load_amass_data(all_pkls[key_names.index(data_key)])
     skip = int(amass_data['fps']//30)
