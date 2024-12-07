@@ -10,7 +10,8 @@ os.environ['XLA_FLAGS'] = (
 
 env = LocoEnv.make("MjxUnitreeA1",
                    goal_type="GoalRandomRootVelocity",
-                   reward_type="TargetVelocityGoalReward",
+                   goal_params=dict(visualize_goal=True),
+                   reward_type="LocomotionReward",
                    terminal_state_type="HeightBasedTerminalStateHandler",
                    n_envs=50)
 

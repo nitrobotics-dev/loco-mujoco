@@ -195,17 +195,16 @@ class TargetVelocityGoalReward(Reward):
         root_quat = R.from_quat(root_qpos[3:7])
 
         # get current local vel of root
-        x_vel_global = backend.squeeze(data.qvel[self._vel_idx])[:3]
-        x_vel_local = root_quat.as_matrix().T @ x_vel_global
+        lin_vel_global = backend.squeeze(data.qvel[self._vel_idx])[:3]
+        ang_vel_global = backend.squeeze(data.qvel[self._vel_idx])[3:]
+        lin_vel_local = root_quat.as_matrix().T @ lin_vel_global
+        vel_local = backend.concatenate([lin_vel_local[:2], backend.atleast_1d(ang_vel_global[2])]) # construct vel, x, y and yaw
 
-        # vel in goal
-        goal_vel = backend.squeeze(goal_state.goal_vel)
+        # calculate tracking reward
+        goal_vel = backend.array([goal_state.goal_vel_x, goal_state.goal_vel_y, goal_state.goal_vel_yaw])
+        tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(vel_local - goal_vel)))
 
-        tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(x_vel_local[:2] - goal_vel)))
-
-        action_penalty = 0.25*backend.mean(backend.abs(action))
-
-        return tracking_reward - action_penalty, carry
+        return tracking_reward, carry
 
 
 class MimicReward(Reward):
@@ -329,18 +328,24 @@ class LocomotionReward(TargetVelocityGoalReward):
         self._free_joint_qpos_mask[self._free_joint_qpos_ind] = True
         self._free_joint_qvel_mask = np.zeros(model.nv, dtype=bool)
         self._free_joint_qvel_mask[self._free_joint_qvel_ind] = True
+        self._foot_names = kwargs["info_props"]["foot_geom_names"]
 
         self._floor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
-        foot_names = ["RL_foot", "RR_foot", "FL_foot", "FR_foot"]
-        self._foot_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in foot_names]
+        self._foot_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in self._foot_names]
+
+        # joint ranges
+        self._limited_joints = np.array(model.jnt_limited, dtype=bool)
+        self._limited_joints_qpos_id = model.jnt_qposadr[np.arange(model.njnt)[self._limited_joints]]
+        self._joint_ranges = model.jnt_range[self._limited_joints]
 
         # reward coefficients
         self._tracking_rew_coeff = kwargs.get("tracking_rew_coeff", 1.0)
         self._z_vel_coeff = kwargs.get("z_vel_coeff", 2.0)
         self._roll_pitch_vel_coeff = kwargs.get("roll_pitch_vel_coeff", 5e-2)
         self._roll_pitch_pos_coeff = kwargs.get("roll_pitch_pos_coeff", 2e-1)
-        self._nominal_joint_pos_coeff = kwargs.get("nominal_joint_pos_coeff", 2e-1)
+        self._nominal_joint_pos_coeff = kwargs.get("nominal_joint_pos_coeff", 0.0)
         self._nominal_joint_pos = kwargs.get("nominal_joint_pos", np.zeros(1))
+        self._joint_position_limit_coeff = kwargs.get("joint_position_limit_coeff", 10.0)
         self._joint_vel_coeff = kwargs.get("joint_vel_coeff", 0.0)
         self._joint_acc_coeff = kwargs.get("joint_acc_coeff", 2e-7)
         self._joint_torque_coeff = kwargs.get("joint_torque_coeff", 2e-5)
@@ -389,6 +394,12 @@ class LocomotionReward(TargetVelocityGoalReward):
         joint_qpos = data.qpos[~self._free_joint_qpos_mask]
         joint_qpos_reward = self._nominal_joint_pos_coeff * -backend.square(joint_qpos - self._nominal_joint_pos).sum()
 
+        # joint position limit reward
+        joint_positions = backend.array(data.qpos[self._limited_joints_qpos_id])
+        lower_limit_penalty = -backend.minimum(joint_positions - self._joint_ranges[:, 0], 0.0).sum()
+        upper_limit_penalty = backend.maximum(joint_positions - self._joint_ranges[:, 1], 0.0).sum()
+        joint_position_limit_reward = self._joint_position_limit_coeff * -(lower_limit_penalty + upper_limit_penalty)
+
         # joint velocity reward
         joint_vel = data.qvel[~self._free_joint_qvel_mask]
         joint_vel_reward = self._joint_vel_coeff * -backend.square(joint_vel).sum()
@@ -436,8 +447,8 @@ class LocomotionReward(TargetVelocityGoalReward):
         tracking_reward, _ = super().__call__(state, action, next_state, absorbing, info,
                                               env, model, data, carry, backend)
         penality_rewards = (z_vel_reward + roll_pitch_vel_reward + roll_pitch_reward + joint_qpos_reward
-                            + joint_vel_reward + acceleration_reward + torque_reward + action_rate_reward
-                            + air_time_reward)
+                            + joint_position_limit_reward + joint_vel_reward + acceleration_reward
+                            + torque_reward + action_rate_reward + air_time_reward)
         total_reward = tracking_reward + penality_rewards
         total_reward = backend.maximum(total_reward, 0.0)
 

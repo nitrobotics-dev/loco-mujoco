@@ -95,6 +95,8 @@ def experiment(config: DictConfig):
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
 
+        wandb.finish()
+
     except Exception:
         traceback.print_exc(file=sys.stderr)
         raise

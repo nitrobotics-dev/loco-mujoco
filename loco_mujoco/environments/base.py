@@ -935,6 +935,15 @@ class LocoEnv(Mjx):
         raise NotImplementedError(f"Please implement the root_height_healthy_range property "
                                   f"in the {type(self).__name__} environment.")
 
+    @info_property
+    def foot_geom_names(self):
+        """
+        Returns the names of the foot geometries.
+
+        """
+        # todo: raise NotImplementedError, once added to all envs
+        raise []
+
     @staticmethod
     def _get_observation_specification(spec: MjSpec):
         """

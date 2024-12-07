@@ -127,7 +127,9 @@ class NoGoal(Goal):
 
 @struct.dataclass
 class GoalRandomRootVelocityState:
-    goal_vel: Union[np.ndarray, jnp.ndarray]
+    goal_vel_x: float
+    goal_vel_y: float
+    goal_vel_yaw: float
 
 
 class GoalRandomRootVelocity(Goal):
@@ -138,10 +140,11 @@ class GoalRandomRootVelocity(Goal):
     _name_goal_dict = "VEL_2D"
     _arrow_to_goal_ratio = 0.3
 
-    def __init__(self, info_props, max_x_vel=2.0, max_y_vel=1.0, **kwargs):
+    def __init__(self, info_props, max_x_vel=1.0, max_y_vel=1.0, max_yaw_vel=1.0, **kwargs):
         self._traj_goal_ind = None
         self.max_x_vel = max_x_vel
         self.max_y_vel = max_y_vel
+        self.max_yaw_vel = max_yaw_vel
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
         self.free_jnt_name = info_props["root_free_joint_xml_name"]
         self._z_offset = np.array([0.0, 0.0, 0.3])
@@ -170,30 +173,38 @@ class GoalRandomRootVelocity(Goal):
         return True
 
     def init_state(self, env, key, model, data, backend):
-        return GoalRandomRootVelocityState(jnp.array([0.0, 0.0]))
+        return GoalRandomRootVelocityState(0.0, 0.0, 0.0)
 
     def reset_state(self, env, model, data, carry, backend):
 
         key = carry.key
         if backend == np:
             # sample random goal velocity
-            goal_vel = np.random.uniform([-self.max_x_vel, -self.max_y_vel], [self.max_x_vel, self.max_y_vel])
+            goal_vel = np.random.uniform([-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel],
+                                         [self.max_x_vel, self.max_y_vel, self.max_yaw_vel])
         else:
             key, _k = jax.random.split(key)
-            goal_vel = jax.random.uniform(_k, shape=(2,), minval=jnp.array([-self.max_x_vel, -self.max_y_vel]),
-                                          maxval=jnp.array([self.max_x_vel, self.max_y_vel]))
+            goal_vel = jax.random.uniform(_k, shape=(3,),
+                                          minval=jnp.array([-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel]),
+                                          maxval=jnp.array([self.max_x_vel, self.max_y_vel, self.max_yaw_vel]))
 
-        observation_states = carry.observation_states.replace(**{self.name: GoalRandomRootVelocityState(goal_vel)})
+        goal_state = GoalRandomRootVelocityState(goal_vel[0], goal_vel[1], goal_vel[2])
+        observation_states = carry.observation_states.replace(**{self.name: goal_state})
         return data, carry.replace(key=key, observation_states=observation_states)
 
     def get_obs_and_update_state(self, env, model, data, carry, backend):
-        goal_vel = getattr(carry.observation_states, self.name).goal_vel
-        return goal_vel, carry
+        goal_vel_x = getattr(carry.observation_states, self.name).goal_vel_x
+        goal_vel_y = getattr(carry.observation_states, self.name).goal_vel_y
+        goal_vel_yaw = getattr(carry.observation_states, self.name).goal_vel_yaw
+        return backend.array([goal_vel_x, goal_vel_y, goal_vel_yaw]), carry
 
     def set_data(self, env,  model, data, carry, backend):
-        goal_vel = getattr(carry.observation_states, self.name).goal_vel
+        goal_vel_x = getattr(carry.observation_states, self.name).goal_vel_x
+        goal_vel_y = getattr(carry.observation_states, self.name).goal_vel_y
+        goal_vel = backend.array([goal_vel_x, goal_vel_y])
         # set the visual data
         if self.visualize_goal:
+            # todo: add the goal_vel_yaw to the visualization
             data = self.set_visual_data(goal_vel, data, backend)
         return data
 
@@ -246,7 +257,7 @@ class GoalRandomRootVelocity(Goal):
 
     @property
     def dim(self):
-        return 2
+        return 3
 
 
 class GoalTrajArrow(Goal):
