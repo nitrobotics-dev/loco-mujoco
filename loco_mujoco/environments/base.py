@@ -942,7 +942,7 @@ class LocoEnv(Mjx):
 
         """
         # todo: raise NotImplementedError, once added to all envs
-        raise []
+        return []
 
     @staticmethod
     def _get_observation_specification(spec: MjSpec):
