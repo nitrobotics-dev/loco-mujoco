@@ -2,16 +2,15 @@ import yaml
 import mujoco
 import numpy as np
 from copy import deepcopy
-from dm_control import mjcf
 from multiprocessing import Queue, Pool
 
 
-class DomainRandomizationHandler:
+class SpecRandomizer:
     """
     Description
     -----------
 
-    Class for handling domain randomization.
+    Class for handling domain randomization on MjSpec.
 
     Right now, LocoMujoco support domain randomization for the Properties of the joints, geometries, and
     the inertials of the bodies. The domain randomization is done by modifying the Mujoco XML file of the respective
@@ -199,6 +198,8 @@ class DomainRandomizationHandler:
             N_worker_per_xml (int): Number of workers for parallel domain randomization.
 
         """
+        # TODO
+        raise NotImplementedError("This class is not ported to the new backend yet.")
 
         assert N_worker_per_xml >= 1 if parallel else True
         self._xml_handles = xml_handles
