@@ -8,7 +8,7 @@ from jax.scipy.spatial.transform import Rotation as R
 from metrix import DistanceMeasures
 import mujoco
 from loco_mujoco.core.wrappers import SummaryMetrics
-from loco_mujoco.core.utils.math import calc_site_velocities, calculate_relative_site_quatities
+from loco_mujoco.core.utils.math import calc_site_velocities, calculate_relative_site_quatities, quat_scalarfirst2scalarlast
 from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid, mj_jntname2qposid, mj_jntname2qvelid
 
 
@@ -228,6 +228,7 @@ class MetricsHandler:
         # to rotation vector to use metrics in the Euclidean space
         quat, quat_traj = qpos[..., self._quat_in_qpos], traj_qpos[..., self._quat_in_qpos]
         quat, quat_traj = quat.reshape(-1, 4), quat_traj.reshape(-1, 4)
+        quat, quat_traj = quat_scalarfirst2scalarlast(quat), quat_scalarfirst2scalarlast(quat_traj)
         rot_vec, rot_vec_traj = R.from_quat(quat).as_rotvec(), R.from_quat(quat_traj).as_rotvec()
         qpos = jnp.concatenate([qpos[..., self._not_quat_in_qpos],
                                 rot_vec.reshape((*qpos.shape[:-1], 3))], axis=-1)
@@ -257,10 +258,12 @@ class MetricsHandler:
 
     def get_body_orientations(self, env_states):
         # get from data
-        body_rotvec = R.from_quat(env_states.data.xquat).as_rotvec()
+        xquat_env = quat_scalarfirst2scalarlast(env_states.data.xquat)
+        body_rotvec = R.from_quat(xquat_env).as_rotvec()
 
         # get from trajectory
-        traj_body_rotvec = R.from_quat(self._traj_data.xquat[self.get_traj_indices(env_states)]).as_rotvec()
+        xquat_traj = quat_scalarfirst2scalarlast(self._traj_data.xquat[self.get_traj_indices(env_states)])
+        traj_body_rotvec = R.from_quat(xquat_traj).as_rotvec()
 
         return body_rotvec[..., self.rel_body_ids], traj_body_rotvec[..., self.rel_body_ids]
 

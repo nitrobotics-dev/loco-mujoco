@@ -3,7 +3,7 @@ import jax
 import time
 
 from loco_mujoco import LocoEnv
-from loco_mujoco.core.utils import HeightBasedTerminalStateHandler
+
 
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
@@ -12,8 +12,10 @@ env = LocoEnv.make("MjxUnitreeA1",
                    goal_type="GoalRandomRootVelocity",
                    goal_params=dict(visualize_goal=True),
                    reward_type="LocomotionReward",
+                   #domain_randomization_type="DefaultRandomizer",
                    terminal_state_type="HeightBasedTerminalStateHandler",
-                   n_envs=50)
+                   terrain_type="RoughTerrain",
+                   n_envs=20)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)

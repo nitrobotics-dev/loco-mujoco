@@ -970,12 +970,12 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
         Perform SLERP interpolation for a batch of quaternions.
 
         Args:
-            quats: Array of shape (T, 4) containing quaternions.
+            quats: Array of shape (T, 4) containing quaternions. (quaternions is expected to be scalar last)
             times: Array of shape (T,) containing original time points.
             new_times: Array of new time points to interpolate at.
 
         Returns:
-            Array of shape (len(new_times), 4) containing interpolated quaternions.
+            Array of shape (len(new_times), 4) containing interpolated quaternions, where the quaternion is scalar last.
 
         """
         # Create the Slerp object for the single trajectory

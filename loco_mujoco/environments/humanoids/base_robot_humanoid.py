@@ -1,10 +1,10 @@
 from loco_mujoco.environments import LocoEnv
-from loco_mujoco.utils import info_property
+from loco_mujoco.core.utils import info_property
 
 
 class BaseRobotHumanoid(LocoEnv):
     """
-    Base Class for the Humanoids.
+    Base Class for the Humanoid robots.
 
     """
 
@@ -15,3 +15,7 @@ class BaseRobotHumanoid(LocoEnv):
                 "left_hip_mimic", "left_knee_mimic", "left_foot_mimic",
                 "right_shoulder_mimic", "right_elbow_mimic", "right_hand_mimic",
                 "right_hip_mimic", "right_knee_mimic", "right_foot_mimic"]
+
+    @info_property
+    def root_body_name(self):
+        return "pelvis"

@@ -13,13 +13,6 @@ from flax import struct
 from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
 
-from dataclasses import dataclass
-
-
-@dataclass
-class tol:
-    ein: jax.Array
-
 
 def jnt_name2id(name, model):
     """

@@ -19,12 +19,10 @@ from scipy.spatial.transform import Rotation as np_R
 
 import loco_mujoco
 from loco_mujoco.core.stateful_object import EmptyState
-from loco_mujoco.core.observations import Goal
-from loco_mujoco.core.mujoco_mjx import Mjx, MjxState, MjxAdditionalCarry
-from loco_mujoco.core.utils import VideoRecorder, TerminalStateHandler, Reward
+from loco_mujoco.core.mujoco_mjx import Mjx, MjxAdditionalCarry
+from loco_mujoco.core.utils import VideoRecorder
 from loco_mujoco.trajectory import TrajectoryHandler
-from loco_mujoco.utils import DomainRandomizationHandler
-from loco_mujoco.utils import info_property, RunningAveragedWindow
+from loco_mujoco.core.utils import info_property
 from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
 from loco_mujoco.datasets.data_generation import convert_single_dataset_of_env, PATH_RAW_DATASET
 
@@ -41,12 +39,10 @@ class LocoEnv(Mjx):
     """
 
     def __init__(self, spec, action_spec, observation_spec, enable_mjx=False,
-                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10, reward_type="NoReward", reward_params=None,
-                 goal_type="NoGoal", goal_params=None, terminal_state_type=None,
-                 terminal_state_params=None, traj_params=None, random_start=True, fixed_start_conf=None,
-                 timestep=0.001, use_foot_forces=False, default_camera_mode="follow",
-                 domain_randomization_config=None, parallel_dom_rand=True, N_worker_per_xml_dom_rand=4,
-                 model_option_conf=None, **viewer_params):
+                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10,
+                 traj_params=None, random_start=True, fixed_start_conf=None,
+                 timestep=0.001, default_camera_mode="follow",
+                 model_option_conf=None, **core_params):
         """
         Constructor.
 
@@ -98,76 +94,40 @@ class LocoEnv(Mjx):
 
         """
 
-        if use_foot_forces:
-            n_intermediate_steps = n_substeps
-            n_substeps = 1
-        else:
-            n_intermediate_steps = 1
-
-        if "geom_group_visualization_on_startup" not in viewer_params.keys():
-            viewer_params["geom_group_visualization_on_startup"] = [0, 2]   # enable robot geom [0] and floor visual [2]
-
-        if domain_randomization_config is not None:
-            # todo: this is deprecated
-            self._domain_rand = DomainRandomizationHandler(spec, domain_randomization_config, parallel_dom_rand,
-                                                           N_worker_per_xml_dom_rand)
-        else:
-            self._domain_rand = None
-
-        # add sites for goal to spec
-        spec, goal = self._setup_goal(spec, goal_type, goal_params)
+        if "geom_group_visualization_on_startup" not in core_params.keys():
+            core_params["geom_group_visualization_on_startup"] = [0, 2]   # enable robot geom [0] and floor visual [2]
 
         if enable_mjx:
             # call parent (Mjx) constructor
-            super(LocoEnv, self).__init__(n_envs, xml_file=spec, actuation_spec=action_spec,
-                                          observation_spec=observation_spec, goal=goal, gamma=gamma,
+            super(LocoEnv, self).__init__(n_envs, spec=spec, actuation_spec=action_spec,
+                                          observation_spec=observation_spec, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
-                                          n_intermediate_steps=n_intermediate_steps,
+                                          n_intermediate_steps=1,
                                           timestep=timestep,
                                           default_camera_mode=default_camera_mode,
-                                          model_option_conf=model_option_conf, **viewer_params)
+                                          model_option_conf=model_option_conf, **core_params)
         else:
             assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
-            super(Mjx, self).__init__(xml_file=spec, actuation_spec=action_spec,
-                                      observation_spec=observation_spec, goal=goal, gamma=gamma,
-                                      horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=n_intermediate_steps,
+            super(Mjx, self).__init__(spec=spec, actuation_spec=action_spec,
+                                      observation_spec=observation_spec, gamma=gamma,
+                                      horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=1,
                                       timestep=timestep,
                                       default_camera_mode=default_camera_mode,
-                                      model_option_conf=model_option_conf, **viewer_params)
-
-        # specify reward function
-        self._reward_function = self._setup_reward(reward_type, reward_params)
-
-        # optionally use foot forces in the observation space
-        self._use_foot_forces = use_foot_forces
+                                      model_option_conf=model_option_conf, **core_params)
 
         # the action space is supposed to be between -1 and 1, so we normalize it
         self._scale_action_space()
 
-        # setup terminal state handler
-        if terminal_state_type is None:
-            self._terminal_state_handler = TerminalStateHandler.make("RootPoseTrajTerminalStateHandler",
-                                                                     self._model, self._get_all_info_properties())
-        elif terminal_state_type is not None and terminal_state_params is None:
-            self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type,
-                                                                     self._model, self._get_all_info_properties())
-        else:
-            self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type,
-                                                                     self._model, self._get_all_info_properties(),
-                                                                     **terminal_state_params)
-
         # dataset dummy
         self._dataset = None
 
+        # setup trajectory
         if traj_params:
             self.th = None
-            self.load_trajectory(traj_params)
-            self._trajectory_loaded = True
-            self._jax_trajectory = self.th.get_jax_trajectory()
+            self.load_trajectory(**traj_params)
         else:
             self.th = None
-            self._trajectory_loaded = True
 
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
@@ -244,7 +204,7 @@ class LocoEnv(Mjx):
         """
         return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
 
-    @partial(jax.jit, static_argnums=(0, 6))
+    #@partial(jax.jit, static_argnums=(0, 6))
     def _mjx_reward(self, state, action, next_state, absorbing, info, model, data, carry):
         """
         Calls the reward function of the environment.
@@ -296,24 +256,36 @@ class LocoEnv(Mjx):
 
         return done
 
-    def _simulation_post_step(self, data, carry):
+    def _simulation_post_step(self, model, data, carry):
         """
         Update trajectory state and goal in Mujoco data structure if needed.
 
         """
+        # call parent to update domain randomization and terrain
+        data, carry = super()._simulation_post_step(model, data, carry)
+
+        # update trajectory state
         if self.th is not None:
-            carry = self.th.update_state(self, self._model, data, carry, np)
+            carry = self.th.update_state(self, model, data, carry, np)
+
+        # update goal
         data = self._goal.set_data(self, self._model, data, carry, backend=np)
 
         return data, carry
 
-    def _mjx_simulation_post_step(self, data, carry):
+    def _mjx_simulation_post_step(self, model, data, carry):
         """
         Update trajectory state and goal in Mujoco data structure if needed.
 
         """
+        # call parent to update domain randomization and terrain
+        data, carry = super()._mjx_simulation_post_step(model, data, carry)
+
+        # update trajectory state
         if self.th is not None:
             carry = self.th.update_state(self, self._model, data, carry, jnp)
+
+        # update goal
         data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
 
         return data, carry
@@ -360,13 +332,13 @@ class LocoEnv(Mjx):
                     self.th.traj = replace(self.th.traj, data=self.th.traj.data.to_numpy())
                     traj_data_single = self.th.traj.data.get(i, 0, np)
                     carry = self._init_additional_carry(rng_key, traj_data_single, np)
-                    traj_data_single = self._reset_init_data(traj_data_single, carry)
+                    traj_data_single = self._reset_init_data_and_model(None, traj_data_single, carry)
 
                     observations = [self._create_observation(self._model, traj_data_single, carry)]
                     for j in range(1, self.len_trajectory(self.th.traj.data, i)):
                         traj_data_single = self.th.traj.data.get(i, j, np)
                         observations.append(self._create_observation(self._model, traj_data_single, carry))
-                        traj_data_single, carry = self._simulation_post_step(traj_data_single, carry)
+                        traj_data_single, carry = self._simulation_post_step(traj_data_single, carry, self._model)
 
                         # check if the current state is an absorbing state
                         has_fallen, msg = self._has_fallen(observations[-1], None, traj_data_single,
@@ -476,9 +448,9 @@ class LocoEnv(Mjx):
 
                 if callback_class is None:
                     self._set_sim_state_from_traj_data(self._data, traj_data_sample)
-                    self._simulation_pre_step(self._data, self._additional_carry)
+                    self._simulation_pre_step(model, self._data, self._additional_carry)
                     mujoco.mj_forward(self._model, self._data)
-                    self._simulation_post_step(self._data, self._additional_carry)
+                    self._simulation_post_step(self._data, self._additional_carry, self._model)
                 else:
                     callback_class(self, self._model, self._data, traj_data_sample, self._additional_carry)
 
@@ -560,102 +532,6 @@ class LocoEnv(Mjx):
         self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
                              record, recorder_params, callback_class, key)
 
-    def reset(self, key):
-        if self.th is not None:
-            self.th.to_numpy()
-        key, subkey = jax.random.split(key)
-        obs = super().reset(key)
-        carry = self._additional_carry
-
-        # reset data
-        data = carry.first_data
-
-        # reset trajectory state
-        data, carry = self.th.reset_state(self, self._model, data, carry, jnp) if self.th is not None else (data, carry)
-
-        if self.th and (self._random_start or self.th.use_fixed_start):
-            assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
-            # init simulation from trajectory
-            curr_traj_data = self.th.get_current_traj_data(carry, np)
-            data = self._set_sim_state_from_traj_data(data, curr_traj_data)
-
-        # apply general modifications on reset
-        data = self._reset_init_data(data, carry)
-
-        # reset all stateful entities
-        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
-
-        self._obs, self._additional_carry = self._create_observation(self._model, data, carry)
-        self._data = data
-
-        return self._obs
-
-    def mjx_reset(self, key):
-        if self.th is not None:
-            self.th.to_jax()
-        key, subkey = jax.random.split(key)
-        mjx_state = super().mjx_reset(key)
-        carry = mjx_state.additional_carry
-
-        # reset data
-        data = carry.first_data
-
-        # reset trajectory state
-        data, carry = self.th.reset_state(self, self._model, data, carry, jnp) if self.th is not None else (data, carry)
-
-        if self.th and (self._random_start or self.th.use_fixed_start):
-            assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
-            # init simulation from trajectory
-            curr_traj_data = self.th.get_current_traj_data(carry, jnp)
-            data = self._mjx_set_sim_state_from_traj_data(data, curr_traj_data)
-
-        # apply general modifications on reset
-        data = self._mjx_reset_init_data(data, carry)
-
-        # reset all stateful entities
-        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
-
-        obs, carry = self._mjx_create_observation(self._model, data, carry)
-        mjx_state = mjx_state.replace(data=data, observation=obs, additional_carry=carry)
-
-        return mjx_state
-
-    def _mjx_reset_in_step(self, state: MjxState):
-
-        carry = state.additional_carry
-        key = carry.key
-        key, _k1 = jax.random.split(key)
-
-        # reset data
-        data = carry.first_data
-
-        # reset trajectory state
-        if self.th is not None:
-            data, carry = self.th.reset_state(self, self._model, data, carry, jnp)
-
-        if self.th and (self._random_start or self.th.use_fixed_start):
-            assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
-            # init simulation from trajectory
-            curr_traj_data = self.th.get_current_traj_data(carry, jnp)
-            data = self._mjx_set_sim_state_from_traj_data(data, curr_traj_data)
-
-        # apply general modifications on reset
-        data = self._mjx_reset_init_data(data, carry)
-
-        # reset carry
-        carry = carry.replace(key=key,
-                              cur_step_in_episode=1,
-                              final_observation=state.observation,
-                              final_info=state.info)
-
-        # update all stateful entities
-        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
-
-        # create new observation
-        obs, carry = self._mjx_create_observation(self._model, data, carry)
-
-        return state.replace(data=data, observation=obs, additional_carry=carry)
-
     @staticmethod
     def _set_sim_state_from_traj_data(data, traj_data):
         # set x and y to 0
@@ -705,7 +581,7 @@ class LocoEnv(Mjx):
         traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
         return carry.replace(traj_state=traj_state)
 
-    def _preprocess_action(self, action, data, carry):
+    def _preprocess_action(self, action, model, data, carry):
         """
         This function preprocesses all actions. All actions in this environment expected to be between -1 and 1.
         Hence, we need to unnormalize the action to send to correct action to the simulation.
@@ -718,12 +594,18 @@ class LocoEnv(Mjx):
             Unnormalized action (np.array) that is sent to the environment;
 
         """
-        return self._preprocess_action_compat(action, data)
+        unnormalized_action = self._unnormalize_action(action, data)
+        # call parent function to handle randomization (if setup)
+        action, carry = super()._preprocess_action(unnormalized_action, model, data, carry)
+        return action, carry
 
-    def _mjx_preprocess_action(self, action, data, carry):
-        return self._preprocess_action_compat(action, data)
+    def _mjx_preprocess_action(self, action, model, data, carry):
+        unormalized_action = self._unnormalize_action(action, data)
+        # call parent function to handle randomization (if setup)
+        action, carry = super()._mjx_preprocess_action(unormalized_action, model, data, carry)
+        return action, carry
 
-    def _preprocess_action_compat(self, action, data):
+    def _unnormalize_action(self, action, data):
         """
         Rescale the action from [-1, 1] to the desired action space.
         """
@@ -732,88 +614,46 @@ class LocoEnv(Mjx):
 
     def _init_additional_carry(self, key, model, data, backend):
 
-        key, _k1, _k2, _k3 = jax.random.split(key, 4)
+        key, _k1, _k2, _k3, _k4, _k5 = jax.random.split(key, 6)
 
         # create additional carry
         carry = LocoCarry(key=key,
                           traj_state=self.th.init_state(self, _k1, model, data, backend) if self.th is not None else EmptyState(),
                           cur_step_in_episode=1,
-                          first_data=data,
                           final_info={},
                           final_observation=backend.zeros(self.info.observation_space.shape),
                           observation_states=self.obs_container.init_state(self, _k2, model, data, backend),
                           reward_state=self._reward_function.init_state(self, _k3, model, data, backend),
+                          domain_randomizer_state=self._domain_randomizer.init_state(self, _k4, model, data, backend),
+                          terrain_state=self._terrain.init_state(self, _k5, model, data, backend)
                           )
 
         return carry
 
-    def _reset_init_data(self, data, carry):
+    def _reset_init_data_and_model(self, model, data, carry):
+        data, carry = super()._reset_init_data_and_model(model, data, carry)
         data = self._goal.set_data(self, self._model, data, carry, backend=np)
-        return data
+        return data, carry
 
-    def _mjx_reset_init_data(self, data, carry):
+    def _mjx_reset_init_data_and_model(self, model, data, carry):
+
+        # call parent to apply domain randomization and terrain
+        data, carry = super()._mjx_reset_init_data_and_model(model, data, carry)
+
+        # reset trajectory state
+        data, carry = self.th.reset_state(self, self._model, data, carry, jnp) \
+            if self.th is not None else (data, carry)
+
+        if self.th and (self._random_start or self.th.use_fixed_start):
+            assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
+            # init simulation from trajectory
+            curr_traj_data = self.th.get_current_traj_data(carry, jnp)
+            data = self._mjx_set_sim_state_from_traj_data(data, curr_traj_data)
+
+        # apply modification by goal if needed
         data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
-        return data
 
-    def _setup_reward(self, reward_type, reward_params):
-        """
-        Constructs a reward function.
-
-        Args:
-            reward_type (string): Name of the reward.
-            reward_params (dict): Parameters of the reward function.
-
-        Returns:
-            Reward function.
-
-        """
-        # collect all info properties of the env (dict all @info_properties decorated function returns)
-        info_props = self._get_all_info_properties()
-
-        reward_cls = Reward.registered[reward_type]
-        reward = reward_cls(self.obs_container, info_props=info_props, model=self._model, data=self._data)\
-            if reward_params is None else reward_cls(self.obs_container, info_props=info_props, model=self._model,
-                                                     data=self._data, **reward_params)
-
-        return reward
-
-    def _setup_goal(self, spec, goal_type, goal_params):
-        """
-        Setup the goal.
-
-        Args:
-            spec (MjSpec): Specification of the environment.
-            goal_type (str): Type of the goal.
-            goal_params (dict): Parameters of the goal.
-
-        Returns:
-            MjSpec: Modified specification.
-            Goal: Goal
-        """
-        # collect all info properties of the env (dict all @info_properties decorated function returns)
-        info_props = self._get_all_info_properties()
-
-        # get the goal
-        goal_cls = Goal.registered[goal_type]
-        goal = goal_cls(info_props=info_props) if goal_params is None \
-            else goal_cls(info_props=info_props, **goal_params)
-
-        # apply the modification to the spec if needed
-        spec = goal.apply_spec_modifications(spec, self.root_body_name)
-
-        return spec, goal
-
-    def _get_all_info_properties(self):
-        """
-        Returns all info properties of the environment. (decorated with @info_property)
-
-        """
-        info_props = {}
-        for attr_name in dir(self):
-            attr_value = getattr(self.__class__, attr_name, None)
-            if isinstance(attr_value, property) and getattr(attr_value.fget, '_is_info_property', False):
-                info_props[attr_name] = getattr(self, attr_name)
-        return info_props
+        return data, carry
 
     def _get_from_obs(self, obs, key):
         """
@@ -908,6 +748,11 @@ class LocoEnv(Mjx):
         """
         raise NotImplementedError(f"Please implement the default_xml_file_path property "
                                   f"in the {type(cls).__name__} environment.")
+
+    @info_property
+    def root_body_name(self):
+        raise NotImplementedError(f"Please implement the root_body_name "
+                                  f"info property in the {type(self).__name__} environment.")
 
     @info_property
     def grf_size(self):
@@ -1076,10 +921,6 @@ class LocoEnv(Mjx):
 
         """
         return list(LocoEnv.registered_envs.keys())
-
-    @property
-    def root_body_name(self):
-        return "pelvis"
 
     @staticmethod
     def _delete_from_spec(spec, joints_to_remove, actuators_to_remove, equ_constraints_to_remove):

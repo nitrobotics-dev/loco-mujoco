@@ -1,5 +1,7 @@
 import atexit
+import warnings
 from typing import Any, Dict
+from copy import deepcopy
 from functools import partial
 import mujoco
 from mujoco import mjx
@@ -27,7 +29,6 @@ class MjxState:
 @struct.dataclass
 class MjxAdditionalCarry(AdditionalCarry):
     final_observation: jax.Array
-    first_data: mjx.Data
     final_info: Dict[str, Any]
 
 
@@ -41,11 +42,60 @@ class Mjx(Mujoco):
         assert n_envs > 0, "Setting the number of environments smaller than or equal to 0 is not allowed."
         self._n_envs = n_envs
 
-        self.sys = mjx.put_model(self._model)
-
         # add information to mdp_info
         # todo: remove the n_envs attribute
         self._mdp_info.mjx_env, self._mdp_info.n_envs = True, n_envs
+
+        # setup mjx model and data
+        mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_forward(self._model, self._data)
+        self.sys = mjx.put_model(self._model)
+        data = mjx.put_data(self._model, self._data)
+        self._first_data = mjx.forward(self.sys, data)
+
+    def mjx_reset(self, key):
+        key, subkey = jax.random.split(key)
+
+        # reset data
+        data = self._first_data
+
+        carry = self._init_additional_carry(key, self._model, data, jnp)
+
+        data, carry = self._mjx_reset_init_data_and_model(self.sys, data, carry)
+
+        # reset all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
+
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
+        reward = 0.0
+        absorbing = jnp.array(False, dtype=bool)
+        done = jnp.array(False, dtype=bool)
+        info = self._mjx_reset_info_dictionary(obs, data, subkey)
+
+        return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
+                        info=info, additional_carry=carry)
+
+    def _mjx_reset_in_step(self, state: MjxState):
+
+        carry = state.additional_carry
+
+        # reset data
+        data = self._first_data
+
+        data, carry = self._mjx_reset_init_data_and_model(self.sys, data, carry)
+
+        # reset carry
+        carry = carry.replace(cur_step_in_episode=1,
+                              final_observation=state.observation,
+                              final_info=state.info)
+
+        # update all stateful entities
+        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
+
+        # create new observation
+        obs, carry = self._mjx_create_observation(self._model, data, carry)
+
+        return state.replace(data=data, observation=obs, additional_carry=carry)
 
     def mjx_step(self, state: MjxState, action: jax.Array):
 
@@ -59,25 +109,25 @@ class Mjx(Mujoco):
         cur_obs, data, cur_info, carry = self._step_init(state.observation, data, state.info, carry)
 
         # preprocess action
-        action = self._mjx_preprocess_action(action, data, carry)
+        action, carry = self._mjx_preprocess_action(action, self._model, data, carry)
 
-        # modify data *before* step if needed (does nothing by default)
-        data, carry = self._mjx_simulation_pre_step(data, carry)
+        # modify data *before* step if needed
+        sys, data, carry = self._mjx_simulation_pre_step(self.sys, data, carry)
 
         # step in the environment using the action
         ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(action)
         data = data.replace(ctrl=ctrl)
-        step_fn = lambda _, x: mjx.step(self.sys, x)
+        step_fn = lambda _, x: mjx.step(sys, x)
         data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
 
         # modify data *after* step if needed (does nothing by default)
-        data, carry = self._mjx_simulation_post_step(data, carry)
+        data, carry = self._mjx_simulation_post_step(self._model, data, carry)
 
         # create the observation
         cur_obs, carry = self._mjx_create_observation(self._model, data, carry)
 
         # modify the observation and the data if needed (does nothing by default)
-        cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, data, cur_info, carry)
+        cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, self._model, data, cur_info, carry)
 
         # create info
         cur_info = self._mjx_update_info_dictionary(cur_info, cur_obs, data, carry)
@@ -100,44 +150,6 @@ class Mjx(Mujoco):
         state = jax.lax.cond(state.done, self._mjx_reset_in_step, lambda x: x, state)
 
         return state
-
-    def mjx_reset(self, key):
-        key, subkey = jax.random.split(key)
-
-        mujoco.mj_resetData(self._model, self._data)
-        mujoco.mj_forward(self._model, self._data)
-        data = mjx.put_data(self._model, self._data)
-        data = mjx.forward(self.sys, data)
-
-        carry = self._init_additional_carry(key, self._model, data, jnp)
-        data = self._mjx_reset_init_data(data, carry)
-
-        # reset all stateful entities
-        data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
-
-        obs, carry = self._mjx_create_observation(self._model, data, carry)
-        reward = 0.0
-        absorbing = jnp.array(False, dtype=bool)
-        done = jnp.array(False, dtype=bool)
-        info = self._mjx_reset_info_dictionary(obs, data, subkey)
-
-        return MjxState(data=data, observation=obs, reward=reward, absorbing=absorbing, done=done,
-                        info=info, additional_carry=carry)
-
-    def _mjx_reset_in_step(self, state: MjxState):
-        key = state.additional_carry.key
-        key, _k = jax.random.split(key)
-        carry = state.additional_carry
-        data = self._mjx_reset_init_data(carry.first_data, carry)
-        carry = carry.replace(key=key,
-                              cur_step_in_episode=1,
-                              final_observation=state.observation,
-                              final_info=state.info,
-                              observation_states=self.obs_container.init_state(self, _k, self._model, data, jnp))
-        # create new observation
-        obs, carry = self._mjx_create_observation(self._model, data, carry)
-
-        return state.replace(data=data, observation=obs, additional_carry=carry)
 
     def _mjx_create_observation(self, model, data, carry):
         """
@@ -174,17 +186,47 @@ class Mjx(Mujoco):
         done = jnp.logical_or(done, absorbing)
         return done
 
-    def _mjx_simulation_pre_step(self, data, carry):
+    def _mjx_simulation_pre_step(self, model, data, carry):
+        model, data, carry = self._terrain.update(self, model, data, carry, jnp)
+        model, data, carry = self._domain_randomizer.update(self, model, data, carry, jnp)
+        return model, data, carry
+
+    def _mjx_simulation_post_step(self, model, data, carry):
         return data, carry
 
-    def _mjx_simulation_post_step(self, data, carry):
+    def _mjx_preprocess_action(self, action, model, data, carry):
+        """
+        Compute a transformation of the action provided to the
+        environment.
+
+        Args:
+            action (jax.Array): numpy array with the actions
+                provided to the environment.
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
+
+        Returns:
+            The action to be used for the current step and the updated carry.
+        """
+        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, jnp)
+        return action, carry
+
+    def _mjx_reset_init_data_and_model(self, model, data, carry):
+        """
+        Initializes the data and model at the beginning of the reset.
+
+        Args:
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
+
+        Returns:
+            The updated model, data and carry.
+        """
+        data, carry = self._terrain.reset(self, model, data, carry, jnp)
+        data, carry = self._domain_randomizer.reset(self, model, data, carry, jnp)
         return data, carry
-
-    def _mjx_preprocess_action(self, action, data, carry):
-        return action
-
-    def _mjx_reset_init_data(self, data, carry):
-        return data
 
     def _mjx_step_init(self, obs, data, info, carry):
         """
@@ -192,10 +234,11 @@ class Mjx(Mujoco):
         """
         return obs, data, info, carry
 
-    def _mjx_step_finalize(self, obs, data, info, carry):
+    def _mjx_step_finalize(self, obs, model, data, info, carry):
         """
         Allows information to be accessed at the end of a step.
         """
+        obs, carry = self._domain_randomizer.update_observation(self, obs, model, data, carry, jnp)
         return obs, data, info, carry
 
     @staticmethod
@@ -235,6 +278,16 @@ class Mjx(Mujoco):
                 self._viewer_params["default_camera_mode"] = "static"
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
 
+        if self._terrain.is_dynamic:
+            terrain_state = state.additional_carry.terrain_state
+            assert hasattr(terrain_state, "height_field_raw"), "Terrain state does not have height_field_raw."
+            assert self._terrain.hfield_id is not None, "Terrain hfield id is not set."
+            # todo: if the terrain is changing for each env, this will only update env_id=0
+            # todo: updating hfield buffer at every render is not efficient, rendering will be slow
+            hfield_data = np.array(terrain_state.height_field_raw)
+            self._model.hfield_data = hfield_data[0]
+            self._viewer.upload_hfield(self._model, hfield_id=self._terrain.hfield_id)
+
         return self._viewer.parallel_render(state, record)
 
     def mjx_render_trajectory(self, trajectory, record=False):
@@ -258,9 +311,10 @@ class Mjx(Mujoco):
     def _init_additional_carry(self, key, model, data, backend):
         return MjxAdditionalCarry(key=key, cur_step_in_episode=1,
                                   final_observation=backend.zeros(self.info.observation_space.shape),
-                                  first_data=data, final_info={},
-                                  observation_states=self.obs_container.init_state(self, key, self._model,
-                                                                                   data, backend))
+                                  first_model=model, final_info={},
+                                  observation_states=self.obs_container.init_state(self, key, model,
+                                                                                   data, backend),
+                                  )
 
     @property
     def n_envs(self):

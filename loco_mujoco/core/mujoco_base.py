@@ -15,8 +15,11 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer
+from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, Reward, info_property
 from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
+from loco_mujoco.core.domain_randomizer import DomainRandomizer
+from loco_mujoco.core.terrain import Terrain
+from loco_mujoco.core.utils import TerminalStateHandler
 
 
 @struct.dataclass
@@ -25,6 +28,8 @@ class AdditionalCarry:
     cur_step_in_episode: int
     observation_states: Union[np.ndarray, jax.Array]
     reward_state: Union[np.ndarray, jax.Array]
+    domain_randomizer_state: Union[np.ndarray, jax.Array]
+    terrain_state: Union[np.ndarray, jax.Array]
 
 
 class Mujoco:
@@ -35,21 +40,24 @@ class Mujoco:
 
     registered_envs = dict()
 
-    def __init__(self, xml_file, actuation_spec, observation_spec, gamma, horizon, goal=None,
-                 n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1,
-                 model_option_conf=None, **viewer_params):
-
-        # load the model, spec and data
-        self._model, self._mjspec = self.load_model_and_spec(xml_file)
-        self._modify_model(self._model, model_option_conf)
-        self._data = mujoco.MjData(self._model)
+    def __init__(self, spec, actuation_spec, observation_spec, gamma, horizon,
+                 n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1, model_option_conf=None,
+                 reward_type="NoReward", reward_params=None,
+                 goal_type="NoGoal", goal_params=None,
+                 terminal_state_type="RootPoseTrajTerminalStateHandler", terminal_state_params=None,
+                 domain_randomization_type="NoDomainRandomization", domain_randomization_params=None,
+                 terrain_type="StaticTerrain", terrain_params=None,
+                 **viewer_params):
 
         # set the timestep if provided, else read it from model
         if timestep is not None:
-            self._model.opt.timestep = timestep
-            self._timestep = timestep
-        else:
-            self._timestep = self._model.opt.timestep
+            if model_option_conf is None:
+                model_option_conf = {"timestep": timestep}
+            else:
+                model_option_conf["timestep"] = timestep
+
+        # load the model, spec and data
+        self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(spec, model_option_conf)
 
         # set some attributes
         self._n_intermediate_steps = n_intermediate_steps
@@ -61,13 +69,11 @@ class Mujoco:
         self._additional_carry = None
         self._cur_step_in_episode = 0
 
-        # set goal
-        self._goal = goal
-
-        # add goal to observation spec
-        if goal is not None:
-            # todo: right now only one goal is supported, do we need more?
-            observation_spec.append(goal)
+        # setup goal
+        spec, self._goal = self._setup_goal(spec, goal_type, goal_params)
+        if self._goal.requires_spec_modification:
+            self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(spec)
+        observation_spec.append(self._goal)
 
         # read the observation space, create a dictionary of observations and goals containing information
         # about each observation's type, indices, min and max values, etc. Additionally, create two dataclasses
@@ -84,6 +90,27 @@ class Mujoco:
 
         # define action space bounding box
         action_space = Box(*self._get_action_limits(self._action_indices, self._model))
+
+        # setup reward function
+        self._reward_function = self._setup_reward(reward_type, reward_params)
+
+        # setup terrain
+        terrain_params = {} if terrain_params is None else terrain_params
+        self._terrain = Terrain.registered[terrain_type](self, **terrain_params)
+        if self._terrain.requires_spec_modification:
+            spec = self._terrain.modify_spec(spec)
+            self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(spec)
+
+        # setup domain randomization
+        domain_randomization_params = {} if domain_randomization_params is None else domain_randomization_params
+        self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](**domain_randomization_params)
+
+        # setup terminal state handler
+        if terminal_state_params is None:
+            terminal_state_params = {}
+        self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type, self._model,
+                                                                 self._get_all_info_properties(),
+                                                                 **terminal_state_params)
 
         # finally, create the MDP information
         self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
@@ -105,11 +132,14 @@ class Mujoco:
 
     def reset(self, key):
         key, subkey = jax.random.split(key)
+        self._model = deepcopy(self._init_model)
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
         self._additional_carry = self._init_additional_carry(key, self._model, self._data, np)
-        self._data = self._reset_init_data(self._data, self._additional_carry)
+        self._data, self._additional_carry =\
+            self._reset_init_data_and_model(self._model, self._data, self._additional_carry)
+
         # reset all stateful entities
         self._data, self._additional_carry = self.obs_container.reset_state(self, self._model, self._data,
                                                                             self._additional_carry, jnp)
@@ -122,8 +152,8 @@ class Mujoco:
         cur_info = self._info.copy()
         carry = self._additional_carry
 
-        # preprocess action (does nothing by default)
-        action = self._preprocess_action(action, self._data, carry)
+        # preprocess action
+        action, carry = self._preprocess_action(action, self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data, cur_info, carry = self._step_init(cur_obs, self._data, cur_info, carry)
@@ -136,14 +166,14 @@ class Mujoco:
                 ctrl_action = self._compute_action(cur_obs, action)
                 self._data.ctrl[self._action_indices] = ctrl_action
 
-            # modify data during simulation, before main step (does nothing by default)
-            self._data, carry = self._simulation_pre_step(self._data, carry)
+            # modify data during simulation, before main step
+            self._model, self._data, carry = self._simulation_pre_step(self._model, self._data, carry)
 
             # main mujoco step, runs the sim for n_substeps
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
             # modify data during simulation, after main step (does nothing by default)
-            self._data, carry = self._simulation_post_step(self._data, carry)
+            self._data, carry = self._simulation_post_step(self._model, self._data, carry)
 
             # recompute thef action at each intermediate step (not executed by default)
             if self._recompute_action_per_step:
@@ -154,7 +184,7 @@ class Mujoco:
             cur_obs, carry = self._create_observation(self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
-        cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._data, cur_info, carry)
+        cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._model, self._data, cur_info, carry)
 
         # update info (does nothing by default)
         cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data, carry)
@@ -177,6 +207,15 @@ class Mujoco:
     def render(self, record=False):
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
+
+        if self._terrain.is_dynamic:
+            terrain_state = self._additional_carry.terrain_state
+            assert hasattr(terrain_state, "height_field_raw"), "Terrain state does not have height_field_raw."
+            assert self._terrain.hfield_id is not None, "Terrain hfield id is not set."
+            # todo: updating hfield buffer at every render is not efficient, rendering will be slow
+            hfield_data = np.array(terrain_state.height_field_raw)
+            self._model.hfield_data = hfield_data
+            self._viewer.upload_hfield(self._model, hfield_id=self._terrain.hfield_id)
 
         return self._viewer.render(self._data, record)
 
@@ -213,16 +252,30 @@ class Mujoco:
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
         return done
 
-    def _reset_init_data(self, data, carry):
-        return data
+    def _reset_init_data_and_model(self, model, data, carry):
+        """
+        Initializes the data and model at the beginning of the reset.
+
+        Args:
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
+
+        Returns:
+            The updated model, data and carry.
+        """
+        data, carry = self._terrain.reset(self, model, data, carry, np)
+        data, carry = self._domain_randomizer.reset(self, model, data, carry, np)
+        return data, carry
 
     def _step_init(self, obs, data, info, carry):
         return obs, data, info, carry
 
-    def _step_finalize(self, obs, data, info, carry):
+    def _step_finalize(self, obs, model, data, info, carry):
         """
         Allows information to be accessed at the end of a step.
         """
+        obs, carry = self._domain_randomizer.update_observation(self, obs, model, data, carry, np)
         return obs, data, info, carry
 
     def _reset_info_dictionary(self, obs, data, key):
@@ -231,19 +284,23 @@ class Mujoco:
     def _update_info_dictionary(self, info, obs, data, carry):
         return info
 
-    def _preprocess_action(self, action, data, carry):
+    def _preprocess_action(self, action, model, data, carry):
         """
         Compute a transformation of the action provided to the
         environment.
 
         Args:
-            action (np.ndarray or jax.Array): numpy array with the actions
+            action (np.ndarray): numpy array with the actions
                 provided to the environment.
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
 
         Returns:
-            The action to be used for the current step
+            The action to be used for the current step and the updated carry.
         """
-        return action
+        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
+        return action, carry
 
     def _compute_action(self, obs, action):
         """
@@ -260,21 +317,17 @@ class Mujoco:
         """
         return action
 
-    def _simulation_pre_step(self, data, carry):
+    def _simulation_pre_step(self, model, data, carry):
         """
         Allows information to be accessed and changed at every intermediate step
         before taking a step in the mujoco simulation.
-        Can be useful to apply an external force/torque to the specified bodies.
-
-        ex: apply a force over X to the torso:
-        force = [200, 0, 0]
-        torque = [0, 0, 0]
-        self.sim.data.xfrc_applied[self.sim.model._body_name2id["torso"],:] = force + torque
 
         """
-        return data, carry
+        model, data, carry = self._terrain.update(self, model, data, carry, np)
+        model, data, carry = self._domain_randomizer.update(self, model, data, carry, np)
+        return model, data, carry
 
-    def _simulation_post_step(self, data, carry):
+    def _simulation_post_step(self, model, data, carry):
         """
         Allows information to be accessed at every intermediate step
         after taking a step in the mujoco simulation.
@@ -304,7 +357,7 @@ class Mujoco:
         """
         # update the obs_container and the data_indices and obs_indices
         self.obs_container, self._data_indices, self._obs_indices = (
-            self._setup_observations(observation_spec, self._goal, self._model, self._data))
+            self._setup_observations(observation_spec, self._model, self._data))
 
         # update the observation space
         self._mdp_info.observation_space = Box(*self._get_obs_limits())
@@ -353,6 +406,54 @@ class Mujoco:
         obs_ind.convert_to_numpy()
 
         return obs_container, data_ind, obs_ind
+
+    def _setup_reward(self, reward_type, reward_params):
+        """
+        Constructs a reward function.
+
+        Args:
+            reward_type (string): Name of the reward.
+            reward_params (dict): Parameters of the reward function.
+
+        Returns:
+            Reward function.
+
+        """
+        # collect all info properties of the env (dict all @info_properties decorated function returns)
+        info_props = self._get_all_info_properties()
+
+        reward_cls = Reward.registered[reward_type]
+        reward = reward_cls(self.obs_container, info_props=info_props, model=self._model, data=self._data)\
+            if reward_params is None else reward_cls(self.obs_container, info_props=info_props, model=self._model,
+                                                     data=self._data, **reward_params)
+
+        return reward
+
+    def _setup_goal(self, spec, goal_type, goal_params):
+        """
+        Setup the goal.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
+            goal_type (str): Type of the goal.
+            goal_params (dict): Parameters of the goal.
+
+        Returns:
+            MjSpec: Modified specification.
+            Goal: Goal
+        """
+        # collect all info properties of the env (dict all @info_properties decorated function returns)
+        info_props = self._get_all_info_properties()
+
+        # get the goal
+        goal_cls = Goal.registered[goal_type]
+        goal = goal_cls(info_props=info_props) if goal_params is None \
+            else goal_cls(info_props=info_props, **goal_params)
+
+        # apply the modification to the spec if needed
+        spec = goal.apply_spec_modifications(spec, info_props)
+
+        return spec, goal
 
     def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
         return 0.0, carry
@@ -450,8 +551,7 @@ class Mujoco:
     def get_data(self):
         return deepcopy(self._data)
 
-    @staticmethod
-    def load_model_and_spec(xml_file):
+    def load_mujoco(self, xml_file, model_option_conf=None):
         """
         Takes a xml_file and compiles and loads the model.
 
@@ -464,22 +564,30 @@ class Mujoco:
         """
         if type(xml_file) == MjSpec:
             # compile from specification
+            if model_option_conf is not None:
+                xml_file = self._modify_option_spec(xml_file, model_option_conf)
             model = xml_file.compile()
             spec = xml_file
         elif type(xml_file) == str:
             # load from path
             spec = mujoco.MjSpec.from_file(xml_file)
+            if model_option_conf is not None:
+                spec = self._modify_option_spec(spec, model_option_conf)
             model = spec.compile()
         else:
             raise ValueError(f"Unsupported type for xml_file {type(xml_file)}.")
 
-        return model, spec
+        # create data
+        data = mujoco.MjData(model)
+
+        return model, deepcopy(model), data, spec
 
     @staticmethod
-    def _modify_model(model, option_config):
+    def _modify_option_spec(spec, option_config):
         if option_config is not None:
             for key, value in option_config.items():
-                setattr(model.opt, key, value)
+                setattr(spec.option, key, value)
+        return spec
 
     @staticmethod
     def get_action_indices(model, data, actuation_spec):
@@ -550,6 +658,18 @@ class Mujoco:
         c_array = np.zeros(6, dtype=np.float64)
         return c_array
 
+    def _get_all_info_properties(self):
+        """
+        Returns all info properties of the environment. (decorated with @info_property)
+
+        """
+        info_props = {}
+        for attr_name in dir(self):
+            attr_value = getattr(self.__class__, attr_name, None)
+            if isinstance(attr_value, property) and getattr(attr_value.fget, '_is_info_property', False):
+                info_props[attr_name] = getattr(self, attr_name)
+        return info_props
+
     @property
     def mjspec(self):
         return self._mjspec
@@ -557,10 +677,6 @@ class Mujoco:
     @property
     def cur_step_in_episode(self):
         return self._cur_step_in_episode
-
-    @property
-    def mjx_env(self):
-        return False
 
     @property
     def mdp_info(self):
@@ -593,9 +709,13 @@ class Mujoco:
         """
         return self._mdp_info
 
-    @property
+    @info_property
+    def simulation_dt(self):
+        return self._model.opt.timestep
+
+    @info_property
     def dt(self):
-        return self._timestep * self._n_intermediate_steps * self._n_substeps
+        return self.simulation_dt * self._n_intermediate_steps * self._n_substeps
 
     @classmethod
     def register(cls):

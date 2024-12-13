@@ -173,7 +173,7 @@ class TargetVelocityGoalReward(Reward):
         try:
             goal_vel_obs = obs_container["GoalRandomRootVelocity"]
         except KeyError:
-            raise ValueError(f"GoalRandomRootVelocity is the required goal for the reward {self.__class__.__name__}")
+            raise ValueError(f"GoalRandomRootVelocity is the required goal for the reward {self.__class__.__name__}.")
 
         self._goal_vel_idx = goal_vel_obs.data_type_ind
         super().__init__(obs_container, **kwargs)
@@ -189,10 +189,11 @@ class TargetVelocityGoalReward(Reward):
 
         # get root orientation
         root_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, self._free_jnt_name)
+
         assert root_jnt_id != -1, f"Joint {self._free_jnt_name} not found in the model."
         root_jnt_qpos_start_id = model.jnt_qposadr[root_jnt_id]
         root_qpos = backend.squeeze(data.qpos[root_jnt_qpos_start_id:root_jnt_qpos_start_id+7])
-        root_quat = R.from_quat(root_qpos[3:7])
+        root_quat = R.from_quat(quat_scalarfirst2scalarlast(root_qpos[3:7]))
 
         # get current local vel of root
         lin_vel_global = backend.squeeze(data.qvel[self._vel_idx])[:3]
@@ -371,7 +372,7 @@ class LocomotionReward(TargetVelocityGoalReward):
         global_pose_root = data.qpos[self._free_joint_qpos_ind]
         global_pos_root = global_pose_root[:3]
         global_quat_root = global_pose_root[3:]
-        global_rot = R.from_quat(quat_scalarfirst2scalarlast(global_quat_root, backend))
+        global_rot = R.from_quat(quat_scalarfirst2scalarlast(global_quat_root))
 
         # get global velocity quantities
         global_vel_root = data.qvel[self._free_joint_qvel_ind]

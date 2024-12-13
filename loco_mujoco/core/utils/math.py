@@ -124,11 +124,11 @@ def calc_rel_quaternions(xquat, xquat_main_body, backend):
     Calculate the relative quaternions of the bodies in b_ids to the main body.
 
     Args:
-        xquat (array): Data array containing the quaternions of the bodies.
-        xquat_main_body (array): Quaternion of the main body.
+        xquat (array): Data array containing the quaternions of the bodies (quaternions is expected to be scalar last).
+        xquat_main_body (array): Quaternion of the main body (quaternions is expected to be scalar last).
         backend: Backend to use (either np or jnp).
     Returns:
-        Array of relative quaternions.
+        Array of relative quaternions, where the quaternions are scalar last.
 
     """
     if backend == np:
@@ -373,8 +373,8 @@ def quaternion_angular_distance(q1, q2, backend):
     Calculate the angular distance between two rotations represented by quaternions.
 
     Args:
-        q1 (array): First quaternion. Shape (4,) or (batch_size, 4)
-        q2 (array): Second quaternion. Shape (4,) or (batch_size, 4)
+        q1 (array): First quaternion. Shape (4,) or (batch_size, 4). (quaternions is expected to be scalar last)
+        q2 (array): Second quaternion. Shape (4,) or (batch_size, 4). (quaternions is expected to be scalar last)
 
     Returns:
         array: Angular distance between the two rotations. Shape (batch_size,)
@@ -399,7 +399,7 @@ def quaternion_angular_distance(q1, q2, backend):
 
 def quat2angle(quat, backend):
     """
-    Converts a quaternion to an angle.
+    Converts a quaternion to an angle. (quaternions is expected to be scalar last)
     """
     if backend == np:
         R = np_R
@@ -408,15 +408,16 @@ def quat2angle(quat, backend):
     return R.from_quat(quat).as_rotvec()
 
 
-def quat_scalarfirst2scalarlast(quat, backend):
+def quat_scalarfirst2scalarlast(quat):
     """
     Converts a quaternion from scalar-first to scalar-last representation.
     """
-    return backend.array([quat[1], quat[2], quat[3], quat[0]])
+    return quat[..., [1, 2, 3, 0]]
 
 
-def quat_scalarlast2scalarfirst(quat, backend):
+def quat_scalarlast2scalarfirst(quat):
     """
     Converts a quaternion from scalar-last to scalar-first representation.
     """
-    return backend.array([quat[3], quat[0], quat[1], quat[2]])
+    return quat[..., [3, 0, 1, 2]]
+

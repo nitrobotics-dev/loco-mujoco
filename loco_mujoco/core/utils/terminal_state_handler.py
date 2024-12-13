@@ -4,6 +4,7 @@ from scipy.spatial.transform import Rotation as np_R
 
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils.mujoco import mj_jntname2qposid
+from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 
 
 class TerminalStateHandler:
@@ -152,7 +153,8 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
         root_quats = traj.data.qpos[:, self.root_quat_ind]
 
         # calculate the centroid of the root quaternions and the maximum angular distance from the centroid
-        self._centroid_quat, self._valid_threshold = self._calc_root_rot_centroid_and_margin(root_quats)
+        self._centroid_quat, self._valid_threshold = self._calc_root_rot_centroid_and_margin(
+            quat_scalarfirst2scalarlast(root_quats))
 
         # calculate the range of the root height
         root_height_min = np.min(traj.data.qpos[:, self.root_height_ind])
@@ -219,7 +221,7 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
         """
         # get height and rotation of the root joint
         height = data.qpos[self.root_height_ind]
-        root_quat = data.qpos[self.root_quat_ind]
+        root_quat = quat_scalarfirst2scalarlast(data.qpos[self.root_quat_ind])
 
         # check if the root height is outside the range
         height_cond = backend.logical_or(backend.less(height, self.root_height_range[0]),
@@ -237,11 +239,11 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
         Calculate the centroid of the root quaternions and the maximum angular distance from the centroid.
 
         Args:
-            root_quats: np.array, shape (n_samples, 4), the root quaternions
+            root_quats: np.array, shape (n_samples, 4), the root quaternions. (quaternions is expected to be scalar last)
 
         Returns:
-            centroid_quat: np.array, shape (4,), the centroid of the quaternions
-            valid_threshold: float, the maximum angular distance from the centroid
+            centroid_quat: np.array, shape (4,), the centroid of the quaternions, where the quaternions are scalar last.
+            valid_threshold: float, the maximum angular distance from the centroid.
         """
 
         # normalize them

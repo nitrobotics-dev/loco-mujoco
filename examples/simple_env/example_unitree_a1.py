@@ -2,10 +2,19 @@ import numpy as np
 import jax
 from loco_mujoco import LocoEnv
 
+# load yaml as dict:
+path = "/home/moore/PycharmProjects/loco-mujoco/examples/jax_rl/confs/domain_randomization/default_dom_rand_conf.yaml"
+with open(path, 'r') as file:
+    import yaml
+    default_dom_rand_conf = yaml.load(file, Loader=yaml.FullLoader)
+
 # create the environment and task
-env = LocoEnv.make("UnitreeA1",
+env = LocoEnv.make("MjxUnitreeA1",
                    terminal_state_type="HeightBasedTerminalStateHandler",
                    goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
+                   domain_randomization_type="DefaultRandomizer",
+                   domain_randomization_params=default_dom_rand_conf,
+                   terrain_type="RoughTerrain",
                    reward_type="LocomotionReward")
 
 # get the dataset for the chosen environment and task

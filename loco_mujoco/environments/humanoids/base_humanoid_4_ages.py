@@ -418,7 +418,7 @@ class BaseHumanoid4Ages(BaseSkeleton):
         mdp = env(scaling=scaling, reward_type="multi_target_velocity", reward_params=reward_params, **kwargs)
 
         # Load the trajectory
-        env_freq = 1 / mdp._timestep  # hz
+        env_freq = 1 / mdp.simulation_dt  # hz
         desired_contr_freq = 1 / mdp.dt  # hz
         n_substeps = env_freq // desired_contr_freq
 

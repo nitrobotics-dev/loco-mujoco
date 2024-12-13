@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 import traceback
 
 
-@hydra.main(version_base=None, config_path="./", config_name="conf")
+@hydra.main(version_base=None, config_path="./confs", config_name="conf")
 def experiment(config: DictConfig):
     try:
 
@@ -67,7 +67,7 @@ def experiment(config: DictConfig):
                          "Mean Episode Length": training_metrics.mean_episode_length[i]},
                         step=int(training_metrics.max_timestep[i]))
 
-                if (i+1) % config.experiment.validation_interval == 0:
+                if (i+1) % config.experiment.validation_interval == 0 and config.experiment.validation.active:
                     run.log({"Validation Info/Mean Episode Return": validation_metrics.mean_episode_return[i],
                              "Validation Info/Mean Episode Length": validation_metrics.mean_episode_length[i]},
                             step=int(training_metrics.max_timestep[i]))

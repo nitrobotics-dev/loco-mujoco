@@ -773,3 +773,14 @@ class MujocoViewer:
                 )
 
         return opengl_context
+
+    def upload_hfield(self, model, hfield_id):
+        """
+        Uploads the height field to the GPU.
+
+        Args:
+            model: Mujoco model.
+            hfield_id: Height field id.
+
+        """
+        mujoco.mjr_uploadHField(model, self._context, hfield_id)

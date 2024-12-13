@@ -5,6 +5,7 @@ from .reward import *
 from .terminal_state_handler import (TerminalStateHandler, HeightBasedTerminalStateHandler,
                                      RootPoseTrajTerminalStateHandler)
 from .mujoco import *
+from .decorators import info_property
 
 # register all rewards
 NoReward.register()

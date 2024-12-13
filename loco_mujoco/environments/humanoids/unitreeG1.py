@@ -7,7 +7,7 @@ from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
-from loco_mujoco.utils import info_property
+from loco_mujoco.core. utils import info_property
 
 
 class UnitreeG1(BaseRobotHumanoid):

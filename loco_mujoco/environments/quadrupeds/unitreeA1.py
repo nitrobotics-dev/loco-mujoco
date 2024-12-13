@@ -5,7 +5,7 @@ import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments.quadrupeds.base_robot_quadruped import BaseRobotQuadruped
-from loco_mujoco.utils import info_property
+from loco_mujoco.core.utils import info_property
 
 
 class UnitreeA1(BaseRobotQuadruped):

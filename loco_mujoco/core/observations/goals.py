@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation as np_R
 from flax import struct
 
 from loco_mujoco.core.observations.base import StatefulObservation, ObservationType
-from loco_mujoco.core.utils.math import calculate_relative_site_quatities
+from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quat_scalarfirst2scalarlast
 
 
 class Goal(StatefulObservation):
@@ -44,13 +44,13 @@ class Goal(StatefulObservation):
         assert self.initialized
         return data
 
-    def apply_spec_modifications(self, spec: MjSpec, root_body_name: str):
+    def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
         """
         Apply modifications to the Mujoco XML specification to include the goal.
 
         Args:
             spec (MjSpec): Mujoco specification.
-            root_body_name (str): Name of the body to which the goal is attached.
+            info_props (dict): Information properties.
 
         Returns:
             MjSpec: Modified Mujoco specification.
@@ -219,10 +219,10 @@ class GoalRandomRootVelocity(Goal):
 
         # get root orientation
         root_qpos = backend.squeeze(data.qpos[self._root_jnt_qpos_start_id:self._root_jnt_qpos_start_id+7])
-        root_quat = R.from_quat(root_qpos[3:7])
+        root_quat = R.from_quat(quat_scalarfirst2scalarlast(root_qpos[3:7]))
 
         # goal vel in local
-        goal_vel_local = root_quat.as_matrix().T @ goal_vel
+        goal_vel_local = root_quat.as_matrix() @ goal_vel
 
         # get root pos
         root_pos = data.xpos[self._root_body_id]
@@ -237,7 +237,8 @@ class GoalRandomRootVelocity(Goal):
 
         return data
 
-    def apply_spec_modifications(self, spec, root_body_name):
+    def apply_spec_modifications(self, spec, info_props):
+        root_body_name = info_props["root_body_name"]
         # optionally add sites for visualization
         if self.visualize_goal:
             wb = spec.worldbody
@@ -258,6 +259,10 @@ class GoalRandomRootVelocity(Goal):
     @property
     def dim(self):
         return 3
+
+    @property
+    def requires_spec_modification(self):
+        return self.__class__.apply_spec_modifications != Goal.apply_spec_modifications
 
 
 class GoalTrajArrow(Goal):
@@ -324,7 +329,8 @@ class GoalTrajArrow(Goal):
         data.site(self._site_name_keypoint_2).xpos = abs_target_arrow_pos
         return data
 
-    def apply_spec_modifications(self, spec, root_body_name):
+    def apply_spec_modifications(self, spec, info_props):
+        root_body_name = info_props["root_body_name"]
         # apply the default modifications needed to store the goal in data
         self.allocate_user_data(spec)
         # optionally add sites for visualization
@@ -384,17 +390,18 @@ class GoalTrajMimic(Goal):
         self.__class__._site_bodyid = model.site_bodyid
         self._initialized_from_mj = True
 
-    def apply_spec_modifications(self, spec: MjSpec, root_body_name: str):
+    def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
         """
         Apply modifications to the Mujoco XML specification to include the goal.
 
         Args:
             spec (MjSpec): Mujoco specification.
-            root_body_name (str): Name of the body to which the goal is attached.
+            info_props (dict): Information properties.
 
         Returns:
             MjSpec: Modified Mujoco specification.
         """
+        root_body_name = info_props["root_body_name"]
         joints = spec.joints
         n_joints = len(joints)
         # for j in joints:
@@ -537,7 +544,7 @@ class GoalTrajMimic(Goal):
         qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
         site_xpos = traj_data.get_site_xpos(traj_state.traj_no, traj_state.subtraj_step_no, backend)
         site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no, backend)
-        site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat()
+        site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat(scalar_first=True)
         s_ids = jnp.array(self._rel_site_ids)
         if backend == jnp:
             site_xpos = site_xpos.at[:, :2].add(-qpos_init[:2]) # reset to the initial position

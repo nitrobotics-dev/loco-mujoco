@@ -5,6 +5,7 @@ and **Mujoco-Mjx** environments.
 
 ## Example
 Here is a simple example to run a Mujoco-CPU environment:
+
 ```python
 from loco_mujoco.core import Mujoco, Mjx, ObservationType
 
@@ -18,7 +19,7 @@ observation_spec = [("name_obs_1", "joint_name_in_xml", ObservationType.JOINT_PO
 action_spec = ["name_actuator_in_xml1", "name_actuator_in_xml2"]
 
 # define a simple Mujoco environment (CPU)
-env = Mujoco(xml_file="/path/to/xml_file.xml",
+env = Mujoco(spec="/path/to/xml_file.xml",
              actuation_spec=action_spec,
              observation_spec=observation_spec,
              horizon=1000,
