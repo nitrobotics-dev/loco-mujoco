@@ -701,15 +701,18 @@ class ProjectedGravityVector(Observation):
         else:
             raise ValueError(f"Unknown backend {backend}.")
 
-        xquats = data.qpos[data_ind_cont.ProjectedGravityVector]
-        xquats = xquats.reshape(-1, 4)
-        rots = R.from_quat(quat_scalarfirst2scalarlast(xquats))
+        if data_ind_cont.ProjectedGravityVector.size == 0:
+            return backend.empty(shape=(0,))
+        else:
+            xquats = data.qpos[data_ind_cont.ProjectedGravityVector]
+            xquats = xquats.reshape(-1, 4)
+            rots = R.from_quat(quat_scalarfirst2scalarlast(xquats))
 
-        # get the gravity vector from the quaternions
-        proj_grav = rots.inv().apply(np.array([0, 0, -1]))
+            # get the gravity vector from the quaternions
+            proj_grav = rots.inv().apply(np.array([0, 0, -1]))
 
-        # return the observation
-        return backend.ravel(proj_grav)
+            # return the observation
+            return backend.ravel(proj_grav)
 
 
 class Force(Observation):
@@ -772,6 +775,35 @@ class Force(Observation):
         # will be added once mjx adds the collision force function to the official release
         c_array = np.zeros((len(ind), 6), dtype=np.float64)
         return c_array
+
+
+class HeightMatrix(StatefulObservation):
+
+    def __init__(self, obs_name: str):
+        super().__init__(obs_name)
+        self.matrix_config = dict()  # todo: setup the matrix configuration
+        self.dim = 0 # todo: implement this. It should be the flattened size of the matrix
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        """
+        Get the observation and update the state.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            carry: The state carry.
+            backend: The backend to use, either np or jnp.
+
+        Returns:
+            The observation and the updated state.
+
+        """
+
+        # configure the matrix
+        matrix = env._terrain.get_height_matrix(env, self.matrix_config, env, model, data, carry, backend)
+
+        return backend.ravel(matrix)
 
 
 class ObservationType:
