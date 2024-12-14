@@ -89,8 +89,8 @@ class DomainRandomizer(StatefulObject):
         """
         raise NotImplementedError
 
-    def update_observation(self, obs: Union[np.ndarray, jax.Array],
-                           env: Any,
+    def update_observation(self, env: Any,
+                           obs: Union[np.ndarray, jax.Array],
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
                            carry: Any,
@@ -99,8 +99,8 @@ class DomainRandomizer(StatefulObject):
         Update the observation with domain randomization effects.
 
         Args:
-            obs (Union[np.ndarray, jax.Array]): The observation to be updated.
             env (Any): The environment instance.
+            obs (Union[np.ndarray, jax.Array]): The observation to be updated.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
@@ -111,8 +111,8 @@ class DomainRandomizer(StatefulObject):
         """
         raise NotImplementedError
 
-    def update_action(self, action: Union[np.ndarray, jax.Array],
-                      env: Any,
+    def update_action(self, env: Any,
+                      action: Union[np.ndarray, jax.Array],
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       carry: Any,
@@ -121,8 +121,8 @@ class DomainRandomizer(StatefulObject):
         Update the action with domain randomization effects.
 
         Args:
-            action (Union[np.ndarray, jax.Array]): The action to be updated.
             env (Any): The environment instance.
+            action (Union[np.ndarray, jax.Array]): The action to be updated.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.

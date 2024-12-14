@@ -53,8 +53,8 @@ class NoDomainRandomization(DomainRandomizer):
         """
         return model, data, carry
 
-    def update_observation(self, obs: Union[np.ndarray, jnp.ndarray],
-                           env: Any,
+    def update_observation(self, env: Any,
+                           obs: Union[np.ndarray, jnp.ndarray],
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
                            carry: Any,
@@ -63,8 +63,8 @@ class NoDomainRandomization(DomainRandomizer):
         Update the observation with no randomization applied.
 
         Args:
-            obs (Union[np.ndarray, jnp.ndarray]): The observation to be updated.
             env (Any): The environment instance.
+            obs (Union[np.ndarray, jnp.ndarray]): The observation to be updated.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
@@ -75,8 +75,8 @@ class NoDomainRandomization(DomainRandomizer):
         """
         return obs, carry
 
-    def update_action(self, action: Union[np.ndarray, jnp.ndarray],
-                      env: Any,
+    def update_action(self, env: Any,
+                      action: Union[np.ndarray, jnp.ndarray],
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       carry: Any,
@@ -85,8 +85,8 @@ class NoDomainRandomization(DomainRandomizer):
         Update the action with no randomization applied.
 
         Args:
-            action (Union[np.ndarray, jnp.ndarray]): The action to be updated.
             env (Any): The environment instance.
+            action (Union[np.ndarray, jnp.ndarray]): The action to be updated.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
