@@ -99,7 +99,7 @@ class RoughTerrain(DynamicTerrain):
 
         Args:
             env (Any): The environment instance.
-            key (Any): Random key for initialization.
+            key (Any): JAX random key.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
@@ -283,8 +283,8 @@ class RoughTerrain(DynamicTerrain):
         min_edge = self.hfield_half_length_in_meters - 0.5
         max_edge = self.hfield_half_length_in_meters
         com_pos = data.qpos[self._free_jnt_qpos_id][:2]
-        reached_edge = jnp.array(((min_edge < jnp.abs(com_pos[0])) & (jnp.abs(com_pos[0]) < max_edge)) | (
-                    (min_edge < jnp.abs(com_pos[1])) & (jnp.abs(com_pos[1]) < max_edge)))
+        reached_edge = backend.array(((min_edge < backend.abs(com_pos[0])) & (backend.abs(com_pos[0]) < max_edge)) | (
+                    (min_edge < backend.abs(com_pos[1])) & (backend.abs(com_pos[1]) < max_edge)))
         if backend == jnp:
             init_data = data.replace(qpos=data.qpos.at[self._free_jnt_qpos_id].set(0.0))
             data = jax.lax.cond(reached_edge, lambda _: init_data, lambda _: data, None)
