@@ -448,6 +448,7 @@ class PPOJax(JaxRLAlgorithmBase):
             # SAMPLE ACTION
             rng, _rng = jax.random.split(rng)
             action, train_state = plcy_call(train_state, obs, _rng)
+            action = jnp.atleast_2d(action)
 
             # STEP ENV
             obs, reward, absorbing, done, info, env_state = env.step(env_state, action)
