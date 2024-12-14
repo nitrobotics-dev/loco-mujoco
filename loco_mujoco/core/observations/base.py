@@ -1,17 +1,17 @@
 from __future__ import annotations
-
-import dataclasses
 from copy import deepcopy
 
-import jax
 import numpy as np
 import mujoco
 import jax.numpy as jnp
 from dataclasses import make_dataclass
 from flax import struct
+from scipy.spatial.transform import Rotation as np_R
+from jax.scipy.spatial.transform import Rotation as jnp_R
 
 from loco_mujoco.core.stateful_object import StatefulObject
-from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
+from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid
+from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 
 
 def jnt_name2id(name, model):
@@ -652,6 +652,66 @@ class SiteRot(SimpleObs):
         return "site_xmat"
 
 
+class ProjectedGravityVector(Observation):
+    """
+    Observation Type holding the gravity vector.
+
+
+    Args:
+        obs_name: The name of the observation.
+        xml_name: The name of the free joint in the Mujoco XML to calculate the gravity vector from.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    dim = 3
+
+    def __init__(self, obs_name: str, xml_name: str):
+        self.xml_name = xml_name
+        super().__init__(obs_name)
+
+    def _init_from_mj(self, model, data, current_obs_size):
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.data_type_ind = np.array(mj_jntname2qposid(self.xml_name, model))[3:]  # only the quaternion part is needed
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._initialized_from_mj = True
+
+    @classmethod
+    def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
+        """
+        Default getter for all the projected gravity vectors from the Mujoco data structure.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            data_ind_cont (ObservationIndexContainer): The indices of *all* observations of all types.
+            backend: The backend to use for the observation.
+
+        Returns:
+            The observation regarding this observation type.
+
+        """
+
+        if backend == np:
+            R = np_R
+        elif backend == jnp:
+            R = jnp_R
+        else:
+            raise ValueError(f"Unknown backend {backend}.")
+
+        xquats = data.qpos[data_ind_cont.ProjectedGravityVector]
+        xquats = xquats.reshape(-1, 4)
+        rots = R.from_quat(quat_scalarfirst2scalarlast(xquats))
+
+        # get the gravity vector from the quaternions
+        proj_grav = rots.inv().apply(np.array([0, 0, -1]))
+
+        # return the observation
+        return backend.ravel(proj_grav)
+
+
 class Force(Observation):
     """
     Observation Type holding the collision forces/torques [3D force + 3D torque]
@@ -730,6 +790,7 @@ class ObservationType:
     EntryFromFreeJointVel = EntryFromFreeJointVel
     SitePos = SitePos
     SiteRot = SiteRot
+    ProjectedGravityVector = ProjectedGravityVector
     Force = Force
 
     @classmethod
