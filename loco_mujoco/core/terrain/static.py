@@ -1,11 +1,11 @@
 from typing import Any, Union
+from types import ModuleType
 
-import numpy as np
-import jax.numpy as jnp
 from mujoco import MjData, MjModel, MjSpec
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.terrain import Terrain
+from loco_mujoco.core.utils.backend import assert_backend_is_supported
 
 
 class StaticTerrain(Terrain):
@@ -19,7 +19,7 @@ class StaticTerrain(Terrain):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: Union[np, jnp]) -> tuple:
+              backend: ModuleType) -> tuple:
         """
         Reset the terrain.
 
@@ -28,18 +28,19 @@ class StaticTerrain(Terrain):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             tuple: Updated data and carry.
         """
+        assert_backend_is_supported(backend)
         return data, carry
 
     def update(self, env: Any,
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: Union[np, jnp]) -> tuple:
+               backend: ModuleType) -> tuple:
         """
         Update the terrain.
 
@@ -48,11 +49,12 @@ class StaticTerrain(Terrain):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             tuple: Updated model, data, and carry.
         """
+        assert_backend_is_supported(backend)
         return model, data, carry
 
     def modify_spec(self, spec: MjSpec) -> MjSpec:

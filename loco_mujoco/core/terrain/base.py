@@ -1,11 +1,12 @@
 from typing import Dict, Any, List, Union
+from types import ModuleType
 
-import numpy as np
 import jax.numpy as jnp
 from mujoco import MjData, MjModel, MjSpec
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.stateful_object import StatefulObject
+from loco_mujoco.core.utils.backend import assert_backend_is_supported
 
 
 class Terrain(StatefulObject):
@@ -35,7 +36,7 @@ class Terrain(StatefulObject):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: Union[np, jnp]):
+              backend: ModuleType):
         """
         Reset the terrain.
 
@@ -44,18 +45,19 @@ class Terrain(StatefulObject):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
+        assert_backend_is_supported(backend)
         raise NotImplementedError
 
     def update(self, env: Any,
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: Union[np, jnp]):
+               backend: ModuleType):
         """
         Update the terrain.
 
@@ -64,11 +66,12 @@ class Terrain(StatefulObject):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
+        assert_backend_is_supported(backend)
         raise NotImplementedError
 
     def modify_spec(self, spec: MjSpec) -> MjSpec:
@@ -91,7 +94,7 @@ class Terrain(StatefulObject):
                           env: Any, model: Union[MjModel, Model],
                           data: Union[MjData, Data],
                           carry: Any,
-                          backend: Union[np, jnp]) -> Union[np, jnp]:
+                          backend: ModuleType) -> ModuleType:
         """
         Get the height matrix for the terrain.
 
@@ -101,14 +104,15 @@ class Terrain(StatefulObject):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            Union[np, jnp]: The height matrix.
+            ModuleType: The height matrix.
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
         """
+        assert_backend_is_supported(backend)
         raise NotImplementedError
 
     @property
@@ -173,7 +177,7 @@ class Terrain(StatefulObject):
     def _set_attribute_in_model(model: Union[MjModel, Model],
                                 attribute: str,
                                 value: Any,
-                                backend: Union[np, jnp]) -> Union[MjModel, Model]:
+                                backend: ModuleType) -> Union[MjModel, Model]:
         """
         Set an attribute in the model. This works for both NumPy and JAX backends.
 
@@ -181,11 +185,13 @@ class Terrain(StatefulObject):
             model (Union[MjModel, Model]): The simulation model.
             attribute (str): The attribute to set.
             value (Any): The value to assign to the attribute.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             Union[MjModel, Model]: The updated model.
         """
+        assert_backend_is_supported(backend)
+
         if backend == jnp:
             model = model.tree_replace({attribute: value})
         else:

@@ -1,3 +1,4 @@
+from types import ModuleType
 from typing import Any, Union, Dict
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import jax.scipy as jnp_scipy
 
 from loco_mujoco.core.terrain import DynamicTerrain
 from loco_mujoco.core.utils import mj_jntname2qposid
+from loco_mujoco.core.utils.backend import assert_backend_is_supported
 
 
 @struct.dataclass
@@ -93,7 +95,7 @@ class RoughTerrain(DynamicTerrain):
                    key: Any,
                    model: Union[MjModel, Model],
                    data: Union[MjData, Data],
-                   backend: Union[np, jnp]) -> RoughTerrainState:
+                   backend: ModuleType) -> RoughTerrainState:
         """
         Initialize the state of the rough terrain.
 
@@ -102,11 +104,12 @@ class RoughTerrain(DynamicTerrain):
             key (Any): JAX random key.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             RoughTerrainState: The initialized terrain state.
         """
+        assert_backend_is_supported(backend)
         return RoughTerrainState(backend.zeros((self.hfield_length, self.hfield_length)))
 
     def modify_spec(self, spec: MjSpec) -> MjSpec:
@@ -139,7 +142,7 @@ class RoughTerrain(DynamicTerrain):
 
     def reset(self, env: Any,
               model: Union[MjModel, Model], data: Union[MjData, Data], carry: Any,
-              backend: Union[np, jnp]) -> tuple:
+              backend: ModuleType) -> tuple:
         """
         Reset the rough terrain and update its state.
 
@@ -148,11 +151,12 @@ class RoughTerrain(DynamicTerrain):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             tuple: Updated data and carry.
         """
+        assert_backend_is_supported(backend)
         terrain_state = carry.terrain_state
 
         if backend == jnp:
@@ -172,7 +176,7 @@ class RoughTerrain(DynamicTerrain):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: Union[np, jnp]) -> tuple:
+               backend: ModuleType) -> tuple:
         """
         Update the rough terrain and simulation state.
 
@@ -181,11 +185,12 @@ class RoughTerrain(DynamicTerrain):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             tuple: Updated model, data, and carry.
         """
+        assert_backend_is_supported(backend)
         terrain_state = carry.terrain_state
         model = self._set_attribute_in_model(model, "hfield_data", terrain_state.height_field_raw, backend)
         data = self._reset_on_edge(data, backend)
@@ -196,7 +201,7 @@ class RoughTerrain(DynamicTerrain):
                           model: Union[MjModel, Model],
                           data: Union[MjData, Data],
                           carry: Any,
-                          backend: Union[np, jnp]) -> Union[np.ndarray, jnp.ndarray]:
+                          backend: ModuleType) -> Union[np.ndarray, jnp.ndarray]:
         """
         Get the height matrix of the terrain.
 
@@ -206,7 +211,7 @@ class RoughTerrain(DynamicTerrain):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             Union[np.ndarray, jnp.ndarray]: The height matrix of the terrain.
@@ -214,22 +219,24 @@ class RoughTerrain(DynamicTerrain):
         Raises:
             NotImplementedError: If the method is not implemented.
         """
-        # todo: implement this method
+        assert_backend_is_supported(backend)
         raise NotImplementedError
 
     def isaac_hf_to_mujoco_hf(self,
                               isaac_hf: Union[np.ndarray, jnp.ndarray],
-                              backend: Union[np, jnp]) -> Union[np.ndarray, jnp.ndarray]:
+                              backend: ModuleType) -> Union[np.ndarray, jnp.ndarray]:
         """
         Convert Isaac height field data to MuJoCo-compatible height field data.
 
         Args:
             isaac_hf (Union[np.ndarray, jnp.ndarray]): The Isaac height field data.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             Union[np.ndarray, jnp.ndarray]: The converted height field data.
         """
+        assert_backend_is_supported(backend)
+
         hf = isaac_hf + backend.abs(backend.min(isaac_hf))
         hf /= self.mujoco_height_scaling
         return hf.reshape(-1)
@@ -269,17 +276,20 @@ class RoughTerrain(DynamicTerrain):
         add_height_field = add_height_field.at[self.x1:self.x2, self.y1:self.y2].set(0)
         return add_height_field
 
-    def _reset_on_edge(self, data: Union[MjData, Data], backend: Union[np, jnp]) -> Union[MjData, Data]:
+    def _reset_on_edge(self, data: Union[MjData, Data],
+                       backend: ModuleType) -> Union[MjData, Data]:
         """
         Reset the robot position if it is on the edge of the terrain.
 
         Args:
             data (Union[MjData, Data]): The simulation data.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., NumPy or JAX).
+            backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
             Union[MjData, Data]: The updated simulation data.
         """
+        assert_backend_is_supported(backend)
+
         min_edge = self.hfield_half_length_in_meters - 0.5
         max_edge = self.hfield_half_length_in_meters
         com_pos = data.qpos[self._free_jnt_qpos_id][:2]

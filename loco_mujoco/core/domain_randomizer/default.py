@@ -1,4 +1,5 @@
 from typing import Any, Union
+from types import ModuleType
 
 import numpy as np
 import jax
@@ -8,6 +9,7 @@ from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
+from loco_mujoco.core.utils.backend import assert_backend_is_supported
 
 
 @struct.dataclass
@@ -30,7 +32,7 @@ class DefaultRandomizer(DomainRandomizer):
                    key: Any,
                    model: Union[MjModel, Model],
                    data: Union[MjData, Data],
-                   backend: Union[np, jnp]) -> DefaultRandomizerState:
+                   backend: ModuleType) -> DefaultRandomizerState:
         """
         Initialize the randomizer state.
 
@@ -39,18 +41,19 @@ class DefaultRandomizer(DomainRandomizer):
             key (Any): Random seed key.
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
             DefaultRandomizerState: The initialized randomizer state.
         """
+        assert_backend_is_supported(backend)
         return DefaultRandomizerState(geom_friction=backend.array([0.0, 0.0, 0.0]))
 
     def reset(self, env: Any,
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: Union[np, jnp]) -> tuple:
+              backend: ModuleType) -> tuple:
         """
         Reset the randomizer, applying domain randomization.
 
@@ -59,12 +62,107 @@ class DefaultRandomizer(DomainRandomizer):
             model (Union[MjModel, Model]): The simulation model.
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
             tuple: Updated data and carry.
         """
+        assert_backend_is_supported(backend)
         domain_randomizer_state = carry.domain_randomizer_state
+
+        # update different randomization parameters
+        geom_friction, carry = self._sample_geom_friction(model, carry, backend)
+
+        carry = carry.replace(domain_randomizer_state=domain_randomizer_state.replace(geom_friction=geom_friction))
+
+        return data, carry
+
+    def update(self, env: Any,
+               model: Union[MjModel, Model],
+               data: Union[MjData, Data],
+               carry: Any,
+               backend: ModuleType) -> tuple:
+        """
+        Update the randomizer by applying the state changes to the model.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            tuple: Updated model, data, and carry.
+        """
+        assert_backend_is_supported(backend)
+        domrand_state = carry.domain_randomizer_state
+        model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
+
+        return model, data, carry
+
+    def update_observation(self, env: Any,
+                           obs: Union[np.ndarray, jnp.ndarray],
+                           model: Union[MjModel, Model],
+                           data: Union[MjData, Data],
+                           carry: Any,
+                           backend: ModuleType) -> tuple:
+        """
+        Update the observation with randomization effects.
+
+        Args:
+            env (Any): The environment instance.
+            obs (Union[np.ndarray, jnp.ndarray]): The observation to be updated.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            tuple: The updated observation and carry.
+        """
+        assert_backend_is_supported(backend)
+        return obs, carry
+
+    def update_action(self,
+                      env: Any,
+                      action: Union[np.ndarray, jnp.ndarray],
+                      model: Union[MjModel, Model],
+                      data: Union[MjData, Data],
+                      carry: Any,
+                      backend: ModuleType) -> tuple:
+        """
+        Update the action with randomization effects.
+
+        Args:
+            env (Any): The environment instance.
+            action (Union[np.ndarray, jnp.ndarray]): The action to be updated.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            tuple: The updated action and carry.
+        """
+        assert_backend_is_supported(backend)
+        return action, carry
+
+    def _sample_geom_friction(self, model: Union[MjModel, Model],
+                              carry: Any,
+                              backend: ModuleType):
+        """
+        Samples the geometry friction parameters.
+
+        Args:
+            model (Union[MjModel, Model]): The simulation model.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Union[np.ndarray, jnp.ndarray]: The randomized geometry friction parameters.
+        """
+        assert_backend_is_supported(backend)
 
         fric_tan_min, fric_tan_max = self.rand_conf["geom_friction_tangential_range"]
         fric_tor_min, fric_tor_max = self.rand_conf["geom_friction_torsional_range"]
@@ -93,80 +191,53 @@ class DefaultRandomizer(DomainRandomizer):
             if self.rand_conf["randomize_geom_friction_rolling"]
             else model.geom_friction[:, 2]
         )
-        geom_friction = jnp.array([
+        geom_friction = backend.array([
             sampled_friction_tangential,
             sampled_friction_torsional,
             sampled_friction_rolling,
         ]).T
 
-        carry = carry.replace(domain_randomizer_state=domain_randomizer_state.replace(geom_friction=geom_friction))
+        return geom_friction, carry
 
-        return data, carry
-
-    def update(self, env: Any,
-               model: Union[MjModel, Model],
-               data: Union[MjData, Data],
-               carry: Any,
-               backend: Union[np, jnp]) -> tuple:
+    def _sample_geom_damping_and_stiffness(self, model: Union[MjModel, Model],
+                                           carry: Any,
+                                           backend: ModuleType):
         """
-        Update the randomizer by applying the state changes to the model.
+        Samples the geometry damping and stiffness parameters.
 
         Args:
-            env (Any): The environment instance.
             model (Union[MjModel, Model]): The simulation model.
-            data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated model, data, and carry.
+            Union[np.ndarray, jnp.ndarray]: The randomized geometry damping and stiffness parameters.
         """
-        domrand_state = carry.domain_randomizer_state
-        model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
+        assert_backend_is_supported(backend)
 
-        return model, data, carry
+        n_geoms = model.ngeom
+        damping_min, damping_max = self.rand_conf["geom_damping_range"]
+        stiffness_min, stiffness_max = self.rand_conf["geom_stiffness_range"]
 
-    def update_observation(self, env: Any,
-                           obs: Union[np.ndarray, jnp.ndarray],
-                           model: Union[MjModel, Model],
-                           data: Union[MjData, Data],
-                           carry: Any,
-                           backend: Union[np, jnp]) -> tuple:
-        """
-        Update the observation with randomization effects.
+        if backend == jnp:
+            key = carry.key
+            key, _k_damp, _k_stiff = jax.random.split(key, 3)
+            interpolation_damping = jax.random.uniform(_k_damp, shape=(len(n_geoms),))
+            interpolation_stiff = jax.random.uniform(_k_stiff, shape=(len(n_geoms),))
+            carry = carry.replace(key=key)
+        else:
+            interpolation_damping = np.random.uniform(size=(len(n_geoms),))
+            interpolation_stiff = np.random.uniform(size=(len(n_geoms),))
 
-        Args:
-            env (Any): The environment instance.
-            obs (Union[np.ndarray, jnp.ndarray]): The observation to be updated.
-            model (Union[MjModel, Model]): The simulation model.
-            data (Union[MjData, Data]): The simulation data.
-            carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
+        sampled_damping = (
+            damping_min + (damping_max - damping_min) * interpolation_damping
+            if self.rand_conf["randomize_geom_damping"]
+            else model.geom_solref[:, 1]
+        )
+        sampled_stiffness = (
+            stiffness_min + (stiffness_max - stiffness_min) * interpolation_stiff
+            if self.rand_conf["randomize_geom_stiffness"]
+            else model.geom_solref[:, 0]
+        )
 
-        Returns:
-            tuple: The updated observation and carry.
-        """
-        return obs, carry
-
-    def update_action(self,
-                      env: Any,
-                      action: Union[np.ndarray, jnp.ndarray],
-                      model: Union[MjModel, Model],
-                      data: Union[MjData, Data],
-                      carry: Any,
-                      backend: Union[np, jnp]) -> tuple:
-        """
-        Update the action with randomization effects.
-
-        Args:
-            env (Any): The environment instance.
-            action (Union[np.ndarray, jnp.ndarray]): The action to be updated.
-            model (Union[MjModel, Model]): The simulation model.
-            data (Union[MjData, Data]): The simulation data.
-            carry (Any): Carry instance with additional state information.
-            backend (Union[np, jnp]): Backend used for simulation (e.g., JAX or NumPy).
-
-        Returns:
-            tuple: The updated action and carry.
-        """
-        return action, carry
+        return sampled_damping, sampled_stiffness, carry
