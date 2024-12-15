@@ -1,0 +1,5 @@
+repositories:
+  metriX:
+    type: git
+    url: https://github.com/pompetzki/metriX.git
+    version: main
