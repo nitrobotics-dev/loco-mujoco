@@ -1,9 +1,13 @@
 import numpy as np
 import jax
 from loco_mujoco import LocoEnv
+import os
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
 
 # load yaml as dict:
-path = "/home/moore/PycharmProjects/loco-mujoco/examples/jax_rl/confs/domain_randomization/default_dom_rand_conf.yaml"
+path = parent_dir+"/jax_rl/config/domain_randomization/default_dom_rand_conf.yaml"
 with open(path, 'r') as file:
     import yaml
     default_dom_rand_conf = yaml.load(file, Loader=yaml.FullLoader)
