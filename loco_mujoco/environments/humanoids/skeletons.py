@@ -351,13 +351,13 @@ class HumanoidTorque(SkeletonTorque):
         super().__init__(*args, **kwargs)
 
 
-class HumanoidMuscle(BaseSkeleton):
+class SkeletonMuscle(BaseSkeleton):
 
     """
     Description
     ------------
 
-    Mujoco environment of a humanoid model with muscle actuation.
+    Mujoco environment of a human skeleton model with muscle actuation.
 
     .. note:: This Humanoid consists of 92 muscles on the lower limb. The upper body is torque actuated.
 
@@ -779,10 +779,6 @@ class HumanoidMuscle(BaseSkeleton):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real", "perfect"],
-                                     non_combinable=[("run", None, "perfect")])
-
     def __init__(self, **kwargs):
         """
         Constructor.
@@ -793,7 +789,7 @@ class HumanoidMuscle(BaseSkeleton):
             assert kwargs["use_muscles"] is True, "Activating torque actuators in this environment not allowed. "
             del kwargs["use_muscles"]
 
-        super(HumanoidMuscle, self).__init__(use_muscles=True, **kwargs)
+        super(SkeletonMuscle, self).__init__(use_muscles=True, **kwargs)
 
     @staticmethod
     def _get_action_specification(spec: MjSpec):
@@ -835,6 +831,33 @@ class HumanoidMuscle(BaseSkeleton):
         Returns the default path to the xml file of the environment.
         """
         return (loco_mujoco.PATH_TO_MODELS / "skeleton" / "skeleton_muscle.xml").as_posix()
+
+
+class MjxSkeletonMuscle(SkeletonMuscle):
+    mjx_enabled = True
+
+    def __init__(self, timestep=0.002, n_substeps=5, **kwargs):
+        if "model_option_conf" not in kwargs.keys():
+            model_option_conf = dict(iterations=4, ls_iterations=8,
+                                     disableflags=mujoco.mjtDisableBit.mjDSBL_EULERDAMP)
+        else:
+            model_option_conf = kwargs["model_option_conf"]
+            del kwargs["model_option_conf"]
+        super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
+
+
+class HumanoidMuscle(SkeletonMuscle):
+    """
+    Wrapper class for SkeletonMuscle. Deprecated and will be removed in a future release.
+    """
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            f"{self.__class__.__name__} is deprecated and will be removed in a future release. "
+            f"Please use {super().__class__.__name__} instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        super().__init__(*args, **kwargs)
 
 
 class HumanoidTorque4Ages(BaseSkeleton):

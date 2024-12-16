@@ -1,0 +1,8 @@
+SkeletonMuscle.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward
+
+
+MjxSkeletonMuscle.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward

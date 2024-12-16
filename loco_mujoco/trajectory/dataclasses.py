@@ -573,12 +573,12 @@ class TrajectoryData(SingleData):
         return SingleData(
             qpos=backend.squeeze(self.qpos[ind].copy()),
             qvel=backend.squeeze(self.qvel[ind].copy()),
-            xpos=backend.squeeze(self.xpos[ind].copy()) if self.xpos.size > 0 else backend.empty((1, 0))[ind],
-            xquat=backend.squeeze(self.xquat[ind].copy()) if self.xquat.size > 0 else backend.empty((1, 0))[ind],
-            cvel=backend.squeeze(self.cvel[ind].copy()) if self.cvel.size > 0 else backend.empty((1, 0))[ind],
-            subtree_com=backend.squeeze(self.subtree_com[ind].copy()) if self.subtree_com.size > 0 else backend.empty((1, 0))[ind],
-            site_xpos=backend.squeeze(self.site_xpos[ind].copy()) if self.site_xpos.size > 0 else backend.empty((1, 0))[ind],
-            site_xmat=backend.squeeze(self.site_xmat[ind].copy()) if self.site_xmat.size > 0 else backend.empty((1, 0))[ind],
+            xpos=backend.squeeze(self.xpos[ind].copy()) if self.xpos.size > 0 else backend.empty((1, 0)),
+            xquat=backend.squeeze(self.xquat[ind].copy()) if self.xquat.size > 0 else backend.empty((1, 0)),
+            cvel=backend.squeeze(self.cvel[ind].copy()) if self.cvel.size > 0 else backend.empty((1, 0)),
+            subtree_com=backend.squeeze(self.subtree_com[ind].copy()) if self.subtree_com.size > 0 else backend.empty((1, 0)),
+            site_xpos=backend.squeeze(self.site_xpos[ind].copy()) if self.site_xpos.size > 0 else backend.empty((1, 0)),
+            site_xmat=backend.squeeze(self.site_xmat[ind].copy()) if self.site_xmat.size > 0 else backend.empty((1, 0)),
             userdata=backend.squeeze(self.userdata[ind].copy()) if self.userdata.size > 0 else backend.empty((1, 0))
         )
 

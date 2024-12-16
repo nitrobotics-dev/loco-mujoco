@@ -400,6 +400,12 @@ class LocoEnv(Mjx):
 
         assert self.th is not None
 
+        if not self.th.is_numpy:
+            was_jax = True
+            self.th.to_numpy()
+        else:
+            was_jax = False
+
         if key is None:
             key = jax.random.key(0)
 
@@ -427,7 +433,8 @@ class LocoEnv(Mjx):
         self.reset(subkey)
         traj_no = 0
         subtraj_step_no = 0
-        traj_data_sample = self.get_traj_current_sample(self.th.traj.data, traj_no, subtraj_step_no)
+        traj_data_sample = self.th.get_current_traj_data(self._additional_carry, np)
+        #traj_data_sample = self.get_traj_current_sample(self.th.traj.data, traj_no, subtraj_step_no)
         self._set_sim_state_from_traj_data(self._data, traj_data_sample)
 
         if render:
@@ -440,7 +447,7 @@ class LocoEnv(Mjx):
 
         highest_int = np.iinfo(np.int32).max
         if n_steps_per_episode is None:
-            n_steps_per_episode = self.len_trajectory(self.th.traj.data, traj_no)
+            n_steps_per_episode = self.th.len_trajectory(traj_no)
         if n_episodes is None:
             n_episodes = highest_int
         for i in range(n_episodes):
@@ -448,18 +455,16 @@ class LocoEnv(Mjx):
 
                 if callback_class is None:
                     self._set_sim_state_from_traj_data(self._data, traj_data_sample)
-                    self._simulation_pre_step(model, self._data, self._additional_carry)
+                    self._model, self._data, self._additional_carry = (
+                        self._simulation_pre_step(self._model, self._data, self._additional_carry))
                     mujoco.mj_forward(self._model, self._data)
-                    self._simulation_post_step(self._data, self._additional_carry, self._model)
+                    self._data, self._additional_carry = (
+                        self._simulation_post_step(self._model, self._data, self._additional_carry))
                 else:
                     callback_class(self, self._model, self._data, traj_data_sample, self._additional_carry)
 
-                traj_data_sample, traj_no, subtraj_step_no = self.get_traj_next_sample(self.th.traj.data,
-                                                                                       traj_no, subtraj_step_no)
-
-
-                if subtraj_step_no == 0:
-                    print("here")
+                self._additional_carry = self.th.update_state(self, self._model, self._data, self._additional_carry, np)
+                traj_data_sample = self.th.get_current_traj_data(self._additional_carry, np)
 
                 if from_velocity and subtraj_step_no != 0:
                     qpos = self._data.qpos
@@ -486,7 +491,7 @@ class LocoEnv(Mjx):
                     qpos[is_free_joint_qpos_quat] = qpos_quat
                     traj_data_sample = traj_data_sample.replace(qpos=jnp.array(qpos))
 
-                obs = self._create_observation(self._model, self._data, self._additional_carry)
+                obs, self._additional_carry = self._create_observation(self._model, self._data, self._additional_carry)
 
                 if render:
                     frame = self.render(record)
@@ -502,6 +507,9 @@ class LocoEnv(Mjx):
         self.stop()
         if record:
             recorder.stop()
+
+        if was_jax:
+            self.th.to_jax()
 
     def play_trajectory_from_velocity(self, n_episodes=None, n_steps_per_episode=None, render=True,
                                       record=False, recorder_params=None, callback_class=None, key=None):

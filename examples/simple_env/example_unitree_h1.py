@@ -4,8 +4,11 @@ from loco_mujoco import LocoEnv
 
 
 # create the environment and task
-env = LocoEnv.make("MjxUnitreeH1.walk", disable_arms=False,
-                   reward_type="MimicReward", goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=True))
+env = LocoEnv.make("MjxUnitreeH1.walk", disable_arms=False, random_start=False,
+                   terrain_type="RoughTerrain", terminal_state_type="HeightBasedTerminalStateHandler",
+                   reward_type="MimicReward",
+                   goal_type="GoalRandomRootVelocity",
+                   goal_params=dict(visualize_goal=True))
 
 # get the dataset for the chosen environment and task
 #expert_data = env.create_dataset()

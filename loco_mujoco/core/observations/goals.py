@@ -96,6 +96,10 @@ class Goal(StatefulObservation):
     def dim(self):
         raise NotImplementedError
 
+    @property
+    def requires_spec_modification(self):
+        return self.__class__.apply_spec_modifications != Goal.apply_spec_modifications
+
     @classmethod
     def list_goals(cls):
         return [goal for goal in Goal.__subclasses__()]
@@ -259,10 +263,6 @@ class GoalRandomRootVelocity(Goal):
     @property
     def dim(self):
         return 3
-
-    @property
-    def requires_spec_modification(self):
-        return self.__class__.apply_spec_modifications != Goal.apply_spec_modifications
 
 
 class GoalTrajArrow(Goal):

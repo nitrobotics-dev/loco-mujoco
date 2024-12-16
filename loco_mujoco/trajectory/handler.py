@@ -300,6 +300,10 @@ class TrajectoryHandler(StatefulObject):
             self.traj = replace(self.traj, data=self.traj.data.to_jax(), info=traj_info)
             self._is_numpy = False
 
+    @property
+    def is_numpy(self):
+        return self._is_numpy
+
     # def check_if_trajectory_is_in_range(self, low, high, keys, j_idx, warn, clip_trajectory_to_joint_ranges):
     #
     #     if warn or clip_trajectory_to_joint_ranges:

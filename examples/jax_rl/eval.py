@@ -9,7 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 import traceback
 
 
-@hydra.main(version_base=None, config_path="./config", config_name="conf_go2") # config_name=<conf_a1, conf_go2>
+@hydra.main(version_base=None, config_path="./confs", config_name="conf_h1")
 def experiment(config: DictConfig):
 
     try:
@@ -24,7 +24,7 @@ def experiment(config: DictConfig):
         agent_conf, agent_state = PPOJax.load_agent(path)
 
         # run eval
-        PPOJax.play_policy(env, agent_conf, agent_state, deterministic=True, n_steps=10000, n_envs=20, record=True, train_state_seed=0)
+        PPOJax.play_policy(env, agent_conf, agent_state, deterministic=True, n_steps=10000, n_envs=50, record=True, train_state_seed=1)
 
     except Exception:
         traceback.print_exc(file=sys.stderr)

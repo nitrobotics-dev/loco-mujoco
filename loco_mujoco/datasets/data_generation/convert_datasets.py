@@ -152,7 +152,7 @@ def convert_single_dataset_of_env(env_name, file_path):
     traj_data, traj_info = env.th.traj.data, env.th.traj.info
 
     callback = ExtendTrajData(env, model=env._model, n_samples=traj_data.n_samples)
-    env.play_trajectory(n_episodes=env.n_trajectories(traj_data),
+    env.play_trajectory(n_episodes=env.th.n_trajectories,
                         render=False, callback_class=callback)
     traj_data, traj_info = callback.extend_trajectory_data(traj_data, traj_info)
     traj = replace(traj, data=traj_data, info=traj_info)

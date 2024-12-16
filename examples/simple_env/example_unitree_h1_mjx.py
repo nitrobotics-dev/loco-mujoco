@@ -7,8 +7,13 @@ from loco_mujoco import LocoEnv
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-env = LocoEnv.make("MjxUnitreeH1.walk",# domain_randomization_type="DefaultRandomizer",
-                   goal_type="GoalTrajMimic", goal_params=dict(visualize_goal=True),
+env = LocoEnv.make("MjxUnitreeH1.walk",
+                   random_start=False,
+                   reward_type="LocomotionReward",
+                   terrain_type="RoughTerrain",
+                   terminal_state_type="HeightBasedTerminalStateHandler",
+                   # domain_randomization_type="DefaultRandomizer",
+                   goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
                    n_envs=50, disable_arms=False)
 
 key = jax.random.key(0)

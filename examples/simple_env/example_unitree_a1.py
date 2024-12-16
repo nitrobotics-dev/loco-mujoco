@@ -13,7 +13,7 @@ with open(path, 'r') as file:
     default_dom_rand_conf = yaml.load(file, Loader=yaml.FullLoader)
 
 # create the environment and task
-env = LocoEnv.make("MjxUnitreeA1",
+env = LocoEnv.make("UnitreeA1",
                    terminal_state_type="HeightBasedTerminalStateHandler",
                    goal_type="GoalRandomRootVelocity", goal_params=dict(visualize_goal=True),
                    domain_randomization_type="DefaultRandomizer",

@@ -1,22 +1,33 @@
 import numpy as np
+import jax
+import loco_mujoco
 from loco_mujoco import LocoEnv
 
 
-env = LocoEnv.make("HumanoidMuscle")
+# create the environment and task
+env = LocoEnv.make("SkeletonMuscle.walk")
+
+# get the dataset for the chosen environment and task
+#expert_data = env.create_dataset()
 
 action_dim = env.info.action_space.shape[0]
 
-obs = env.reset()
+key = jax.random.key(0)
+key, _rng = jax.random.split(key)
+
+env.reset(_rng)
+
 env.render()
 absorbing = False
 i = 0
 
 while True:
     if i == 1000 or absorbing:
-        env.reset()
+        key, _rng = jax.random.split(key)
+        env.reset(_rng)
         i = 0
-    action = np.random.randn(action_dim)
-    nstate, _, absorbing, _ = env.step(action)
+    action = np.random.randn(action_dim)*0
+    nstate, reward, absorbing, done, info = env.step(action)
 
     env.render()
     i += 1

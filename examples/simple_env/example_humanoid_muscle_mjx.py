@@ -1,21 +1,13 @@
-import os
 import jax
 import time
 
 from loco_mujoco import LocoEnv
 
-
+import os
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
-env = LocoEnv.make("MjxUnitreeA1",
-                   goal_type="GoalRandomRootVelocity",
-                   goal_params=dict(visualize_goal=True),
-                   reward_type="LocomotionReward",
-                   #domain_randomization_type="DefaultRandomizer",
-                   terminal_state_type="HeightBasedTerminalStateHandler",
-                   #terrain_type="RoughTerrain",
-                   n_envs=20)
+env = LocoEnv.make("MjxSkeletonMuscle.walk", n_envs=4000)
 
 key = jax.random.key(0)
 keys = jax.random.split(key, env.info.n_envs + 1)
@@ -37,10 +29,10 @@ while i < 100000:
 
     keys = jax.random.split(key, env.info.n_envs + 1)
     key, action_keys = keys[0], keys[1:]
-    action = rng_sample_uni_action(action_keys)
+    action = rng_sample_uni_action(action_keys)*0.8
     state = rng_step(state, action)
 
-    env.mjx_render(state)
+    #env.mjx_render(state)
 
     step += env.info.n_envs
     if step % LOGGING_FREQUENCY == 0:
