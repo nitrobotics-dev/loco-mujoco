@@ -1,0 +1,9 @@
+UnitreeGo2.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward
+  random_start: false
+
+MjxUnitreeGo2.DEFAULT.real:
+  goal_type: NoGoal
+  reward_type: NoReward
+  random_start: false
