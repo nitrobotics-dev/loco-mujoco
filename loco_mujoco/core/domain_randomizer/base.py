@@ -74,29 +74,6 @@ class DomainRandomizer(StatefulObject):
         assert_backend_is_supported(backend)
         raise NotImplementedError
 
-    def apply_on_model(self,
-                       env: Any,
-                       model: Union[MjModel, Model],
-                       data: Union[MjData, Data],
-                       carry: Any,
-                       backend: ModuleType):
-        """
-        Apply domain randomization to the model.
-
-        Args:
-            env (Any): The environment instance.
-            model (Union[MjModel, Model]): The simulation model.
-            data (Union[MjData, Data]): The simulation data.
-            carry (Any): Carry instance with additional state information.
-            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
-
-        Raises:
-            ValueError: If the backend module is not supported.
-            NotImplementedError: If the method is not implemented in a subclass.
-        """
-        assert_backend_is_supported(backend)
-        raise NotImplementedError
-
     def update_observation(self, env: Any,
                            obs: Union[np.ndarray, jax.Array],
                            model: Union[MjModel, Model],
