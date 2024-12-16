@@ -66,7 +66,7 @@ def experiment(config: DictConfig):
                          "Mean Episode Length": training_metrics.mean_episode_length[i]},
                         step=int(training_metrics.max_timestep[i]))
 
-                if (i+1) % config.experiment.validation_interval == 0:
+                if (i+1) % config.experiment.validation_interval == 0  and config.experiment.validation.active:
                     run.log({"Validation Info/Mean Episode Return": validation_metrics.mean_episode_return[i],
                              "Validation Info/Mean Episode Length": validation_metrics.mean_episode_length[i]},
                             step=int(training_metrics.max_timestep[i]))
