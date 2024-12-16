@@ -35,22 +35,11 @@ You have the choice to install the latest release via PyPI by running
 pip install loco-mujoco 
 ```
 
-or you do an editable installation by cloning this repository:
+or you do an editable installation by cloning this repository and then running:
 
 ```bash
-mkdir ~/loco-mujoco-ws
-git clone https://github.com/robfiras/loco-mujoco.git
 cd loco-mujoco
 pip install -e . 
-```
-### Install the dependenices
-
-```bash
-# get vcstool
-pip install -U vcstool
-cd ~/loco-mujoco-ws/loco-mujoco
-vcs import ../ < install.yaml
-# then make sure if all of the requirements are installed
 ```
 
 ### Download the Datasets

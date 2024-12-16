@@ -6,4 +6,3 @@ gymnasium
 pyyaml
 wget
 hydra-core
-opencv-python
