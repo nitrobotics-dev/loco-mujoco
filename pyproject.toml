@@ -13,6 +13,7 @@ dependencies = [
     "flax",
     "orbax",
     "distrax",
+    "metrx",
     "gymnasium",
     "dm_control",
     "pyyaml",
