@@ -160,12 +160,13 @@ class Observation:
         self.min, self.max = None, None
         self._initialized_from_mj = False
 
-    def init_from_mj(self, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
+    def init_from_mj(self, env, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
                      obs_ind_cont: ObservationIndexContainer):
         """
         Initialize the observation type from the Mujoco data structure and model.
 
         Args:
+            env: Environment instance.
             model: The Mujoco model.
             data: The Mujoco data structure.
             current_obs_size: The current size of the observation space.
@@ -174,12 +175,12 @@ class Observation:
 
         """
         # extract all information from data and model
-        self._init_from_mj(model, data, current_obs_size)
+        self._init_from_mj(env, model, data, current_obs_size)
 
         # store the indices in the ObservationIndexContainer
         self._add_to_data_and_obs_cont(data_ind_cont, obs_ind_cont)
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         """
         Initialize the observation type from the Mujoco data structure and model.
         This method *must* initialize the following attributes:
@@ -190,6 +191,7 @@ class Observation:
             - max: Maximum values of the observation in the observation space.
 
         Args:
+            env: Environment instance.
             model: The Mujoco model.
             data: The Mujoco data structure.
             current_obs_size: The current size of the observation space.
@@ -326,7 +328,7 @@ class SimpleObs(Observation):
 
 class StatefulObservation(Observation, StatefulObject):
 
-    def init_from_mj(self, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
+    def init_from_mj(self, env, model, data, current_obs_size, data_ind_cont: ObservationIndexContainer,
                      obs_ind_cont: ObservationIndexContainer):
         """
         Initialize the observation type from the Mujoco data structure and model.
@@ -340,7 +342,7 @@ class StatefulObservation(Observation, StatefulObject):
 
         """
         # extract all information from data and model
-        self._init_from_mj(model, data, current_obs_size)
+        self._init_from_mj(None, model, data, current_obs_size)
 
     @classmethod
     def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
@@ -375,7 +377,7 @@ class BodyPos(SimpleObs):
 
     dim = 3
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -398,7 +400,7 @@ class BodyRot(SimpleObs):
 
     dim = 4
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).cvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -421,7 +423,7 @@ class BodyVel(SimpleObs):
 
     dim = 6
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.body(self.xml_name).xquat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -444,7 +446,7 @@ class FreeJointPos(SimpleObs):
 
     dim = 7
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * FreeJointPos.dim, [np.inf] * FreeJointPos.dim
         self.data_type_ind = np.array(mj_jntname2qposid(self.xml_name, model))
@@ -471,8 +473,8 @@ class EntryFromFreeJointPos(FreeJointPos):
         self._entry_index = entry_index
         super().__init__(**kwargs)
 
-    def _init_from_mj(self, model, data, current_obs_size):
-        super()._init_from_mj(model, data, current_obs_size)
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        super()._init_from_mj(None, model, data, current_obs_size)
         self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
         self.data_type_ind = self.data_type_ind[self._entry_index]
         self.obs_ind = self.obs_ind[0]
@@ -493,8 +495,8 @@ class FreeJointPosNoXY(FreeJointPos):
 
     dim = 5
 
-    def _init_from_mj(self, model, data, current_obs_size):
-        super()._init_from_mj(model, data, current_obs_size)
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        super()._init_from_mj(None, model, data, current_obs_size)
         self.min, self.max = self.min[2:], self.max[2:]
         self.data_type_ind = self.data_type_ind[2:]
         self.obs_ind = self.obs_ind[:-2]
@@ -515,7 +517,7 @@ class JointPos(SimpleObs):
 
     dim = 1
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qpos)
         assert dim == self.dim
         jh = model.joint(jnt_name2id(self.xml_name, model))
@@ -543,7 +545,7 @@ class FreeJointVel(SimpleObs):
 
     dim = 6
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qvel)
         assert dim == self.dim
         # note: free joints do not have limits
@@ -570,8 +572,8 @@ class EntryFromFreeJointVel(FreeJointVel):
         self._entry_index = entry_index
         super().__init__(**kwargs)
 
-    def _init_from_mj(self, model, data, current_obs_size):
-        super()._init_from_mj(model, data, current_obs_size)
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        super()._init_from_mj(None, model, data, current_obs_size)
         self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
         self.data_type_ind = self.data_type_ind[self._entry_index]
         self.obs_ind = self.obs_ind[0]
@@ -591,7 +593,7 @@ class JointVel(SimpleObs):
 
     dim = 1
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qvel)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -614,7 +616,7 @@ class SitePos(SimpleObs):
 
     dim = 3
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.site(self.xml_name).xpos)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
@@ -637,7 +639,7 @@ class SiteRot(SimpleObs):
 
     dim = 9
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         # Sites don't have rotation quaternion for some reason...
         # x_mat is rotation matrix with shape (9, )
         dim = len(data.site(self.xml_name).xmat)
@@ -671,7 +673,7 @@ class ProjectedGravityVector(Observation):
         self.xml_name = xml_name
         super().__init__(obs_name)
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_type_ind = np.array(mj_jntname2qposid(self.xml_name, model))[3:]  # only the quaternion part is needed
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
@@ -735,7 +737,7 @@ class Force(Observation):
         self.data_geom_id1 = None
         self.data_geom_id2 = None
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         # get all required information from data
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_geom_id1 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, self.xml_name_geom1)

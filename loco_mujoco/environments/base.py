@@ -433,7 +433,7 @@ class LocoEnv(Mjx):
         traj_no = 0
         subtraj_step_no = 0
         traj_data_sample = self.th.get_current_traj_data(self._additional_carry, np)
-        self.set_sim_state_from_traj_data(self._data, traj_data_sample, None)
+        self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
 
         if render:
             frame = self.render(record)
@@ -452,7 +452,7 @@ class LocoEnv(Mjx):
             for j in tqdm(range(n_steps_per_episode)):
 
                 if callback_class is None:
-                    self.set_sim_state_from_traj_data(self._data, traj_data_sample, None)
+                    self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
                     self._model, self._data, self._additional_carry = (
                         self._simulation_pre_step(self._model, self._data, self._additional_carry))
                     mujoco.mj_forward(self._model, self._data)
@@ -539,7 +539,6 @@ class LocoEnv(Mjx):
                              record, recorder_params, callback_class, key)
 
     def set_sim_state_from_traj_data(self, data, traj_data, carry):
-
         traj_state = carry.traj_state
         # get the initial state of the current trajectory
         traj_data_init = self.th.traj.data.get(traj_state.traj_no, traj_state.subtraj_step_no_init, np)

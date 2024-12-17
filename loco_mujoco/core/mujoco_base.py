@@ -373,8 +373,7 @@ class Mujoco:
         # update the observation space
         self._mdp_info.observation_space = Box(*self._get_obs_limits())
 
-    @staticmethod
-    def _setup_observations(observation_spec, model, data):
+    def _setup_observations(self, observation_spec, model, data):
         """
         Sets up the observation space for the environment. It generates a dictionary containing all the observation
         types and their corresponding information, as well as two dataclasses containing the indices in the
@@ -405,7 +404,7 @@ class Mujoco:
         # calculate the indices for the different observation types
         for obs in observation_spec:
             # initialize the observation type and get all relevant data indices
-            obs.init_from_mj(model, data, i, data_ind, obs_ind)
+            obs.init_from_mj(self, model, data, i, data_ind, obs_ind)
             i += obs.dim
             obs_container[obs.name] = obs
 

@@ -107,7 +107,7 @@ class Goal(StatefulObservation):
 
 class NoGoal(Goal):
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_type_ind = np.array([])
         self.obs_ind = np.array([])
@@ -161,7 +161,7 @@ class GoalRandomRootVelocity(Goal):
 
         super().__init__(info_props, **kwargs)
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_type_ind = np.array([i for i in range(data.userdata.size)])
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
@@ -280,7 +280,7 @@ class GoalTrajArrow(Goal):
 
         super().__init__(info_props, **kwargs)
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         # todo: This will only work if userdata contains only a single goal and no other info.
         self.data_type_ind = np.array([i for i in range(data.userdata.size)])
@@ -374,7 +374,7 @@ class GoalTrajMimic(Goal):
         self._qvel_ind = None
         self._size_additional_observation = None
 
-    def _init_from_mj(self, model, data, current_obs_size):
+    def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
         self.data_type_ind = np.array([i for i in range(data.userdata.size)])
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
