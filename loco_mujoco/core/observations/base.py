@@ -334,6 +334,7 @@ class StatefulObservation(Observation, StatefulObject):
         Initialize the observation type from the Mujoco data structure and model.
 
         Args:
+            env: Environment instance.
             model: The Mujoco model.
             data: The Mujoco data structure.
             current_obs_size: The current size of the observation space.
@@ -342,7 +343,7 @@ class StatefulObservation(Observation, StatefulObject):
 
         """
         # extract all information from data and model
-        self._init_from_mj(None, model, data, current_obs_size)
+        self._init_from_mj(env, model, data, current_obs_size)
 
     @classmethod
     def get_all_obs_of_type(cls, env, model, data, data_ind_cont, backend):
@@ -779,12 +780,47 @@ class Force(Observation):
         return c_array
 
 
+class LastAction(StatefulObservation):
+
+    def __init__(self, obs_name: str):
+        super().__init__(obs_name)
+        self.dim = None
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        self.dim = env.action_dim
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._initialized_from_mj = True
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        """
+        Get the observation and update the state.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            carry: The state carry.
+            backend: The backend to use, either np or jnp.
+
+        Returns:
+            The observation and the updated state.
+
+        """
+        return carry.last_action, carry
+
+
 class HeightMatrix(StatefulObservation):
 
     def __init__(self, obs_name: str):
         super().__init__(obs_name)
         self.matrix_config = dict()  # todo: setup the matrix configuration
         self.dim = 0 # todo: implement this. It should be the flattened size of the matrix
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim # todo
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._initialized_from_mj = True
 
     def get_obs_and_update_state(self, env, model, data, carry, backend):
         """
@@ -805,7 +841,7 @@ class HeightMatrix(StatefulObservation):
         # configure the matrix
         matrix = env._terrain.get_height_matrix(env, self.matrix_config, env, model, data, carry, backend)
 
-        return backend.ravel(matrix)
+        return backend.ravel(matrix), carry
 
 
 class ObservationType:
@@ -826,6 +862,7 @@ class ObservationType:
     SiteRot = SiteRot
     ProjectedGravityVector = ProjectedGravityVector
     Force = Force
+    LastAction = LastAction
 
     @classmethod
     def register(cls, new_obs_type):

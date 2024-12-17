@@ -73,6 +73,7 @@ class Mujoco:
         self._info = None
         self._additional_carry = None
         self._cur_step_in_episode = 0
+        self.action_dim = len(actuation_spec)
 
         # setup goal
         spec, self._goal = self._setup_goal(spec, goal_type, goal_params)
@@ -163,7 +164,7 @@ class Mujoco:
         carry = self._additional_carry
 
         # preprocess action
-        action, carry = self._preprocess_action(action, self._model, self._data, carry)
+        processed_action, carry = self._preprocess_action(action, self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data, cur_info, carry = self._step_init(cur_obs, self._data, cur_info, carry)
@@ -173,7 +174,7 @@ class Mujoco:
         for i in range(self._n_intermediate_steps):
 
             if self._recompute_action_per_step or ctrl_action is None:
-                ctrl_action = self._compute_action(cur_obs, action)
+                ctrl_action = self._compute_action(cur_obs, processed_action)
                 self._data.ctrl[self._action_indices] = ctrl_action
 
             # modify data and model during simulation, before main step
@@ -357,6 +358,7 @@ class Mujoco:
         """
         self._action_indices = self.get_action_indices(self._model, self._data, actuation_spec)
         self._mdp_info.action_space = Box(*self._get_action_limits(self._action_indices, self._model))
+        self.action_dim = len(actuation_spec)
 
     def set_observation_spec(self, observation_spec):
         """

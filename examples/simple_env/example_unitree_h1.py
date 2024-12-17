@@ -30,7 +30,7 @@ while True:
         key, _rng = jax.random.split(key)
         env.reset(_rng)
         i = 0
-    action = np.random.randn(action_dim)*0.0
+    action = np.random.randn(action_dim)
     nstate, reward, absorbing, done, info = env.step(action)
 
     env.render()

@@ -8,7 +8,6 @@ os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
 
 env = LocoEnv.make("MjxUnitreeH1.walk",
-                   random_start=False,
                    reward_type="LocomotionReward",
                    terrain_type="RoughTerrain",
                    init_state_type="TrajInitialStateHandler",

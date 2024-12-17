@@ -109,13 +109,13 @@ class Mjx(Mujoco):
         cur_obs, data, cur_info, carry = self._step_init(state.observation, data, state.info, carry)
 
         # preprocess action
-        action, carry = self._mjx_preprocess_action(action, self._model, data, carry)
+        processed_action, carry = self._mjx_preprocess_action(action, self._model, data, carry)
 
         # modify data and model *before* step if needed
         sys, data, carry = self._mjx_simulation_pre_step(self.sys, data, carry)
 
         # step in the environment using the action
-        ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(action)
+        ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(processed_action)
         data = data.replace(ctrl=ctrl)
         step_fn = lambda _, x: mjx.step(sys, x)
         data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
