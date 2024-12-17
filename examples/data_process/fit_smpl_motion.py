@@ -13,9 +13,9 @@ import torch
 from torch.autograd import Variable
 
 import loco_mujoco
-from loco_mujoco.smpl import SMPL_Parser, SMPLX_Parser
+from loco_mujoco.smpl import SMPL_Parser, SMPLX_Parser, SMPLH_Parser
 from loco_mujoco.smpl.utils import torch_utils
-from loco_mujoco.smpl import SMPL_BONE_ORDER_NAMES
+from loco_mujoco.smpl import SMPLH_BONE_ORDER_NAMES
 from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
 from loco_mujoco.smpl.utils.smoothing import gaussian_filter_1d_batch
 
@@ -69,28 +69,26 @@ def main(cfg: DictConfig) -> None:
     robot_joint_pick = [i[0] for i in cfg.robot.joint_matches]
     smpl_joint_pick = [i[1] for i in cfg.robot.joint_matches]
     robot_joint_pick_idx = [robot_joint_names_augment.index(j) for j in robot_joint_pick]
-    smpl_joint_pick_idx = [SMPL_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
+    smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
 
     all_pkls = glob.glob(str(path_to_all_amass_files), recursive=True)
     key_names = ["0-" + "_".join(data_path.split("/")[-3:]).replace(".npz", "") for data_path in all_pkls]
 
-    #data_key = "0-KIT_3_walking_slow08_poses"
-    #data_key = "0-Transitions_mocap_mazen_c3d_dance_stand_poses"
     data_key = "0-Transitions_mocap_mazen_c3d_airkick_jumpinplace_poses"
 
     # todo: SMPLX_Parser works for python 3.11 but SMPL_Parser not!
-    _test = SMPLX_Parser(model_path=path_to_smpl_model, gender="neutral")
-    smpl_parser_n = SMPL_Parser(model_path=path_to_smpl_model, gender="neutral")
+    smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
 
     amass_data = load_amass_data(all_pkls[key_names.index(data_key)])
     skip = int(amass_data['fps']//30)
     trans = torch.from_numpy(amass_data['trans'][::skip])
     N = trans.shape[0]
     pose_aa_walk = torch.from_numpy(amass_data['pose_aa'][::skip]).float()
+    pose_aa_walk = torch.cat([pose_aa_walk, torch.zeros((pose_aa_walk.shape[0], 156 - pose_aa_walk.shape[1]))], axis = -1) # Setting the hand pose to zero. 
     shape_new, scale = joblib.load(loco_mujoco_path.parent / "data" / cfg.robot.name / "shape_optimized_v1.pkl")
-
+    
     with torch.no_grad():
-        verts, joints = smpl_parser_n.get_joints_verts(pose_aa_walk, shape_new, trans)
+        verts, joints = smpl_parser_n.get_joints_verts(pose_aa_walk.reshape(N, -1, 3), shape_new.repeat(N, 1), trans)
         root_pos = joints[:, 0:1]
         joints = (joints - joints[:, 0:1]) * scale.detach() + root_pos
         
@@ -143,27 +141,6 @@ def main(cfg: DictConfig) -> None:
         pbar.set_description_str(f"Iter: {iteration} \t {loss.item() * 1000:.3f}")
         dof_pos_new.data = gaussian_filter_1d_batch(dof_pos_new.squeeze().transpose(1, 0)[None, ], kernel_size, sigma).transpose(2, 1)[..., None]
         
-        # from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
-        # import matplotlib.pyplot as plt
-        
-        # j3d = fk_return.global_translation[0, :, :, :].detach().numpy()
-        # j3d_joints = joints.detach().numpy()
-        # idx = 0
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111, projection='3d')
-        # ax.view_init(90, 0)
-        # ax.scatter(j3d[idx, :,0], j3d[idx, :,1], j3d[idx, :,2])
-        # ax.scatter(j3d_joints[idx, :,0], j3d_joints[idx, :,1], j3d_joints[idx, :,2])
-
-        # ax.set_xlabel('X Label')
-        # ax.set_ylabel('Y Label')
-        # ax.set_zlabel('Z Label')
-        # drange = 1
-        # ax.set_xlim(-drange, drange)
-        # ax.set_ylim(-drange, drange)
-        # ax.set_zlim(-drange, drange)
-        # plt.show()
-        
         
     dof_pos_new.data.clamp_(humanoid_fk.joints_range[:, 0, None], humanoid_fk.joints_range[:, 1, None])
     pose_aa_h1_new = torch.cat([root_rot_new[None, :, None], humanoid_fk.dof_axis * dof_pos_new, torch.zeros((1, N, 2, 3))], axis = 2)
@@ -174,8 +151,8 @@ def main(cfg: DictConfig) -> None:
 
     joints_dump = joints.numpy().copy()
     joints_dump[..., 2] -= height_diff
-    #import ipdb; ipdb.set_trace()
-    dumped_file = path_to_amass_datasets / f"{cfg.robot.name}/{data_key}.pkl"
+    os.makedirs(f"data/{cfg.robot.name}", exist_ok=True)
+    dumped_file = f"data/{cfg.robot.name}/{data_key}.pkl"
     print(dumped_file)
     joblib.dump(
         {

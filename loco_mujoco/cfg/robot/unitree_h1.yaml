@@ -1,21 +1,24 @@
-name: unitreeh1
-mjcf_file: unitree_h1/h1.xml
+name: unitree_h1
+
+mjcf_file: "unitree_h1/h1.xml"
+
+#### Config for extension
 extend_config:
   - joint_name: "left_hand_link"
     parent_name: "left_elbow_link"
-    pos: [0.0, 0.0, 0.3]
+    pos: [0.3, 0.0, 0.0]
     rot: [1.0, 0.0, 0.0, 0.0]
   - joint_name: "right_hand_link"
     parent_name: "right_elbow_link"
-    pos: [0.0, 0.0, 0.3]
+    pos: [0.3, 0.0, 0.0]
     rot: [1.0, 0.0, 0.0, 0.0]
   - joint_name: "head_link"
     parent_name: "pelvis"
-    pos: [0.0, 0.0, 0.75]
+    pos: [0.0, 0.0, 0.6]
     rot: [1.0, 0.0, 0.0, 0.0]
     
-    
 
+base_link: "torso_link"
 joint_matches:
   - ["pelvis", "Pelvis"]
   - ["left_hip_yaw_link", "L_Hip"]
@@ -26,8 +29,10 @@ joint_matches:
   - ["right_ankle_link", "R_Ankle"]
   - ["left_shoulder_roll_link", "L_Shoulder"]
   - ["left_elbow_link", "L_Elbow"]
+  - ["left_hand_link", "L_Wrist"]
   - ["right_shoulder_roll_link", "R_Shoulder"]
   - ["right_elbow_link", "R_Elbow"]
+  - ["right_hand_link", "R_Wrist"]
   - ["head_link", "Head"]
 
 

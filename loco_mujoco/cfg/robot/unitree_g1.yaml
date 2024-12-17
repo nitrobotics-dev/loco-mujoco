@@ -1,5 +1,5 @@
 name: unitree_g1
-mjcf_file: unitree_g1/g1.xml
+mjcf_file: unitree_g1/g1_29dof.xml
 extend_config:
   - joint_name: "head_link"
     parent_name: "pelvis"
@@ -15,11 +15,11 @@ joint_matches:
   - ["right_knee_link", "R_Knee"]
   - ["right_ankle_pitch_link", "R_Ankle"]
   - ["left_shoulder_roll_link", "L_Shoulder"]
-  - ["left_elbow_pitch_link", "L_Elbow"]
-  - ["left_zero_link", "L_Hand"]
+  - ["left_elbow_link", "L_Elbow"]
+  - ["left_wrist_yaw_link", "L_Wrist"]
   - ["right_shoulder_roll_link", "R_Shoulder"]
-  - ["right_elbow_pitch_link", "R_Elbow"]
-  - ["right_zero_link", "R_Hand"]
+  - ["right_elbow_link", "R_Elbow"]
+  - ["right_wrist_yaw_link", "R_Wrist"]
   - ["head_link", "Head"]
 
 smpl_pose_modifier:

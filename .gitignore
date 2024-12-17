@@ -17,3 +17,4 @@ outputs/
 multirun/
 home/
 loco_mujoco/smpl/conf_paths.yaml
+data/
