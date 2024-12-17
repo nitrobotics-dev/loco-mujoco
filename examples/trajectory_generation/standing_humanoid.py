@@ -22,7 +22,7 @@ The example shows how to:
 N_steps = 1000
 
 # create the environment
-env = LocoEnv.make("UnitreeH1", random_start=False)
+env = LocoEnv.make("UnitreeH1", init_state_type="DefaultInitialStateHandler")
 
 # reset the env
 key = jax.random.PRNGKey(0)

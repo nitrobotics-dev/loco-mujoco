@@ -594,6 +594,7 @@ class LocoEnv(Mjx):
         carry = LocoCarry(key=key,
                           traj_state=self.th.init_state(self, _k1, model, data, backend) if self.th is not None else EmptyState(),
                           cur_step_in_episode=1,
+                          last_action=backend.zeros(self.info.action_space.shape),
                           final_info={},
                           final_observation=backend.zeros(self.info.observation_space.shape),
                           observation_states=self.obs_container.init_state(self, _k2, model, data, backend),

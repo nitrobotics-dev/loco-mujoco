@@ -27,6 +27,7 @@ from loco_mujoco.core.utils import TerminalStateHandler
 class AdditionalCarry:
     key: jax.Array
     cur_step_in_episode: int
+    last_action: Union[np.ndarray, jax.Array]
     # todo: these should be the respective state dataclasses
     observation_states: Union[np.ndarray, jax.Array]
     reward_state: Union[np.ndarray, jax.Array]
@@ -209,7 +210,7 @@ class Mujoco:
 
         self._obs = cur_obs
         self._cur_step_in_episode += 1
-        self._additional_carry = carry
+        self._additional_carry = carry.replace(last_action=action)
 
         return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
@@ -554,6 +555,7 @@ class Mujoco:
     def _init_additional_carry(self, key, model, data, backend):
         return AdditionalCarry(key=key,
                                cur_step_in_episode=1,
+                               last_action=np.zeros(self.info.action_space.shape),
                                observation_states=self.obs_container.init_state(self, key, model, data, backend))
 
     def get_model(self):
