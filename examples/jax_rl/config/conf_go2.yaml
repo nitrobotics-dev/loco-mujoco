@@ -26,7 +26,7 @@ experiment:
     terminal_state_type: HeightBasedTerminalStateHandler
     goal_type: GoalRandomRootVelocity
     reward_type: TargetVelocityGoalReward
-    random_start: false
+    init_state_type: TrajInitialStateHandler
   hidden_layers: [512, 256]
   lr: 1e-4
   num_envs: 2048

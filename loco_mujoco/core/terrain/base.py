@@ -1,7 +1,8 @@
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Tuple
 from types import ModuleType
 
 import jax.numpy as jnp
+import numpy as np
 from mujoco import MjData, MjModel, MjSpec
 from mujoco.mjx import Data, Model
 
@@ -36,7 +37,7 @@ class Terrain(StatefulObject):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: ModuleType):
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset the terrain.
 
@@ -46,6 +47,9 @@ class Terrain(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
@@ -57,7 +61,7 @@ class Terrain(StatefulObject):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType):
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update the terrain.
 
@@ -67,6 +71,9 @@ class Terrain(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
@@ -94,7 +101,7 @@ class Terrain(StatefulObject):
                           env: Any, model: Union[MjModel, Model],
                           data: Union[MjData, Data],
                           carry: Any,
-                          backend: ModuleType) -> ModuleType:
+                          backend: ModuleType) -> Union[np.ndarray, jnp.ndarray]:
         """
         Get the height matrix for the terrain.
 
@@ -107,7 +114,7 @@ class Terrain(StatefulObject):
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            ModuleType: The height matrix.
+            Union[np.ndarray, jnp.ndarray]: The height matrix.
 
         Raises:
             NotImplementedError: If not implemented in a subclass.
@@ -156,12 +163,12 @@ class Terrain(StatefulObject):
         Raises:
             ValueError: If a terrain with the same name is already registered.
         """
-        env_name = cls.get_name()
+        cls_name = cls.get_name()
 
-        if env_name in Terrain.registered:
-            raise ValueError(f"Terrain '{env_name}' is already registered.")
+        if cls_name in Terrain.registered:
+            raise ValueError(f"Terrain '{cls_name}' is already registered.")
 
-        Terrain.registered[env_name] = cls
+        Terrain.registered[cls_name] = cls
 
     @staticmethod
     def list_registered() -> List[str]:

@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Union, Tuple
 from types import ModuleType
 
 import numpy as np
@@ -53,7 +53,7 @@ class DefaultRandomizer(DomainRandomizer):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: ModuleType) -> tuple:
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset the randomizer, applying domain randomization.
 
@@ -65,7 +65,7 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated data and carry.
+            Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
         """
         assert_backend_is_supported(backend)
         domain_randomizer_state = carry.domain_randomizer_state
@@ -81,7 +81,7 @@ class DefaultRandomizer(DomainRandomizer):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType) -> tuple:
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update the randomizer by applying the state changes to the model.
 
@@ -93,7 +93,7 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated model, data, and carry.
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
         """
         assert_backend_is_supported(backend)
         domrand_state = carry.domain_randomizer_state
@@ -106,7 +106,7 @@ class DefaultRandomizer(DomainRandomizer):
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
                            carry: Any,
-                           backend: ModuleType) -> tuple:
+                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
         Update the observation with randomization effects.
 
@@ -119,7 +119,7 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The updated observation and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The updated observation and carry.
         """
         assert_backend_is_supported(backend)
         return obs, carry
@@ -130,7 +130,7 @@ class DefaultRandomizer(DomainRandomizer):
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       carry: Any,
-                      backend: ModuleType) -> tuple:
+                      backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
         Update the action with randomization effects.
 
@@ -143,14 +143,14 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The updated action and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The updated action and carry.
         """
         assert_backend_is_supported(backend)
         return action, carry
 
     def _sample_geom_friction(self, model: Union[MjModel, Model],
                               carry: Any,
-                              backend: ModuleType):
+                              backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
         Samples the geometry friction parameters.
 
@@ -160,7 +160,7 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Union[np.ndarray, jnp.ndarray]: The randomized geometry friction parameters.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry friction parameters and carry.
         """
         assert_backend_is_supported(backend)
 
@@ -201,7 +201,7 @@ class DefaultRandomizer(DomainRandomizer):
 
     def _sample_geom_damping_and_stiffness(self, model: Union[MjModel, Model],
                                            carry: Any,
-                                           backend: ModuleType):
+                                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
         """
         Samples the geometry damping and stiffness parameters.
 
@@ -211,12 +211,13 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Union[np.ndarray, jnp.ndarray]: The randomized geometry damping and stiffness parameters.
+            Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry damping
+            and stiffness parameters and carry.
         """
         assert_backend_is_supported(backend)
 
-        n_geoms = model.ngeom
         damping_min, damping_max = self.rand_conf["geom_damping_range"]
+        n_geoms = model.ngeom
         stiffness_min, stiffness_max = self.rand_conf["geom_stiffness_range"]
 
         if backend == jnp:

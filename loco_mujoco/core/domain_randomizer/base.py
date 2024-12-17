@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Tuple
 from types import ModuleType
 
 import numpy as np
@@ -34,7 +34,7 @@ class DomainRandomizer(StatefulObject):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: ModuleType):
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset the domain randomizer.
 
@@ -44,6 +44,9 @@ class DomainRandomizer(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
 
         Raises:
             ValueError: If the backend module is not supported.
@@ -56,7 +59,7 @@ class DomainRandomizer(StatefulObject):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType):
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update the domain randomizer.
 
@@ -66,6 +69,9 @@ class DomainRandomizer(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
 
         Raises:
             ValueError: If the backend module is not supported.
@@ -79,7 +85,7 @@ class DomainRandomizer(StatefulObject):
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
                            carry: Any,
-                           backend: ModuleType):
+                           backend: ModuleType) -> Tuple[Union[np.ndarray, jax.Array], Any]:
         """
         Update the observation with domain randomization effects.
 
@@ -90,6 +96,9 @@ class DomainRandomizer(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[np.ndarray, jax.Array], Any]: The updated observation and carry.
 
         Raises:
             ValueError: If the backend module is not supported.
@@ -103,7 +112,7 @@ class DomainRandomizer(StatefulObject):
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       carry: Any,
-                      backend: ModuleType):
+                      backend: ModuleType) -> Tuple[Union[np.ndarray, jax.Array], Any]:
         """
         Update the action with domain randomization effects.
 
@@ -114,6 +123,9 @@ class DomainRandomizer(StatefulObject):
             data (Union[MjData, Data]): The simulation data.
             carry (Any): Carry instance with additional state information.
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[np.ndarray, jax.Array], Any]: The updated action and carry.
 
         Raises:
             ValueError: If the backend module is not supported.
@@ -141,12 +153,12 @@ class DomainRandomizer(StatefulObject):
         Raises:
             ValueError: If the domain randomizer is already registered.
         """
-        env_name = cls.get_name()
+        cls_name = cls.get_name()
 
-        if env_name in DomainRandomizer.registered:
-            raise ValueError(f"DomainRandomizer '{env_name}' is already registered.")
+        if cls_name in DomainRandomizer.registered:
+            raise ValueError(f"DomainRandomizer '{cls_name}' is already registered.")
 
-        DomainRandomizer.registered[env_name] = cls
+        DomainRandomizer.registered[cls_name] = cls
 
     @staticmethod
     def list_registered() -> List[str]:

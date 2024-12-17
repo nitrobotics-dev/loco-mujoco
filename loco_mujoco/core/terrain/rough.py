@@ -1,5 +1,5 @@
 from types import ModuleType
-from typing import Any, Union, Dict
+from typing import Any, Union, Dict, Tuple
 from pathlib import Path
 
 import numpy as np
@@ -142,7 +142,7 @@ class RoughTerrain(DynamicTerrain):
 
     def reset(self, env: Any,
               model: Union[MjModel, Model], data: Union[MjData, Data], carry: Any,
-              backend: ModuleType) -> tuple:
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset the rough terrain and update its state.
 
@@ -154,7 +154,7 @@ class RoughTerrain(DynamicTerrain):
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated data and carry.
+            Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
         """
         assert_backend_is_supported(backend)
         terrain_state = carry.terrain_state
@@ -176,7 +176,7 @@ class RoughTerrain(DynamicTerrain):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType) -> tuple:
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update the rough terrain and simulation state.
 
@@ -188,7 +188,7 @@ class RoughTerrain(DynamicTerrain):
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated model, data, and carry.
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
         """
         assert_backend_is_supported(backend)
         terrain_state = carry.terrain_state

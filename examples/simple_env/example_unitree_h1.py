@@ -2,13 +2,14 @@ import numpy as np
 import jax
 from loco_mujoco import LocoEnv
 
-
 # create the environment and task
-env = LocoEnv.make("MjxUnitreeH1.walk", disable_arms=False, random_start=False,
-                   terrain_type="RoughTerrain", terminal_state_type="HeightBasedTerminalStateHandler",
+env = LocoEnv.make("UnitreeH1.walk", disable_arms=False,
+                   #terrain_type="RoughTerrain",
+                   init_state_type="DefaultInitialStateHandler",
+                   terminal_state_type="HeightBasedTerminalStateHandler",
                    reward_type="MimicReward",
                    goal_type="GoalRandomRootVelocity",
-                   goal_params=dict(visualize_goal=True))
+                   goal_params=dict(visualize_goal=False))
 
 # get the dataset for the chosen environment and task
 #expert_data = env.create_dataset()

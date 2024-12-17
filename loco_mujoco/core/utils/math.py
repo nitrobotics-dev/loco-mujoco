@@ -380,7 +380,7 @@ def quaternion_angular_distance(q1, q2, backend):
         array: Angular distance between the two rotations. Shape (batch_size,)
     """
 
-    if backend == "np":
+    if backend == np:
         R = np_R
     else:
         R = jnp_R

@@ -18,7 +18,7 @@ class TrajState:
 
 class TrajectoryHandler(StatefulObject):
     """
-    General class to handle Trajectory. It filters and extends the trajectory data to match
+    General class to handle Trajectories. It filters and extends the trajectory data to match
     the current model's joints, bodies and sites. The key idea is to ensure that TrajectoryData has the same
     dimensionality and order for all its attributes as in the Mujoco data structure. So TrajectoryData is a
     simplified version of the Mujoco data structure with fewer attributes. This class also automatically
@@ -57,6 +57,7 @@ class TrajectoryHandler(StatefulObject):
         # todo: implement this in observation types in init_from_traj!
         #self.check_if_trajectory_is_in_range(low, high, keys, joint_pos_idx, warn, clip_trajectory_to_joint_ranges)
 
+        assert (fixed_start_conf is not None) != random_start, "Please specify either fixed_start_conf or random_start."
         self._random_start = random_start
         self._fixed_start_conf = fixed_start_conf
         self.use_fixed_start = True if fixed_start_conf is not None else False

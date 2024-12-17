@@ -269,7 +269,7 @@ class MimicReward(Reward):
         traj_data = env.th.traj.data
 
         # get all quantities from trajectory
-        traj_data_single = traj_data.get(carry.traj_state.traj_no, carry.traj_state.subtraj_step_no)
+        traj_data_single = traj_data.get(carry.traj_state.traj_no, carry.traj_state.subtraj_step_no, backend)
         qpos_traj, qvel_traj = traj_data_single.qpos[self._qpos_ind], traj_data_single.qvel[self._qvel_ind]
         qpos_quat_traj = qpos_traj[self._quat_in_qpos].reshape(-1, 4)
         site_rpos_traj, site_rangles_traj, site_rvel_traj =\

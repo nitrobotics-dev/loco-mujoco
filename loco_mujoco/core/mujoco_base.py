@@ -19,6 +19,7 @@ from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, Reward, info_prop
 from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
+from loco_mujoco.core.initial_state_handler import InitialStateHandler
 from loco_mujoco.core.utils import TerminalStateHandler
 
 
@@ -26,10 +27,12 @@ from loco_mujoco.core.utils import TerminalStateHandler
 class AdditionalCarry:
     key: jax.Array
     cur_step_in_episode: int
+    # todo: these should be the respective state dataclasses
     observation_states: Union[np.ndarray, jax.Array]
     reward_state: Union[np.ndarray, jax.Array]
     domain_randomizer_state: Union[np.ndarray, jax.Array]
     terrain_state: Union[np.ndarray, jax.Array]
+    init_state_handler_state: Union[np.ndarray, jax.Array]
 
 
 class Mujoco:
@@ -47,6 +50,7 @@ class Mujoco:
                  terminal_state_type="RootPoseTrajTerminalStateHandler", terminal_state_params=None,
                  domain_randomization_type="NoDomainRandomization", domain_randomization_params=None,
                  terrain_type="StaticTerrain", terrain_params=None,
+                 init_state_type="DefaultInitialStateHandler", init_state_params=None,
                  **viewer_params):
 
         # set the timestep if provided, else read it from model
@@ -105,6 +109,11 @@ class Mujoco:
         domain_randomization_params = {} if domain_randomization_params is None else domain_randomization_params
         self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](**domain_randomization_params)
 
+        # setup initial state handler
+        if init_state_params is None:
+            init_state_params = {}
+        self._init_state_handler = InitialStateHandler.registered[init_state_type](self, **init_state_params)
+
         # setup terminal state handler
         if terminal_state_params is None:
             terminal_state_params = {}
@@ -132,7 +141,7 @@ class Mujoco:
 
     def reset(self, key):
         key, subkey = jax.random.split(key)
-        self._model = deepcopy(self._init_model)
+        self._model = deepcopy(self._init_model)    # todo: this is not efficient, think about a better way
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
@@ -166,7 +175,7 @@ class Mujoco:
                 ctrl_action = self._compute_action(cur_obs, action)
                 self._data.ctrl[self._action_indices] = ctrl_action
 
-            # modify data during simulation, before main step
+            # modify data and model during simulation, before main step
             self._model, self._data, carry = self._simulation_pre_step(self._model, self._data, carry)
 
             # main mujoco step, runs the sim for n_substeps
@@ -265,6 +274,7 @@ class Mujoco:
             The updated model, data and carry.
         """
         data, carry = self._terrain.reset(self, model, data, carry, np)
+        data, carry = self._init_state_handler.reset(self, model, data, carry, np)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, np)
         return data, carry
 
@@ -477,13 +487,14 @@ class Mujoco:
         return np.concatenate([obs_not_stateful, *obs_stateful]), carry
 
     @staticmethod
-    def _set_sim_state_from_traj_data(data, traj_data):
+    def set_sim_state_from_traj_data(data, traj_data, carry):
         """
         Sets the Mujoco datastructure to the state specified in the trajectory data.
 
         Args:
             data: Mujoco data structure.
             traj_data: Trajectory data.
+            carry: Additional carry information.
 
         """
         # set the body pos

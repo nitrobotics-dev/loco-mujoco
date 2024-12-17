@@ -23,11 +23,11 @@ defaults:
 #      experiment.env_params.reward_params.action_rate_coeff: 1e-2, 1e-3
 
 wandb:
-  project: "unitreeA1_wyaw"
+  project: "unitreeH1_wyaw2"
 
 experiment:
   env_params:
-    env_name: MjxUnitreeA1
+    env_name: MjxUnitreeH1.walk
     horizon: 1000
     terminal_state_type: HeightBasedTerminalStateHandler
     goal_type: GoalRandomRootVelocity
@@ -38,15 +38,16 @@ experiment:
         air_time_max: 0.5
         joint_position_limit_coeff: 5.0
         action_rate_coeff: 0.01
+        nominal_joint_pos_coeff: 0.02
     #terrain_type: RoughTerrain
     init_state_type: TrajInitialStateHandler
-    #domain_randomization_type: DefaultRandomizer
-    #domain_randomization_params: ${domain_randomization}
+    domain_randomization_type: DefaultRandomizer
+    domain_randomization_params: ${domain_randomization}
   hidden_layers: [512, 256]
   lr: 1e-4
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 5e7
+  total_timesteps: 50e7
   update_epochs: 4
   num_minibatches: 32
   gamma: 0.99

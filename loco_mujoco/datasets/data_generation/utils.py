@@ -15,7 +15,7 @@ class ReplayCallback:
 
     @staticmethod
     def __call__(env, model, data, traj_sample, carry):
-        env._set_sim_state_from_traj_data(data, traj_sample)
+        env.set_sim_state_from_traj_data(data, traj_sample, None)
         env._simulation_pre_step(model, data, carry)
         mujoco.mj_forward(model, data)
         env._simulation_post_step(model, data, carry)

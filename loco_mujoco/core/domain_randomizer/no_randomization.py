@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Union, Tuple
 from types import ModuleType
 
 import numpy as np
@@ -19,7 +19,7 @@ class NoDomainRandomization(DomainRandomizer):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: ModuleType) -> tuple:
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset with no randomization applied.
 
@@ -31,7 +31,7 @@ class NoDomainRandomization(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The unchanged data and carry.
+            Tuple[Union[MjData, Data], Any]: The unchanged data and carry.
         """
         assert_backend_is_supported(backend)
         return data, carry
@@ -40,7 +40,7 @@ class NoDomainRandomization(DomainRandomizer):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType) -> tuple:
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update with no randomization applied.
 
@@ -52,7 +52,7 @@ class NoDomainRandomization(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The unchanged model, data, and carry.
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The unchanged model, data, and carry
         """
         assert_backend_is_supported(backend)
         return model, data, carry
@@ -62,7 +62,7 @@ class NoDomainRandomization(DomainRandomizer):
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
                            carry: Any,
-                           backend: ModuleType) -> tuple:
+                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
         Update the observation with no randomization applied.
 
@@ -75,7 +75,7 @@ class NoDomainRandomization(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The unchanged observation and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The unchanged observation and carry.
         """
         assert_backend_is_supported(backend)
         return obs, carry
@@ -85,7 +85,7 @@ class NoDomainRandomization(DomainRandomizer):
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       carry: Any,
-                      backend: ModuleType) -> tuple:
+                      backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
         Update the action with no randomization applied.
 
@@ -98,7 +98,7 @@ class NoDomainRandomization(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: The unchanged action and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The unchanged action and carry.
         """
         assert_backend_is_supported(backend)
         return action, carry

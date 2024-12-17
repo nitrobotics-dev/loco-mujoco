@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Union, Tuple
 from types import ModuleType
 
 from mujoco import MjData, MjModel, MjSpec
@@ -19,7 +19,7 @@ class StaticTerrain(Terrain):
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
-              backend: ModuleType) -> tuple:
+              backend: ModuleType) -> Tuple[Union[MjData, Data], Any]:
         """
         Reset the terrain.
 
@@ -31,7 +31,7 @@ class StaticTerrain(Terrain):
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated data and carry.
+            Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
         """
         assert_backend_is_supported(backend)
         return data, carry
@@ -40,7 +40,7 @@ class StaticTerrain(Terrain):
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
-               backend: ModuleType) -> tuple:
+               backend: ModuleType) -> Tuple[Union[MjModel, Model], Union[MjData, Data], Any]:
         """
         Update the terrain.
 
@@ -52,7 +52,7 @@ class StaticTerrain(Terrain):
             backend (ModuleType): Backend module used for computation (e.g., numpy or jax.numpy).
 
         Returns:
-            tuple: Updated model, data, and carry.
+            Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
         """
         assert_backend_is_supported(backend)
         return model, data, carry

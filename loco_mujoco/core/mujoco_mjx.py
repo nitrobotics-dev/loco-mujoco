@@ -111,7 +111,7 @@ class Mjx(Mujoco):
         # preprocess action
         action, carry = self._mjx_preprocess_action(action, self._model, data, carry)
 
-        # modify data *before* step if needed
+        # modify data and model *before* step if needed
         sys, data, carry = self._mjx_simulation_pre_step(self.sys, data, carry)
 
         # step in the environment using the action
@@ -225,6 +225,7 @@ class Mjx(Mujoco):
             The updated model, data and carry.
         """
         data, carry = self._terrain.reset(self, model, data, carry, jnp)
+        data, carry = self._init_state_handler.reset(self, model, data, carry, jnp)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, jnp)
         return data, carry
 
@@ -242,7 +243,7 @@ class Mjx(Mujoco):
         return obs, data, info, carry
 
     @staticmethod
-    def _mjx_set_sim_state_from_traj_data(data, traj_data):
+    def mjx_set_sim_state_from_traj_data(data, traj_data, carry):
         """
         Sets the simulation state from the trajectory data.
         """
