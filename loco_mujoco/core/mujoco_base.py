@@ -17,6 +17,7 @@ import jax.numpy as jnp
 
 from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, Reward, info_property
 from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
+from loco_mujoco.core.control_functions import ControlFunction
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
 from loco_mujoco.core.initial_state_handler import InitialStateHandler
@@ -34,6 +35,7 @@ class AdditionalCarry:
     domain_randomizer_state: Union[np.ndarray, jax.Array]
     terrain_state: Union[np.ndarray, jax.Array]
     init_state_handler_state: Union[np.ndarray, jax.Array]
+    control_func_state: Union[np.ndarray, jax.Array]
 
 
 class Mujoco:
@@ -52,6 +54,7 @@ class Mujoco:
                  domain_randomization_type="NoDomainRandomization", domain_randomization_params=None,
                  terrain_type="StaticTerrain", terrain_params=None,
                  init_state_type="DefaultInitialStateHandler", init_state_params=None,
+                 control_type="DefaultControl", control_params=None,
                  **viewer_params):
 
         # set the timestep if provided, else read it from model
@@ -97,8 +100,16 @@ class Mujoco:
         # define action space bounding box
         action_space = Box(*self._get_action_limits(self._action_indices, self._model))
 
+        # create the MDP information
+        self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
+
         # setup reward function
         self._reward_function = self._setup_reward(reward_type, reward_params)
+
+        # setup control function
+        if control_params is None:
+            control_params = {}
+        self._control_func = ControlFunction.registered[control_type](self, **control_params)
 
         # setup terrain
         terrain_params = {} if terrain_params is None else terrain_params
@@ -122,9 +133,6 @@ class Mujoco:
         self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type, self._model,
                                                                  self._get_all_info_properties(),
                                                                  **terminal_state_params)
-
-        # finally, create the MDP information
-        self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
 
         # set the warning callback to stop the simulation when a mujoco warning occurs
         mujoco.set_mju_user_warning(self.user_warning_raise_exception)
@@ -312,6 +320,7 @@ class Mujoco:
             The action to be used for the current step and the updated carry.
         """
         action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
+        action, carry = self._control_func.generate_action(self, action, model, data, carry, np)
         return action, carry
 
     def _compute_action(self, obs, action):

@@ -131,8 +131,7 @@ class DomainRandomizer(StatefulObject):
             ValueError: If the backend module is not supported.
             NotImplementedError: If the method is not implemented in a subclass.
         """
-        if not assert_backend_is_supported(backend):
-            raise ValueError(f"Unsupported backend module: {backend.__name__}")
+        assert_backend_is_supported(backend)
         raise NotImplementedError
 
     @classmethod
