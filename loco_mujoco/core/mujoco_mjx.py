@@ -312,12 +312,10 @@ class Mjx(Mujoco):
                 self._viewer.render(self._data, record)
 
     def _init_additional_carry(self, key, model, data, backend):
-        return MjxAdditionalCarry(key=key, cur_step_in_episode=1,
-                                  final_observation=backend.zeros(self.info.observation_space.shape),
-                                  first_model=model, final_info={},
-                                  observation_states=self.obs_container.init_state(self, key, model,
-                                                                                   data, backend),
-                                  )
+        carry = super()._init_additional_carry(key, model, data, backend)
+        return MjxAdditionalCarry(final_observation=backend.zeros(self.info.observation_space.shape),
+                                  final_info={},
+                                  **vars(carry))
 
     @property
     def n_envs(self):

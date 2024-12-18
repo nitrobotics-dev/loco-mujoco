@@ -564,10 +564,23 @@ class Mujoco:
         return obs_min, obs_max
 
     def _init_additional_carry(self, key, model, data, backend):
-        return AdditionalCarry(key=key,
-                               cur_step_in_episode=1,
-                               last_action=np.zeros(self.info.action_space.shape),
-                               observation_states=self.obs_container.init_state(self, key, model, data, backend))
+        key, _k1, _k2, _k3, _k4, _k5, _k6, _k7 = jax.random.split(key, 8)
+
+        # create additional carry
+        carry = AdditionalCarry(
+            key=key,
+            cur_step_in_episode=1,
+            last_action=backend.zeros(self.info.action_space.shape),
+            observation_states=self.obs_container.init_state(self, _k1, model, data, backend),
+            reward_state=self._reward_function.init_state(self, _k2, model, data, backend),
+            domain_randomizer_state=self._domain_randomizer.init_state(self, _k3, model, data, backend),
+            terrain_state=self._terrain.init_state(self, _k4, model, data, backend),
+            init_state_handler_state=self._init_state_handler.init_state(self, _k5, model, data, backend),
+            control_func_state=self._control_func.init_state(self, _k6, model, data, backend),
+            terminal_state_handler_state=self._terminal_state_handler.init_state(self, _k7, model,
+                                                                                 data, backend))
+
+        return carry
 
     def get_model(self):
         return deepcopy(self._model)

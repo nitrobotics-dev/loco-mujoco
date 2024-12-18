@@ -571,24 +571,15 @@ class LocoEnv(Mjx):
 
     def _init_additional_carry(self, key, model, data, backend):
 
-        key, _k1, _k2, _k3, _k4, _k5, _k6, _k7, _k8 = jax.random.split(key, 9)
+        carry = super()._init_additional_carry(key, model, data, backend)
+
+        key = carry.key
+        key, _k = jax.random.split(key)
 
         # create additional carry
-        carry = LocoCarry(key=key,
-                          traj_state=self.th.init_state(self, _k1, model, data, backend) if self.th is not None else EmptyState(),
-                          cur_step_in_episode=1,
-                          last_action=backend.zeros(self.info.action_space.shape),
-                          final_info={},
-                          final_observation=backend.zeros(self.info.observation_space.shape),
-                          observation_states=self.obs_container.init_state(self, _k2, model, data, backend),
-                          reward_state=self._reward_function.init_state(self, _k3, model, data, backend),
-                          domain_randomizer_state=self._domain_randomizer.init_state(self, _k4, model, data, backend),
-                          terrain_state=self._terrain.init_state(self, _k5, model, data, backend),
-                          init_state_handler_state=self._init_state_handler.init_state(self, _k6, model, data, backend),
-                          control_func_state=self._control_func.init_state(self, _k7, model, data, backend),
-                          terminal_state_handler_state=self._terminal_state_handler.init_state(self, _k8, model,
-                                                                                               data, backend),
-                          )
+        carry = LocoCarry(
+            traj_state=self.th.init_state(self, _k, model, data, backend) if self.th is not None else EmptyState(),
+            **vars(carry.replace(key=key)))
 
         return carry
 
@@ -604,24 +595,29 @@ class LocoEnv(Mjx):
         return super().mjx_reset(key)
 
     def _reset_init_data_and_model(self, model, data, carry):
+
+        # reset trajectory state
+        if self.th is not None:
+            data, carry = self.th.reset_state(self, self._model, data, carry, np) \
+                if self.th is not None else (data, carry)
+
+        # call parent to apply domain randomization and terrain
         data, carry = super()._reset_init_data_and_model(model, data, carry)
+
+        # apply modification by goal if needed
         data = self._goal.set_data(self, self._model, data, carry, backend=np)
+
         return data, carry
 
     def _mjx_reset_init_data_and_model(self, model, data, carry):
 
+        # reset trajectory state
+        if self.th is not None:
+            data, carry = self.th.reset_state(self, self._model, data, carry, jnp) \
+                if self.th is not None else (data, carry)
+
         # call parent to apply domain randomization and terrain
         data, carry = super()._mjx_reset_init_data_and_model(model, data, carry)
-
-        # # reset trajectory state
-        # data, carry = self.th.reset_state(self, self._model, data, carry, jnp) \
-        #     if self.th is not None else (data, carry)
-        #
-        # if self.th and (self._random_start or self.th.use_fixed_start):
-        #     assert self.th is not None, "If random_start or fixed_start is set to True, a trajectory has to be loaded."
-        #     # init simulation from trajectory
-        #     curr_traj_data = self.th.get_current_traj_data(carry, jnp)
-        #     data = self.mjx_set_sim_state_from_traj_data(data, curr_traj_data, None)
 
         # apply modification by goal if needed
         data = self._goal.set_data(self, self._model, data, carry, backend=jnp)

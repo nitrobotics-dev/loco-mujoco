@@ -43,9 +43,6 @@ class TrajInitialStateHandler(InitialStateHandler):
 
         assert env.th is not None, "If TrajInitialStateHandler is used, a trajectory has to be loaded."
 
-        # reset trajectory state
-        data, carry = env.th.reset_state(env, model, data, carry, backend)
-
         # Get the current trajectory data
         traj_data_sample = env.th.get_current_traj_data(carry, backend)
 
