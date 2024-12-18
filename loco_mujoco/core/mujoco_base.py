@@ -1,16 +1,11 @@
 import atexit
 from copy import deepcopy
 from typing import Union
-from enum import Enum
-from typing import List, Optional, Any, Dict
-from dataclasses import dataclass
+
 from functools import partial
 import mujoco
 from mujoco import MjSpec
 import numpy as np
-from dm_control import mjcf
-
-from mujoco import mjx
 from flax import struct
 import jax
 import jax.numpy as jnp

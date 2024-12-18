@@ -5,9 +5,9 @@ requires = ["setuptools", "wheel", "wget"]
 name = "loco-mujoco"
 dependencies = [
     "numpy",
-    "scipy",
-    "mujoco>=3.2.5",
-    "mujoco-mjx>=3.2.5",
+    "scipy>=1.14.0",
+    "mujoco>=3.2.6",
+    "mujoco-mjx>=3.2.6",
     "hydra-core",
     "jax",
     "flax",
@@ -15,7 +15,6 @@ dependencies = [
     "distrax",
     "metrx",
     "gymnasium",
-    "dm_control",
     "pyyaml",
     "opencv-python",
     "wget"]
