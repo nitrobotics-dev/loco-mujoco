@@ -211,22 +211,6 @@ class LocoEnv(Mjx):
         """
         return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, jnp)
 
-    def _is_absorbing(self, obs, info, data, carry):
-        """
-        Checks if an observation is an absorbing state or not.
-
-        Args:
-            obs (np.array): Current observation;
-
-        Returns:
-            True, if the observation is an absorbing state; otherwise False;
-
-        """
-        return self._terminal_state_handler.is_absorbing(obs, info, data, carry)
-
-    def _mjx_is_absorbing(self, obs, info, data, carry):
-        return self._terminal_state_handler.mjx_is_absorbing(obs, info, data, carry)
-
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = super()._mjx_is_done(obs, absorbing, info, data, carry)
 
@@ -587,7 +571,7 @@ class LocoEnv(Mjx):
 
     def _init_additional_carry(self, key, model, data, backend):
 
-        key, _k1, _k2, _k3, _k4, _k5, _k6, _k7 = jax.random.split(key, 8)
+        key, _k1, _k2, _k3, _k4, _k5, _k6, _k7, _k8 = jax.random.split(key, 9)
 
         # create additional carry
         carry = LocoCarry(key=key,
@@ -602,6 +586,8 @@ class LocoEnv(Mjx):
                           terrain_state=self._terrain.init_state(self, _k5, model, data, backend),
                           init_state_handler_state=self._init_state_handler.init_state(self, _k6, model, data, backend),
                           control_func_state=self._control_func.init_state(self, _k7, model, data, backend),
+                          terminal_state_handler_state=self._terminal_state_handler.init_state(self, _k8, model,
+                                                                                               data, backend),
                           )
 
         return carry

@@ -133,7 +133,7 @@ class Mjx(Mujoco):
         cur_info = self._mjx_update_info_dictionary(cur_info, cur_obs, data, carry)
 
         # check if the next obs is an absorbing state
-        absorbing = self._mjx_is_absorbing(cur_obs, cur_info, data, carry)
+        absorbing, carry = self._mjx_is_absorbing(cur_obs, cur_info, data, carry)
 
         # calculate the reward
         reward, carry = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
@@ -179,7 +179,7 @@ class Mjx(Mujoco):
         return 0.0, carry
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
-        return False
+        return self._terminal_state_handler.mjx_is_absorbing(obs, info, data, carry)
 
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = jnp.greater_equal(carry.cur_step_in_episode, self.info.horizon)
@@ -225,6 +225,7 @@ class Mjx(Mujoco):
         Returns:
             The updated model, data and carry.
         """
+        data, carry = self._terminal_state_handler.reset(self, model, data, carry, jnp)
         data, carry = self._terrain.reset(self, model, data, carry, jnp)
         data, carry = self._init_state_handler.reset(self, model, data, carry, jnp)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, jnp)

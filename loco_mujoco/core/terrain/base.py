@@ -20,7 +20,7 @@ class Terrain(StatefulObject):
     # If the hfield is generated dynamically, this should be set to True to update the hfield in the viewer.
     viewer_needs_to_update_hfield: bool = False
 
-    def __init__(self, env: Any, **terrain_config: Any):
+    def __init__(self, env: Any, **terrain_config: [str, Any]):
         """
         Initialize the Terrain class.
 

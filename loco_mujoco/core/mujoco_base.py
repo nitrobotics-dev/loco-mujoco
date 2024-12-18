@@ -21,7 +21,7 @@ from loco_mujoco.core.control_functions import ControlFunction
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
 from loco_mujoco.core.initial_state_handler import InitialStateHandler
-from loco_mujoco.core.utils import TerminalStateHandler
+from loco_mujoco.core.terminal_state_handler.base import TerminalStateHandler
 
 
 @struct.dataclass
@@ -35,6 +35,7 @@ class AdditionalCarry:
     domain_randomizer_state: Union[np.ndarray, jax.Array]
     terrain_state: Union[np.ndarray, jax.Array]
     init_state_handler_state: Union[np.ndarray, jax.Array]
+    terminal_state_handler_state: Union[np.ndarray, jax.Array]
     control_func_state: Union[np.ndarray, jax.Array]
 
 
@@ -130,8 +131,7 @@ class Mujoco:
         # setup terminal state handler
         if terminal_state_params is None:
             terminal_state_params = {}
-        self._terminal_state_handler = TerminalStateHandler.make(terminal_state_type, self._model,
-                                                                 self._get_all_info_properties(),
+        self._terminal_state_handler = TerminalStateHandler.registered[terminal_state_type](self,
                                                                  **terminal_state_params)
 
         # set the warning callback to stop the simulation when a mujoco warning occurs
@@ -209,7 +209,7 @@ class Mujoco:
         cur_info = self._update_info_dictionary(cur_info, cur_obs, self._data, carry)
 
         # check if the current state is an absorbing state
-        absorbing = self._is_absorbing(cur_obs, cur_info, self._data, carry)
+        absorbing, carry = self._is_absorbing(cur_obs, cur_info, self._data, carry)
 
         # calculate the reward
         reward, carry = self._reward(self._obs, action, cur_obs, absorbing, cur_info, self._model, self._data, carry)
@@ -265,7 +265,7 @@ class Mujoco:
             A boolean flag indicating whether this state is absorbing or not.
 
         """
-        return False
+        return self._terminal_state_handler.is_absorbing(obs, info, data, carry)
 
     def _is_done(self, obs, absorbing, info, data, carry):
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
@@ -283,6 +283,7 @@ class Mujoco:
         Returns:
             The updated model, data and carry.
         """
+        data, carry = self._terminal_state_handler.reset(self, model, data, carry, np)
         data, carry = self._terrain.reset(self, model, data, carry, np)
         data, carry = self._init_state_handler.reset(self, model, data, carry, np)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, np)
