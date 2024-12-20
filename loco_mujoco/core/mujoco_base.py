@@ -10,7 +10,8 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, Reward, info_property
+from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, info_property
+from loco_mujoco.core.reward.base import Reward
 from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
 from loco_mujoco.core.control_functions import ControlFunction
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
@@ -100,7 +101,8 @@ class Mujoco:
         self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
 
         # setup reward function
-        self._reward_function = self._setup_reward(reward_type, reward_params)
+        reward_cls = Reward.registered[reward_type]
+        self._reward_function = reward_cls(self) if reward_params is None else reward_cls(self, **reward_params)
 
         # setup control function
         if control_params is None:
@@ -423,28 +425,6 @@ class Mujoco:
         obs_ind.convert_to_numpy()
 
         return obs_container, data_ind, obs_ind
-
-    def _setup_reward(self, reward_type, reward_params):
-        """
-        Constructs a reward function.
-
-        Args:
-            reward_type (string): Name of the reward.
-            reward_params (dict): Parameters of the reward function.
-
-        Returns:
-            Reward function.
-
-        """
-        # collect all info properties of the env (dict all @info_properties decorated function returns)
-        info_props = self._get_all_info_properties()
-
-        reward_cls = Reward.registered[reward_type]
-        reward = reward_cls(self.obs_container, info_props=info_props, model=self._model, data=self._data)\
-            if reward_params is None else reward_cls(self.obs_container, info_props=info_props, model=self._model,
-                                                     data=self._data, **reward_params)
-
-        return reward
 
     def _setup_goal(self, spec, goal_type, goal_params):
         """

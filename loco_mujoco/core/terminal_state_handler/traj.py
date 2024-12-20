@@ -8,7 +8,7 @@ from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.terminal_state_handler.base import TerminalStateHandler
-from loco_mujoco.core.utils import quat_scalarfirst2scalarlast
+from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils.backend import assert_backend_is_supported
 

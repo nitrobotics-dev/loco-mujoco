@@ -182,7 +182,6 @@ class LocoEnv(Mjx):
         for obs_entry in self.obs_container.entries():
             obs_entry.init_from_traj(self.th)
         self._goal.init_from_traj(self.th)
-        self._reward_function.init_from_traj(self.th)
         self._terminal_state_handler.init_from_traj(self.th)
 
     def _scale_action_space(self):

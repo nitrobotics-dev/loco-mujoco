@@ -2,17 +2,9 @@ from .backend import *
 from .env import MDPInfo, Box
 from .viewer import MujocoViewer
 from .video_recorder import VideoRecorder
-from .reward import *
 from .mujoco import *
 from .decorators import info_property
+from ..reward.default import NoReward, TargetXVelocityReward, TargetVelocityGoalReward, LocomotionReward
+from ..reward.trajectory_based import TargetVelocityTrajReward, MimicReward
 
-# register all rewards
-NoReward.register()
-PosReward.register()
-TargetVelocityGoalReward.register()
-TargetXVelocityReward.register()
-TargetVelocityTrajReward.register()
-CustomReward.register()
-MimicReward.register()
-LocomotionReward.register()
 
