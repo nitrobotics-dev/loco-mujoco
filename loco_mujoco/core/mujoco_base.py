@@ -47,7 +47,7 @@ class Mujoco:
                  n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1, model_option_conf=None,
                  reward_type="NoReward", reward_params=None,
                  goal_type="NoGoal", goal_params=None,
-                 terminal_state_type="RootPoseTrajTerminalStateHandler", terminal_state_params=None,
+                 terminal_state_type="NoTerminalStateHandler", terminal_state_params=None,
                  domain_randomization_type="NoDomainRandomization", domain_randomization_params=None,
                  terrain_type="StaticTerrain", terrain_params=None,
                  init_state_type="DefaultInitialStateHandler", init_state_params=None,
