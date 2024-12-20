@@ -1,5 +1,6 @@
 from __future__ import annotations
 from copy import deepcopy
+from typing import List
 
 import numpy as np
 import mujoco
@@ -10,7 +11,7 @@ from scipy.spatial.transform import Rotation as np_R
 from jax.scipy.spatial.transform import Rotation as jnp_R
 
 from loco_mujoco.core.stateful_object import StatefulObject
-from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid
+from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 
 
@@ -535,6 +536,45 @@ class JointPos(SimpleObs):
         return "qpos"
 
 
+class JointPosArray(Observation):
+    """
+    Observation Type holding the rotation of an array of joints.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    def __init__(self, obs_name: str, xml_names: List[str]):
+        super().__init__(obs_name)
+        self._xml_names = xml_names
+        self.dim = None
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        dim = 0
+        self.min, self.max, self.data_type_ind, self.obs_ind = [], [], [], []
+        for name in self._xml_names:
+            sdim = len(data.joint(name).qpos)
+            jh = model.joint(jnt_name2id(name, model))
+            if jh.limited:
+                min, max = [jh.range[0]] * sdim, [jh.range[1]] * sdim
+            else:
+                min, max = [-np.inf] * sdim, [np.inf] * sdim
+            self.min.extend(min)
+            self.max.extend(max)
+            self.data_type_ind.extend(mj_jntid2qposid(jh.id, model))
+            self.obs_ind.extend([j for j in range(current_obs_size, current_obs_size + sdim)])
+            current_obs_size += sdim
+            dim += sdim
+        self.dim = dim
+        self.data_type_ind = np.array(self.data_type_ind)
+        self.obs_ind = np.array(self.obs_ind)
+        self._initialized_from_mj = True
+
+    @classmethod
+    def data_type(cls):
+        return "qpos"
+
+
 class FreeJointVel(SimpleObs):
     """
     Observation Type holding the 3D linear velocity and the 3D angular velocity of a free joint.
@@ -600,6 +640,42 @@ class JointVel(SimpleObs):
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
         self.data_type_ind = np.array([model.jnt_dofadr[data.joint(self.xml_name).id]])
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + dim)])
+        self._initialized_from_mj = True
+
+    @classmethod
+    def data_type(cls):
+        return "qvel"
+
+
+class JointVelArray(Observation):
+    """
+    Observation Type holding the velocity of an array of joints.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    def __init__(self, obs_name: str, xml_names: List[str]):
+        super().__init__(obs_name)
+        self._xml_names = xml_names
+        self.dim = None
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        dim = 0
+        self.min, self.max, self.data_type_ind, self.obs_ind = [], [], [], []
+        for name in self._xml_names:
+            sdim = len(data.joint(name).qvel)
+            jh = model.joint(jnt_name2id(name, model))
+            min, max = [-np.inf] * sdim, [np.inf] * sdim
+            self.min.extend(min)
+            self.max.extend(max)
+            self.data_type_ind.extend(mj_jntid2qvelid(jh.id, model))
+            self.obs_ind.extend([j for j in range(current_obs_size, current_obs_size + sdim)])
+            current_obs_size += sdim
+            dim += sdim
+        self.dim = dim
+        self.data_type_ind = np.array(self.data_type_ind)
+        self.obs_ind = np.array(self.obs_ind)
         self._initialized_from_mj = True
 
     @classmethod
@@ -853,6 +929,8 @@ class ObservationType:
     BodyVel = BodyVel
     JointPos = JointPos
     JointVel = JointVel
+    JointPosArray = JointPosArray
+    JointVelArray = JointVelArray
     FreeJointPos = FreeJointPos
     EntryFromFreeJointPos = EntryFromFreeJointPos
     FreeJointPosNoXY = FreeJointPosNoXY
