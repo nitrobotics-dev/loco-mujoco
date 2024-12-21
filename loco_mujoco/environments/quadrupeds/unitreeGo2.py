@@ -52,25 +52,31 @@ class UnitreeGo2(BaseRobotQuadruped):
 
     mjx_enabled = False
 
-    def __init__(self, action_mode="torque", xml_path=None, camera_params=None, **kwargs):
+    def __init__(self, xml_path=None, camera_params=None,
+                 observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
         Args:
-            action_mode (str): Either "torque", or "position". Defines the action controller.
             camera_params (dict): Dictionary defining some of the camera parameters for the visualization.
 
         """
 
-        if xml_path is None and action_mode == "torque":
-            xml_path = self.get_torque_xml_file_path()
+        if xml_path is None:
+            xml_path = self.get_default_xml_file_path()
 
         # load the model specification
         spec = mujoco.MjSpec.from_file(xml_path)
 
-        # get the observation and action space
-        observation_spec = self._get_observation_specification(spec)
-        action_spec = self._get_action_specification(spec)
+        # get the observation and action specification
+        if observation_spec is None:
+            # get default
+            observation_spec = self._get_observation_specification(spec)
+        else:
+            # parse
+            observation_spec = self.parse_observation_spec(observation_spec)
+        if action_spec is None:
+            action_spec = self._get_action_specification(spec)
 
         # modify the specification if needed
         if self.mjx_enabled:
@@ -154,11 +160,11 @@ class UnitreeGo2(BaseRobotQuadruped):
         return action_spec
 
     @classmethod
-    def get_torque_xml_file_path(cls):
+    def get_default_xml_file_path(cls):
         """
         Returns the torque path to the xml file of the environment.
         """
-        return (loco_mujoco.PATH_TO_MODELS / "unitree_go2" / "go2_torque.xml").as_posix()
+        return (loco_mujoco.PATH_TO_MODELS / "unitree_go2" / "go2.xml").as_posix()
 
     @info_property
     def grf_size(self):

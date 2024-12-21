@@ -682,6 +682,27 @@ class Mujoco:
                 info_props[attr_name] = getattr(self, attr_name)
         return info_props
 
+    @staticmethod
+    def parse_observation_spec(obs_spec: list):
+        """
+        Parse the observation specification.
+
+        Args:
+            obs_spec (list): List of observation specifications. Each observation specification is a dictionary
+                containing the following: name (str), type (str), and additional parameters.
+
+        Returns:
+            list: List of observation types.
+
+        """
+        observation_spec = []
+        for obs in obs_spec:
+            obs_type = ObservationType.get(obs["type"])
+            # all other element in dict are params
+            obs_params = {k: v for k, v in obs.items() if k != "type"}
+            observation_spec.append(obs_type(**obs_params))
+        return observation_spec
+
     @property
     def mjspec(self):
         return self._mjspec

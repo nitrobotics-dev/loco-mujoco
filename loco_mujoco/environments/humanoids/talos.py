@@ -262,7 +262,8 @@ class Talos(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=True, disable_back_joint=False, xml_path=None, **kwargs):
+    def __init__(self, disable_arms=True, disable_back_joint=False, xml_path=None,
+                 observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
@@ -277,9 +278,15 @@ class Talos(BaseRobotHumanoid):
         # load the model specification
         spec = mujoco.MjSpec.from_file(xml_path)
 
-        # get the observation and action space
-        observation_spec = self._get_observation_specification(spec)
-        action_spec = self._get_action_specification(spec)
+        # get the observation and action specification
+        if observation_spec is None:
+            # get default
+            observation_spec = self._get_observation_specification(spec)
+        else:
+            # parse
+            observation_spec = self.parse_observation_spec(observation_spec)
+        if action_spec is None:
+            action_spec = self._get_action_specification(spec)
 
         if self.mjx_enabled:
             spec = self._modify_spec_for_mjx(spec)

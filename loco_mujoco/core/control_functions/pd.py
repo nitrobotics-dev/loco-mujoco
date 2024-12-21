@@ -44,8 +44,8 @@ class PDControl(ControlFunction):
             **kwargs (Any): Additional keyword arguments for the parent class.
         """
         super(PDControl, self).__init__(env, **kwargs)
-        self._init_p_gain = p_gain
-        self._init_d_gain = d_gain
+        self._init_p_gain = np.array(p_gain)
+        self._init_d_gain = np.array(d_gain)
         self._ctrl_ranges = []
         self._jnt_ranges = []
         self._jnt_names = []

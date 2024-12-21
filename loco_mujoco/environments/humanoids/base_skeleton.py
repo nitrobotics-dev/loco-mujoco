@@ -20,7 +20,7 @@ class BaseSkeleton(LocoEnv):
     mjx_enabled = False
 
     def __init__(self, use_muscles=False, use_box_feet=True, disable_arms=False,
-                 alpha_box_feet=0.5, xml_path=None, **kwargs):
+                 alpha_box_feet=0.5, xml_path=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
@@ -39,9 +39,15 @@ class BaseSkeleton(LocoEnv):
         # load the model specification
         spec = mujoco.MjSpec.from_file(xml_path)
 
-        # get the observation and action space
-        observation_spec = self._get_observation_specification(spec)
-        action_spec = self._get_action_specification(spec)
+        # get the observation and action specification
+        if observation_spec is None:
+            # get default
+            observation_spec = self._get_observation_specification(spec)
+        else:
+            # parse
+            observation_spec = self.parse_observation_spec(observation_spec)
+        if action_spec is None:
+            action_spec = self._get_action_specification(spec)
 
         # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._use_muscles = use_muscles

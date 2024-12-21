@@ -943,6 +943,20 @@ class ObservationType:
     LastAction = LastAction
 
     @classmethod
+    def get(cls, obs_name):
+        """
+        Get an observation type by name.
+
+        Args:
+            obs_name: The name of the observation type.
+
+        Returns:
+            The observation type.
+
+        """
+        return getattr(cls, obs_name)
+
+    @classmethod
     def register(cls, new_obs_type):
         """
         Register a new observation type.
@@ -967,7 +981,7 @@ class ObservationType:
         List all observation types.
         """
         return [getattr(ObservationType, obs_type) for obs_type in dir(cls) if not obs_type.startswith("__")
-                and obs_type not in ["register", "list_all", "list_all_non_stateful"]]
+                and obs_type not in ["register", "list_all", "list_all_non_stateful", "get"]]
 
     @classmethod
     def list_all_non_stateful(cls):
@@ -975,5 +989,5 @@ class ObservationType:
         List all observation types, which are not stateful.
         """
         return [getattr(ObservationType, obs_type) for obs_type in dir(cls) if not obs_type.startswith("__")
-                and obs_type not in ["register", "list_all", "list_all_non_stateful"]
+                and obs_type not in ["register", "list_all", "list_all_non_stateful", "get"]
                 and not issubclass(getattr(ObservationType, obs_type), StatefulObservation)]
