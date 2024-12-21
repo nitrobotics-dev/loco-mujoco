@@ -12,7 +12,7 @@ from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.reward.base import Reward
-from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_check_collisions
+from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_check_collisions
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 
 
@@ -119,13 +119,15 @@ class TargetVelocityGoalReward(Reward):
 
     """
 
-    def __init__(self, env: Any, w_exp=10.0, **kwargs):
+    def __init__(self, env: Any, tracking_w_exp_xy=10.0, tracking_w_exp_yaw=10.0,
+                 tracking_w_sum_xy=1.0, tracking_w_sum_yaw=1.0, **kwargs):
         """
         Initialize the reward function.
 
         Args:
             env (Any): The environment instance.
-            w_exp (float, optional): The exponential weight. Defaults to 10.0.
+            tracking_w_exp_xy (float, optional): The exponential weight for xy-tracking reward.
+            tracking_w_exp_yaw (float, optional): The exponential weight for yaw-tracking reward.
             **kwargs (Any): Additional keyword arguments.
 
         """
@@ -134,7 +136,10 @@ class TargetVelocityGoalReward(Reward):
 
         self._free_jnt_name = self._info_props["root_free_joint_xml_name"]
         self._vel_idx = np.array(mj_jntname2qvelid(self._free_jnt_name, env._model))
-        self._w_exp = w_exp
+        self._w_exp_xy = tracking_w_exp_xy
+        self._w_exp_yaw = tracking_w_exp_yaw
+        self._w_sum_xy = tracking_w_sum_xy
+        self._w_sum_yaw = tracking_w_sum_yaw
 
         # find the goal velocity observation
         assert "GoalRandomRootVelocity" in env.obs_container, \
@@ -195,9 +200,11 @@ class TargetVelocityGoalReward(Reward):
 
         # calculate tracking reward
         goal_vel = backend.array([goal_state.goal_vel_x, goal_state.goal_vel_y, goal_state.goal_vel_yaw])
-        tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(vel_local - goal_vel)))
+        tracking_reward_xy = backend.exp(-self._w_exp_xy * backend.mean(backend.square(vel_local[:2] - goal_vel[:2])))
+        tracking_reward_yaw = backend.exp(-self._w_exp_yaw * backend.mean(backend.square(vel_local[2] - goal_vel[2])))
+        total_tracking = self._w_sum_xy * tracking_reward_xy + self._w_sum_yaw * tracking_reward_yaw
 
-        return tracking_reward, carry
+        return total_tracking, carry
 
 
 @struct.dataclass
@@ -241,18 +248,12 @@ class LocomotionReward(TargetVelocityGoalReward):
         self._floor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
         self._foot_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in self._foot_names]
 
-        # joint ranges
-        self._limited_joints = np.array(model.jnt_limited, dtype=bool)
-        self._limited_joints_qpos_id = model.jnt_qposadr[np.arange(model.njnt)[self._limited_joints]]
-        self._joint_ranges = model.jnt_range[self._limited_joints]
-
         # reward coefficients
-        self._tracking_rew_coeff = kwargs.get("tracking_rew_coeff", 1.0)
         self._z_vel_coeff = kwargs.get("z_vel_coeff", 2.0)
         self._roll_pitch_vel_coeff = kwargs.get("roll_pitch_vel_coeff", 5e-2)
         self._roll_pitch_pos_coeff = kwargs.get("roll_pitch_pos_coeff", 2e-1)
         self._nominal_joint_pos_coeff = kwargs.get("nominal_joint_pos_coeff", 0.0)
-        self._nominal_joint_pos = kwargs.get("nominal_joint_pos", np.zeros(1))
+        self._nominal_joint_pos_names = kwargs.get("nominal_joint_pos_names", None)
         self._joint_position_limit_coeff = kwargs.get("joint_position_limit_coeff", 10.0)
         self._joint_vel_coeff = kwargs.get("joint_vel_coeff", 0.0)
         self._joint_acc_coeff = kwargs.get("joint_acc_coeff", 2e-7)
@@ -260,6 +261,18 @@ class LocomotionReward(TargetVelocityGoalReward):
         self._action_rate_coeff = kwargs.get("action_rate_coeff", 1e-2)
         self._air_time_max = kwargs.get("air_time_max", 0.0)
         self._air_time_coeff = kwargs.get("air_time_coeff", 0.0)
+
+        # get limits and nominal joint positions
+        self._limited_joints = np.array(model.jnt_limited, dtype=bool)
+        self._limited_joints_qpos_id = model.jnt_qposadr[np.where(self._limited_joints)]
+        self._joint_ranges = model.jnt_range[self._limited_joints]
+        self._nominal_joint_qpos = env._model.qpos0
+        if self._nominal_joint_pos_names is None:
+            # take all limited joints
+            self._nominal_joint_qpos_id = self._limited_joints_qpos_id
+        else:
+            self._nominal_joint_qpos_id = np.concatenate([mj_jntname2qposid(name, model)
+                                                          for name in self._nominal_joint_pos_names])
 
     def init_state(self, env: Any,
                    key: Any,
@@ -330,8 +343,6 @@ class LocomotionReward(TargetVelocityGoalReward):
 
         # get global velocity quantities
         global_vel_root = data.qvel[self._free_joint_qvel_ind]
-        global_vel_root_lin = global_vel_root[:3]
-        global_vel_root_ang = global_vel_root[3:]
 
         # get local velocity quantities
         local_vel_root_lin = global_rot.inv().apply(global_vel_root[:3])
@@ -346,8 +357,9 @@ class LocomotionReward(TargetVelocityGoalReward):
         roll_pitch_reward = self._roll_pitch_pos_coeff * -backend.square(euler[:2]).sum()
 
         # nominal joint pos reward
-        joint_qpos = data.qpos[~self._free_joint_qpos_mask]
-        joint_qpos_reward = self._nominal_joint_pos_coeff * -backend.square(joint_qpos - self._nominal_joint_pos).sum()
+        joint_qpos_reward = (self._nominal_joint_pos_coeff *
+                             -backend.square(data.qpos[self._nominal_joint_qpos_id] -
+                                             self._nominal_joint_qpos[self._nominal_joint_qpos_id]).sum())
 
         # joint position limit reward
         joint_positions = backend.array(data.qpos[self._limited_joints_qpos_id])
