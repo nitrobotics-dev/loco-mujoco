@@ -286,27 +286,6 @@ class UnitreeG1(BaseRobotHumanoid):
         super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
                          **kwargs)
 
-    def _get_ground_forces(self):
-        """
-        Calculates the ground forces (np.array). Per foot, the ground reaction force (linear --> 3D) is measured at
-        4 points resulting in a 4*3*2=24 dimensional force vector.
-
-        Returns:
-            The ground forces (np.array) vector of all foots.
-
-        """
-
-        grf = np.concatenate([self._get_collision_force("floor", "right_foot_1")[:3],
-                              self._get_collision_force("floor", "right_foot_2")[:3],
-                              self._get_collision_force("floor", "right_foot_3")[:3],
-                              self._get_collision_force("floor", "right_foot_4")[:3],
-                              self._get_collision_force("floor", "left_foot_1")[:3],
-                              self._get_collision_force("floor", "left_foot_2")[:3],
-                              self._get_collision_force("floor", "left_foot_3")[:3],
-                              self._get_collision_force("floor", "left_foot_4")[:3]])
-
-        return grf
-
     @info_property
     def grf_size(self):
         """

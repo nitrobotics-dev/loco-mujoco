@@ -650,26 +650,6 @@ class Mujoco:
 
         return np.array(low), np.array(high)
 
-    def _get_collision_force(self, group1, group2):
-        """
-        Returns the collision force and torques between the specified groups.
-
-        Args:
-            group1 (string): A name referring to an entry contained in the
-                collision_groups list handed to the constructor;
-            group2 (string): A name referring to an entry contained in the
-                collision_groups list handed to the constructor.
-
-        Returns:
-            A 6D vector specifying the collision forces/torques[3D force + 3D torque]
-            between the given groups. Vector of 0's git statusin case there was no collision.
-            http://mujoco.org/book/programming.html#siContact
-
-        """
-        # todo: implement this
-        c_array = np.zeros(6, dtype=np.float64)
-        return c_array
-
     def _get_all_info_properties(self):
         """
         Returns all info properties of the environment. (decorated with @info_property)
