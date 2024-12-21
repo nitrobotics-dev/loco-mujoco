@@ -237,6 +237,11 @@ def _set_path_in_yaml_conf(path: str, attr: str):
     """
     path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
 
+    # create an empty yaml file if it does not exist
+    if not os.path.exists(path_to_conf):
+        with open(path_to_conf, "w") as file:
+            yaml.dump({}, file)
+
     # load yaml file
     with open(path_to_conf, "r") as file:
         data = yaml.load(file, Loader=yaml.FullLoader)
