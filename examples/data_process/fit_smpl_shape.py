@@ -3,7 +3,6 @@ from pathlib import Path
 import joblib
 
 from tqdm import tqdm
-from tqdm.notebook import tqdm
 import hydra
 from omegaconf import DictConfig
 import numpy as np
@@ -12,7 +11,7 @@ import torch
 from torch.autograd import Variable
 
 import loco_mujoco
-from loco_mujoco.smpl import SMPL_Parser, SMPL_BONE_ORDER_NAMES
+from loco_mujoco.smpl import SMPLH_Parser, SMPLH_BONE_ORDER_NAMES
 from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
 
 
@@ -30,7 +29,7 @@ def main(cfg : DictConfig) -> None:
     smpl_joint_pick = [i[1] for i in cfg.robot.joint_matches]
     
     robot_joint_pick_idx = [ robot_joint_names_augment.index(j) for j in robot_joint_pick]
-    smpl_joint_pick_idx = [SMPL_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
+    smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
 
     #### Preparing fitting varialbes
     device = torch.device("cpu")
@@ -38,27 +37,27 @@ def main(cfg : DictConfig) -> None:
     pose_aa_robot = torch.from_numpy(pose_aa_robot).float()
     
     ###### prepare SMPL default pause for H1
-    pose_aa_stand = np.zeros((1, 72))
-    pose_aa_stand = pose_aa_stand.reshape(-1, 24, 3)
+    pose_aa_stand = np.zeros((1, 156))
+    pose_aa_stand = pose_aa_stand.reshape(-1, 52, 3)
     
     for modifiers in cfg.robot.smpl_pose_modifier:
         modifier_key = list(modifiers.keys())[0]
         modifier_value = list(modifiers.values())[0]
-        pose_aa_stand[:, SMPL_BONE_ORDER_NAMES.index(modifier_key)] = sRot.from_euler("xyz", eval(modifier_value),  degrees = False).as_rotvec()
+        pose_aa_stand[:, SMPLH_BONE_ORDER_NAMES.index(modifier_key)] = sRot.from_euler("xyz", eval(modifier_value),  degrees = False).as_rotvec()
 
-    pose_aa_stand = torch.from_numpy(pose_aa_stand.reshape(-1, 72))
-    smpl_parser_n = SMPL_Parser(model_path=path_to_amass_datasets / "smpl", gender="neutral")
+    pose_aa_stand = torch.from_numpy(pose_aa_stand.reshape(-1, 156)).requires_grad_(False)
+    smpl_parser_n = SMPLH_Parser(model_path=path_to_amass_datasets / "smpl", gender="neutral")
 
     ###### Shape fitting
-    trans = torch.zeros([1, 3])
-    beta = torch.zeros([1, 10])
+    trans = torch.zeros([1, 3]).requires_grad_(False)
+    beta = torch.zeros([1, 16]).requires_grad_(False)
     verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, beta , trans)
     offset = joints[:, 0] - trans
     root_trans_offset = trans + offset
 
     fk_return = humanoid_fk.fk_batch(pose_aa_robot[None, ], root_trans_offset[None, 0:1])
 
-    shape_new = Variable(torch.zeros([1, 10]).to(device), requires_grad=True)
+    shape_new = Variable(torch.zeros([1, 16]).to(device), requires_grad=True)
     scale = Variable(torch.ones([1]).to(device), requires_grad=True)
     optimizer_shape = torch.optim.Adam([shape_new, scale],lr=0.1)
     
@@ -77,31 +76,9 @@ def main(cfg : DictConfig) -> None:
         pbar.set_description_str(f"{iteration} - Loss: {loss.item() * 1000}")
 
         optimizer_shape.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         optimizer_shape.step()
         
-        # from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
-        # import matplotlib.pyplot as plt
-        
-        # j3d = fk_return.global_translation[0, :, :, :].detach().numpy()
-        # j3d = j3d - j3d[:, 0:1]
-        # j3d_joints = joints.detach().numpy()
-        # idx = 0
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111, projection='3d')
-        # ax.view_init(90, 0)
-        # ax.scatter(j3d[idx, :,0], j3d[idx, :,1], j3d[idx, :,2])
-        # ax.scatter(j3d_joints[idx, :,0], j3d_joints[idx, :,1], j3d_joints[idx, :,2])
-
-        # ax.set_xlabel('X Label')
-        # ax.set_ylabel('Y Label')
-        # ax.set_zlabel('Z Label')
-        # drange = 1
-        # ax.set_xlim(-drange, drange)
-        # ax.set_ylim(-drange, drange)
-        # ax.set_zlim(-drange, drange)
-        # plt.show()
-
     os.makedirs(path_to_amass_datasets / f"{cfg.robot.name}", exist_ok=True)
     joblib.dump((shape_new.detach(), scale), path_to_amass_datasets / f"{cfg.robot.name}/shape_optimized_v1.pkl") # V2 has hip joints
 

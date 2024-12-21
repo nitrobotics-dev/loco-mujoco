@@ -6,3 +6,7 @@ gymnasium
 pyyaml
 wget
 hydra-core
+joblib
+tqdm
+git+https://github.com/ZhengyiLuo/smplx.git@master
+git+https://github.com/ZhengyiLuo/SMPLSim.git@master

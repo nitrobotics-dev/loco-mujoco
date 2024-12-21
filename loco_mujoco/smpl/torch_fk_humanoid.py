@@ -26,6 +26,7 @@ class ForwardKinematicsHumanoidTorch:
         self.joint_names = copy.deepcopy(mjcf_data['node_names'])
         self._parents = mjcf_data['parent_indices']
         self.joint_names_augment = copy.deepcopy(mjcf_data['node_names'])
+        
         self._offsets = mjcf_data['local_translation'][None, ].to(device)
         self._local_rotation = mjcf_data['local_rotation'][None, ].to(device)
         self.num_dof = len(self.joint_names) - 1
@@ -38,20 +39,11 @@ class ForwardKinematicsHumanoidTorch:
         self.dof_axis = []
 
         for joint in spec.joints:
-            if joint.type != "free":
+            if joint.type != 0: # 0 is free joint
                 self.dof_axis.append(joint.axis)
                 self.has_freejoint = True
-        #
-        # if tree.getroot().find("worldbody").findall('.//joint')[0].attrib['type'] == "free":
-        #     for j in tree.getroot().find("worldbody").findall('.//joint')[1:]:
-        #         self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
-        #     self.has_freejoint = True
-        # else:
-        #     for j in tree.getroot().find("worldbody").findall('.//joint')[6:]:
-        #         self.dof_axis.append([int(i) for i in j.attrib['axis'].split(" ")])
-        #     self.has_freejoint = False
-        
-        self.dof_axis = torch.tensor(self.dof_axis)
+                
+        self.dof_axis = torch.tensor(self.dof_axis).float()
 
         for extend_config in cfg.extend_config:
             self.joint_names_augment += [extend_config.joint_name]
