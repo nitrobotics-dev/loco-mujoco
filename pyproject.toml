@@ -19,7 +19,7 @@ dependencies = [
     "opencv-python",
     "wget"]
 
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [{name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]
 
 maintainers = [{ name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]
