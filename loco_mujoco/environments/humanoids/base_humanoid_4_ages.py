@@ -3,8 +3,6 @@ import warnings
 from pathlib import Path
 from copy import deepcopy
 
-from dm_control import mjcf
-
 # from mushroom_rl.utils.running_stats import *
 
 import loco_mujoco
