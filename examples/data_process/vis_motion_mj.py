@@ -7,8 +7,10 @@ import mujoco
 import mujoco.viewer
 from scipy.spatial.transform import Rotation as sRot
 import joblib
+import yaml
 
 import loco_mujoco
+from loco_mujoco import PATH_TO_MODELS
 
 
 def add_visual_capsule(scene, point1, point2, radius, rgba):
@@ -20,10 +22,7 @@ def add_visual_capsule(scene, point1, point2, radius, rgba):
     mujoco.mjv_initGeom(scene.geoms[scene.ngeom-1],
                         mujoco.mjtGeom.mjGEOM_CAPSULE, np.zeros(3),
                         np.zeros(3), np.zeros(9), rgba.astype(np.float32))
-    mujoco.mjv_makeConnector(scene.geoms[scene.ngeom-1],
-                             mujoco.mjtGeom.mjGEOM_CAPSULE, radius,
-                             point1[0], point1[1], point1[2],
-                             point2[0], point2[1], point2[2])
+    mujoco.mjv_connector(scene.geoms[scene.ngeom-1], mujoco.mjtGeom.mjGEOM_CAPSULE, radius, point1, point2)
 
 
 def key_call_back( keycode):
@@ -40,6 +39,17 @@ def key_call_back( keycode):
 
 if __name__ == "__main__":
 
+    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+
+    # read paths from yaml file
+    with open(path_to_conf, "r") as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+        path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
+        path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+
+    assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
+    assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
+
     loco_mujoco_path = Path(loco_mujoco.__file__).parent
 
     device = torch.device("cpu")
@@ -47,14 +57,14 @@ if __name__ == "__main__":
     # humanoid_xml = loco_mujoco_path / "environments/data/unitree_g1/g1.xml"
     # humanoid_xml = "loco_mujoco/environments/data/stompy_old/stompy.xml"
     # humanoid_xml = "loco_mujoco/environments/data/stompymini/robot.xml"
-    humanoid_xml = loco_mujoco_path / "environments/data/unitree_h1/h1.xml"
+    humanoid_xml = PATH_TO_MODELS / "unitree_h1/h1.xml"
     #sk_tree = SkeletonTree.from_mjcf(humanoid_xml)
     
     curr_start, num_motions, motion_id, motion_acc, time_step, dt, paused = 0, 1, 0, set(), 0, 1/30, False
     
     # motion_file = "data/talos/0-KIT_3_walking_slow08_poses.pkl"
     # motion_file = "data/stompy/0-KIT_3_walking_slow08_poses.pkl"
-    motion_file = loco_mujoco_path.parent / "data/unitreeh1/0-Transitions_mocap_mazen_c3d_airkick_jumpinplace_poses.pkl"
+    motion_file = path_to_amass_datasets + "/unitree_h1/0-Transitions_mocap_mazen_c3d_airkick_jumpinplace_poses.pkl"
     motion_data = joblib.load(motion_file)
     motion_data_keys = list(motion_data.keys())
     curr_motion_key = motion_data_keys[motion_id]
@@ -77,13 +87,13 @@ if __name__ == "__main__":
             curr_motion = motion_data[curr_motion_key]
             curr_time = int(time_step/dt) % curr_motion['dof'].shape[0]
             
-            mj_data.qpos[:3] = curr_motion['root_trans_offset'][curr_time]
-            mj_data.qpos[3:6] = sRot.from_quat(curr_motion['root_rot'][curr_time]).as_euler("XYZ")
-            mj_data.qpos[6:] = curr_motion['dof'][curr_time]
-
             # mj_data.qpos[:3] = curr_motion['root_trans_offset'][curr_time]
-            # mj_data.qpos[3:7] = curr_motion['root_rot'][curr_time][[3, 0, 1, 2]]
-            # mj_data.qpos[7:] = curr_motion['dof'][curr_time]
+            # mj_data.qpos[3:6] = sRot.from_quat(curr_motion['root_rot'][curr_time]).as_euler("XYZ")
+            # mj_data.qpos[6:] = curr_motion['dof'][curr_time]
+
+            mj_data.qpos[:3] = curr_motion['root_trans_offset'][curr_time]
+            mj_data.qpos[3:7] = curr_motion['root_rot'][curr_time][[3, 0, 1, 2]]
+            mj_data.qpos[7:] = curr_motion['dof'][curr_time]
                 
             mujoco.mj_forward(mj_model, mj_data)
             if not paused:

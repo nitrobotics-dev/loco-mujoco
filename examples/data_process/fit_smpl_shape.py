@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import joblib
+import yaml
 
 from tqdm import tqdm
 import hydra
@@ -18,7 +19,18 @@ from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
 @hydra.main(version_base=None, config_path="../../loco_mujoco/cfg", config_name="config")
 def main(cfg : DictConfig) -> None:
 
-    path_to_amass_datasets = Path(loco_mujoco.__file__).parent.parent / "data"
+    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+
+    # read paths from yaml file
+    with open(path_to_conf, "r") as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+        path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
+        path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+
+    assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
+    assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
+
+    #path_to_amass_datasets = Path(loco_mujoco.__file__).parent.parent / "data"
     humanoid_fk = ForwardKinematicsHumanoidTorch(cfg.robot) # load forward kinematics model
 
     robot_joint_names = humanoid_fk.joint_names
@@ -46,7 +58,7 @@ def main(cfg : DictConfig) -> None:
         pose_aa_stand[:, SMPLH_BONE_ORDER_NAMES.index(modifier_key)] = sRot.from_euler("xyz", eval(modifier_value),  degrees = False).as_rotvec()
 
     pose_aa_stand = torch.from_numpy(pose_aa_stand.reshape(-1, 156)).requires_grad_(False)
-    smpl_parser_n = SMPLH_Parser(model_path=path_to_amass_datasets / "smpl", gender="neutral")
+    smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
 
     ###### Shape fitting
     trans = torch.zeros([1, 3]).requires_grad_(False)
@@ -79,8 +91,9 @@ def main(cfg : DictConfig) -> None:
         loss.backward(retain_graph=True)
         optimizer_shape.step()
         
-    os.makedirs(path_to_amass_datasets / f"{cfg.robot.name}", exist_ok=True)
-    joblib.dump((shape_new.detach(), scale), path_to_amass_datasets / f"{cfg.robot.name}/shape_optimized_v1.pkl") # V2 has hip joints
+    os.makedirs(path_to_amass_datasets + f"/{cfg.robot.name}", exist_ok=True)
+    joblib.dump((shape_new.detach(), scale), path_to_amass_datasets +
+                f"/{cfg.robot.name}/shape_optimized_v1.pkl") # V2 has hip joints
 
 
 if __name__ == "__main__":

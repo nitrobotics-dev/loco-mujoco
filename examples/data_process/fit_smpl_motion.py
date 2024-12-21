@@ -85,7 +85,8 @@ def main(cfg: DictConfig) -> None:
     N = trans.shape[0]
     pose_aa_walk = torch.from_numpy(amass_data['pose_aa'][::skip]).float()
     pose_aa_walk = torch.cat([pose_aa_walk, torch.zeros((pose_aa_walk.shape[0], 156 - pose_aa_walk.shape[1]))], axis = -1) # Setting the hand pose to zero. 
-    shape_new, scale = joblib.load(loco_mujoco_path.parent / "data" / cfg.robot.name / "shape_optimized_v1.pkl")
+    shape_new, scale = joblib.load(path_to_amass_datasets +
+                f"/{cfg.robot.name}/shape_optimized_v1.pkl")
     
     with torch.no_grad():
         verts, joints = smpl_parser_n.get_joints_verts(pose_aa_walk.reshape(N, -1, 3), shape_new.repeat(N, 1), trans)
@@ -151,8 +152,8 @@ def main(cfg: DictConfig) -> None:
 
     joints_dump = joints.numpy().copy()
     joints_dump[..., 2] -= height_diff
-    os.makedirs(f"data/{cfg.robot.name}", exist_ok=True)
-    dumped_file = f"data/{cfg.robot.name}/{data_key}.pkl"
+    os.makedirs(path_to_amass_datasets + f"/{cfg.robot.name}", exist_ok=True)
+    dumped_file = path_to_amass_datasets + f"/{cfg.robot.name}/{data_key}.pkl"
     print(dumped_file)
     joblib.dump(
         {
