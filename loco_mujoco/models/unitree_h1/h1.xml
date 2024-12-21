@@ -48,7 +48,7 @@ Modified by Firas Al-Hafez 2024.
       </default>
       <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
     </default>
-    <motor ctrllimited="true" ctrlrange="-0.95 0.95"/>
+    <motor ctrllimited="true"/>
   </default>
   <asset>
     <material name="black" rgba="0.1 0.1 0.1 1"/>
@@ -243,26 +243,26 @@ Modified by Firas Al-Hafez 2024.
     </body>
   </worldbody>
 
-  <actuator>
-    <motor class="h1" name="hip_rotation_l_actuator" joint="hip_rotation_l" gear="200"/>
-    <motor class="h1" name="hip_adduction_l_actuator" joint="hip_adduction_l" gear="200"/>
-    <motor class="h1" name="hip_flexion_l_actuator" joint="hip_flexion_l" gear="200"/>
-    <motor class="h1" name="knee_angle_l_actuator" joint="knee_angle_l" gear="300"/>
-    <motor class="h1" name="ankle_angle_l_actuator" joint="ankle_angle_l" gear="40"/>
-    <motor class="h1" name="hip_rotation_r_actuator" joint="hip_rotation_r" gear="200"/>
-    <motor class="h1" name="hip_adduction_r_actuator" joint="hip_adduction_r" gear="200"/>
-    <motor class="h1" name="hip_flexion_r_actuator" joint="hip_flexion_r" gear="200"/>
-    <motor class="h1" name="knee_angle_r_actuator" joint="knee_angle_r" gear="300"/>
-    <motor class="h1" name="ankle_angle_r_actuator" joint="ankle_angle_r" gear="40"/>
-    <motor class="h1" name="back_bkz_actuator" joint="back_bkz" gear="200"/>
-    <motor class="h1" name="l_arm_shy_actuator" joint="l_arm_shy" gear="40"/>
-    <motor class="h1" name="l_arm_shx_actuator" joint="l_arm_shx" gear="40"/>
-    <motor class="h1" name="l_arm_shz_actuator" joint="l_arm_shz" gear="18"/>
-    <motor class="h1" name="left_elbow_actuator" joint="left_elbow" gear="18"/>
-    <motor class="h1" name="r_arm_shy_actuator" joint="r_arm_shy" gear="40"/>
-    <motor class="h1" name="r_arm_shx_actuator" joint="r_arm_shx" gear="40"/>
-    <motor class="h1" name="r_arm_shz_actuator" joint="r_arm_shz" gear="18"/>
-    <motor class="h1" name="right_elbow_actuator" joint="right_elbow" gear="18"/>
-  </actuator>
+<actuator>
+    <motor class="h1" name="hip_rotation_l_actuator" joint="hip_rotation_l" ctrlrange="-200 200"/>
+    <motor class="h1" name="hip_adduction_l_actuator" joint="hip_adduction_l" ctrlrange="-200 200"/>
+    <motor class="h1" name="hip_flexion_l_actuator" joint="hip_flexion_l" ctrlrange="-200 200"/>
+    <motor class="h1" name="knee_angle_l_actuator" joint="knee_angle_l" ctrlrange="-300 300"/>
+    <motor class="h1" name="ankle_angle_l_actuator" joint="ankle_angle_l" ctrlrange="-40 40"/>
+    <motor class="h1" name="hip_rotation_r_actuator" joint="hip_rotation_r" ctrlrange="-200 200"/>
+    <motor class="h1" name="hip_adduction_r_actuator" joint="hip_adduction_r" ctrlrange="-200 200"/>
+    <motor class="h1" name="hip_flexion_r_actuator" joint="hip_flexion_r" ctrlrange="-200 200"/>
+    <motor class="h1" name="knee_angle_r_actuator" joint="knee_angle_r" ctrlrange="-300 300"/>
+    <motor class="h1" name="ankle_angle_r_actuator" joint="ankle_angle_r" ctrlrange="-40 40"/>
+    <motor class="h1" name="back_bkz_actuator" joint="back_bkz" ctrlrange="-200 200"/>
+    <motor class="h1" name="l_arm_shy_actuator" joint="l_arm_shy" ctrlrange="-40 40"/>
+    <motor class="h1" name="l_arm_shx_actuator" joint="l_arm_shx" ctrlrange="-40 40"/>
+    <motor class="h1" name="l_arm_shz_actuator" joint="l_arm_shz" ctrlrange="-18 18"/>
+    <motor class="h1" name="left_elbow_actuator" joint="left_elbow" ctrlrange="-18 18"/>
+    <motor class="h1" name="r_arm_shy_actuator" joint="r_arm_shy" ctrlrange="-40 40"/>
+    <motor class="h1" name="r_arm_shx_actuator" joint="r_arm_shx" ctrlrange="-40 40"/>
+    <motor class="h1" name="r_arm_shz_actuator" joint="r_arm_shz" ctrlrange="-18 18"/>
+    <motor class="h1" name="right_elbow_actuator" joint="right_elbow" ctrlrange="-18 18"/>
+</actuator>
 
 </mujoco>
