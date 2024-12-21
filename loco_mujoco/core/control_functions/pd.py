@@ -27,6 +27,12 @@ class PDControlState:
 
 class PDControl(ControlFunction):
 
+    """
+    PD controller function setting positions. This controller internally normalizes the action space to [-1, 1]
+    for the agent but uses the joint position limits for the environment.
+
+    """
+
     def __init__(self,
                  env: Any,
                  p_gain: Union[float, np.ndarray],
@@ -43,7 +49,6 @@ class PDControl(ControlFunction):
             nominal_joint_positions (np.ndarray, optional): Default joint positions. If not provided, uses qpos0.
             **kwargs (Any): Additional keyword arguments for the parent class.
         """
-        super(PDControl, self).__init__(env, **kwargs)
         self._init_p_gain = np.array(p_gain)
         self._init_d_gain = np.array(d_gain)
         self._ctrl_ranges = []
@@ -73,6 +78,19 @@ class PDControl(ControlFunction):
             self._nominal_joint_positions = env._model.qpos0[self._qpos_ids]
         else:
             self._nominal_joint_positions = nominal_joint_positions
+
+        self._high_pos_target = self._jnt_ranges[:, 1] - self._nominal_joint_positions
+        self._low_pos_target = self._jnt_ranges[:, 0] - self._nominal_joint_positions
+
+        # calculate mean and delta
+        self.norm_act_mean = (self._high_pos_target + self._low_pos_target) / 2.0
+        self.norm_act_delta = (self._high_pos_target - self._low_pos_target) / 2.0
+
+        # set the action space limits for the agent to -1 and 1
+        low = -np.ones_like(self.norm_act_mean)
+        high = np.ones_like(self.norm_act_mean)
+
+        super(PDControl, self).__init__(env, low, high, **kwargs)
 
     def init_state(self,
                    env: Any,
@@ -109,7 +127,7 @@ class PDControl(ControlFunction):
                         carry: Any,
                         backend: ModuleType) -> Tuple[Union[np.ndarray, jax.Array], Any]:
         """
-        Call the action with control function.
+        Generate the action using the PD controller. This function expects the action to be in the range [-1, 1].
 
         Args:
             env (Any): The environment instance.
@@ -127,16 +145,32 @@ class PDControl(ControlFunction):
         """
         assert_backend_is_supported(backend)
 
+        unnormalized_action = self._unnormalize_action(action)
+
         pd_state = carry.control_func_state
 
         p_gain = pd_state.p_gain_noise + self._init_p_gain
         d_gain = pd_state.d_gain_noise + self._init_d_gain
         offsets = pd_state.pos_offset
 
-        target_joint_pos = backend.clip(self._nominal_joint_positions + action + offsets,
+        target_joint_pos = backend.clip(self._nominal_joint_positions + unnormalized_action + offsets,
                                         self._jnt_ranges[:, 0], self._jnt_ranges[:, 1])
 
         ctrl = p_gain * (target_joint_pos - data.qpos[self._qpos_ids]) - d_gain * data.qvel[self._qvel_ids]
         ctrl = backend.clip(ctrl * pd_state.ctrl_mult, self._ctrl_ranges[:, 0], self._ctrl_ranges[:, 1])
 
         return ctrl, carry
+
+    def _unnormalize_action(self, action: Union[np.ndarray, jax.Array]) -> Union[np.ndarray, jax.Array]:
+        """
+        Rescale the action from [-1, 1] to the desired action space.
+
+        Args:
+            action (Union[np.ndarray, jax.Array]): The action to be unnormalized.
+
+        Returns:
+            Union[np.ndarray, jax.Array]: The unnormalized action
+
+        """
+        unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
+        return unnormalized_action

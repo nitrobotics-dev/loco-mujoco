@@ -94,8 +94,13 @@ class Mujoco:
         # read the actuation spec and build the mapping between actions and ids
         self._action_indices = self.get_action_indices(self._model, self._data, actuation_spec)
 
+        # setup control function
+        if control_params is None:
+            control_params = {}
+        self._control_func = ControlFunction.registered[control_type](self, **control_params)
+
         # define action space bounding box
-        action_space = Box(*self._get_action_limits(self._action_indices, self._model))
+        action_space = Box(*self._control_func.action_limits)
 
         # create the MDP information
         self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
@@ -103,11 +108,6 @@ class Mujoco:
         # setup reward function
         reward_cls = Reward.registered[reward_type]
         self._reward_function = reward_cls(self) if reward_params is None else reward_cls(self, **reward_params)
-
-        # setup control function
-        if control_params is None:
-            control_params = {}
-        self._control_func = ControlFunction.registered[control_type](self, **control_params)
 
         # setup terrain
         terrain_params = {} if terrain_params is None else terrain_params
@@ -317,8 +317,8 @@ class Mujoco:
         Returns:
             The action to be used for the current step and the updated carry.
         """
-        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
         action, carry = self._control_func.generate_action(self, action, model, data, carry, np)
+        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
         return action, carry
 
     def _compute_action(self, obs, action):
@@ -624,31 +624,6 @@ class Mujoco:
             for name in actuation_spec:
                 action_indices.append(model.actuator(name).id)
         return action_indices
-
-    @staticmethod
-    def _get_action_limits(action_indices, model):
-        """
-        Returns the action space bounding box given the action_indices and the model.
-
-         Args:
-             action_indices (list): A list of actuator indices.
-             model: MuJoCo model.
-
-         Returns:
-             Two nd.arrays defining the action space limits.
-
-         """
-        low = []
-        high = []
-        for index in action_indices:
-            if model.actuator_ctrllimited[index]:
-                low.append(model.actuator_ctrlrange[index][0])
-                high.append(model.actuator_ctrlrange[index][1])
-            else:
-                low.append(-np.inf)
-                high.append(np.inf)
-
-        return np.array(low), np.array(high)
 
     def _get_all_info_properties(self):
         """

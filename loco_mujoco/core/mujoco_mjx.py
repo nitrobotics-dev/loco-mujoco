@@ -209,8 +209,8 @@ class Mjx(Mujoco):
         Returns:
             The action to be used for the current step and the updated carry.
         """
-        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, jnp)
         action, carry = self._control_func.generate_action(self, action, model, data, carry, jnp)
+        action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, jnp)
         return action, carry
 
     def _mjx_reset_init_data_and_model(self, model, data, carry):

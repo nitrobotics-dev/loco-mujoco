@@ -1,9 +1,9 @@
 from typing import Any, Dict, List, Union, Tuple
 from types import ModuleType
+from copy import deepcopy
 
 import numpy as np
 import jax
-import jax.numpy as jnp
 from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
 
@@ -19,15 +19,18 @@ class ControlFunction(StatefulObject):
 
     registered: Dict[str, type] = dict()
 
-    def __init__(self, env: any, **kwargs: Dict):
+    def __init__(self, env: any, low: np.ndarray, high: np.ndarray, **kwargs: Dict):
         """
         Initialize the control function class.
 
         Args:
             env (Any): The environment instance.
+            low (np.ndarray): The lower bound of the action space.
+            high (np.ndarray): The upper bound of the action space.
             **kwargs (Dict): Additional keyword arguments.
         """
-        pass
+        self._low = low
+        self._high = high
 
     def generate_action(self, env: Any,
                         action: Union[np.ndarray, jax.Array],
@@ -55,6 +58,38 @@ class ControlFunction(StatefulObject):
         """
         assert_backend_is_supported(backend)
         raise NotImplementedError
+
+    @property
+    def action_limits(self):
+        """
+        Get the action space limits defined by the controller.
+        """
+        return deepcopy(self._low), deepcopy(self._high)
+
+    @staticmethod
+    def _get_actuator_limits(action_indices, model):
+        """
+        Returns the actuator control ranges of the model.
+
+         Args:
+             action_indices (list): A list of actuator indices.
+             model: MuJoCo model.
+
+         Returns:
+             Two nd.ndarrays defining the action space limits.
+
+         """
+        low = []
+        high = []
+        for index in action_indices:
+            if model.actuator_ctrllimited[index]:
+                low.append(model.actuator_ctrlrange[index][0])
+                high.append(model.actuator_ctrlrange[index][1])
+            else:
+                low.append(-np.inf)
+                high.append(np.inf)
+
+        return np.array(low), np.array(high)
 
     @classmethod
     def get_name(cls) -> str:

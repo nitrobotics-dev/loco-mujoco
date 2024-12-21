@@ -537,37 +537,6 @@ class LocoEnv(Mjx):
         traj_data = traj_data.replace(qpos=traj_data.qpos.at[0:2].add(-traj_data_init.qpos[0:2]))
         return Mjx.mjx_set_sim_state_from_traj_data(data, traj_data, carry)
 
-    def _preprocess_action(self, action, model, data, carry):
-        """
-        This function preprocesses all actions. All actions in this environment expected to be between -1 and 1.
-        Hence, we need to unnormalize the action to send to correct action to the simulation.
-        Note: If the action is not in [-1, 1], the unnormalized version will be clipped in Mujoco.
-
-        Args:
-            action (np.array): Action to be sent to the environment;
-
-        Returns:
-            Unnormalized action (np.array) that is sent to the environment;
-
-        """
-        unnormalized_action = self._unnormalize_action(action, data)
-        # call parent function to handle randomization (if setup)
-        action, carry = super()._preprocess_action(unnormalized_action, model, data, carry)
-        return action, carry
-
-    def _mjx_preprocess_action(self, action, model, data, carry):
-        unormalized_action = self._unnormalize_action(action, data)
-        # call parent function to handle randomization (if setup)
-        action, carry = super()._mjx_preprocess_action(unormalized_action, model, data, carry)
-        return action, carry
-
-    def _unnormalize_action(self, action, data):
-        """
-        Rescale the action from [-1, 1] to the desired action space.
-        """
-        unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
-        return unnormalized_action
-
     def _init_additional_carry(self, key, model, data, backend):
 
         carry = super()._init_additional_carry(key, model, data, backend)
