@@ -141,6 +141,48 @@ class TrajectoryInfo:
             for i, s_name in enumerate(self.site_names):
                 self.site_name2ind[s_name] = np.array([i])
 
+    def __eq__(self, other):
+        if not isinstance(other, TrajectoryInfo):
+            return False
+
+        # Compare joint_name2ind_qpos dictionaries
+        if self.joint_name2ind_qpos.keys() != other.joint_name2ind_qpos.keys():
+            return False
+        for key in self.joint_name2ind_qpos:
+            if not jnp.array_equal(self.joint_name2ind_qpos[key], other.joint_name2ind_qpos[key]):
+                return False
+
+        # Compare joint_name2ind_qvel dictionaries
+        if self.joint_name2ind_qvel.keys() != other.joint_name2ind_qvel.keys():
+            return False
+        for key in self.joint_name2ind_qvel:
+            if not jnp.array_equal(self.joint_name2ind_qvel[key], other.joint_name2ind_qvel[key]):
+                return False
+
+        # Compare body_name2ind dictionaries
+        if self.body_name2ind.keys() != other.body_name2ind.keys():
+            return False
+        for key in self.body_name2ind:
+            if not jnp.array_equal(self.body_name2ind[key], other.body_name2ind[key]):
+                return False
+
+        # Compare site_name2ind dictionaries
+        if self.site_name2ind.keys() != other.site_name2ind.keys():
+            return False
+        for key in self.site_name2ind:
+            if not jnp.array_equal(self.site_name2ind[key], other.site_name2ind[key]):
+                return False
+
+        # Compare other attributes
+        return (
+                self.joint_names == other.joint_names
+                and self.frequency == other.frequency
+                and self.model == other.model
+                and self.body_names == other.body_names
+                and self.site_names == other.site_names
+                and self.metadata == other.metadata
+        )
+
     def to_dict(self):
         return asdict(self)
 
@@ -331,6 +373,28 @@ class TrajectoryModel:
     site_bodyid: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
     site_pos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
     site_quat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+
+    def __eq__(self, other):
+        if not isinstance(other, TrajectoryModel):
+            return False
+
+        # Compare all attributes using JAX's array comparison for arrays
+        return (
+            self.njnt == other.njnt
+            and jnp.array_equal(self.jnt_type, other.jnt_type)
+            and self.nbody == other.nbody
+            and jnp.array_equal(self.body_rootid, other.body_rootid)
+            and jnp.array_equal(self.body_weldid, other.body_weldid)
+            and jnp.array_equal(self.body_mocapid, other.body_mocapid)
+            and jnp.array_equal(self.body_pos, other.body_pos)
+            and jnp.array_equal(self.body_quat, other.body_quat)
+            and jnp.array_equal(self.body_ipos, other.body_ipos)
+            and jnp.array_equal(self.body_iquat, other.body_iquat)
+            and self.nsite == other.nsite
+            and jnp.array_equal(self.site_bodyid, other.site_bodyid)
+            and jnp.array_equal(self.site_pos, other.site_pos)
+            and jnp.array_equal(self.site_quat, other.site_quat)
+        )
 
     def add_joint(self, jnt_type):
         """
