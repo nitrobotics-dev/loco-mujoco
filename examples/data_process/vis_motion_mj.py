@@ -46,9 +46,12 @@ if __name__ == "__main__":
         data = yaml.load(file, Loader=yaml.FullLoader)
         path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
         path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+        path_to_converted_amass_datasets = data["LOCOMUJOCO_CONVERTED_AMASS_PATH"]
 
     assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
     assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
+    assert path_to_converted_amass_datasets is not None, ("Please set the environment "
+                                                          "variable LOCOMUJOCO_SMPL_MODEL_PATH.")
 
     loco_mujoco_path = Path(loco_mujoco.__file__).parent
 

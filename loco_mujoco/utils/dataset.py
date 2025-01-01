@@ -231,6 +231,16 @@ def set_smpl_model_path():
     _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH")
 
 
+def set_converted_amass_path():
+    """
+    Set the path to which the converted AMASS dataset is stored.
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which the converted AMASS dataset is stored.")
+    parser.add_argument("--path", type=str, help="Path to which the converted AMASS dataset is stored.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_AMASS_PATH")
+
+
 def _set_path_in_yaml_conf(path: str, attr: str):
     """
     Set the path in the yaml configuration file.

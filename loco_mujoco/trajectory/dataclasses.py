@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import os.path
 from dataclasses import dataclass, fields, asdict, replace
 import pickle
 
@@ -42,6 +44,9 @@ class Trajectory:
         Args:
             path (str): Path to save the trajectory.
         """
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         serialized = flax.serialization.to_state_dict(self.data)
         traj_info_dict = self.info.to_dict()
         traj_model = flax.serialization.to_state_dict(traj_info_dict["model"])

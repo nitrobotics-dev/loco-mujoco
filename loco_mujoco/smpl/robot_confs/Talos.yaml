@@ -1,4 +1,4 @@
-name: talos
+name: Talos
 mjcf_file: loco_mujoco/environments/data/talos/talos.xml
 extend_config: []
   
@@ -23,3 +23,7 @@ smpl_pose_modifier:
   - Pelvis: "[np.pi/2, np.pi/2, 0]"
   - L_Shoulder: "[0, 0, -np.pi/2]"
   - R_Shoulder: "[0, 0, np.pi/2]"
+
+env_params:
+  disable_arms: false
+  disable_back_joint: false

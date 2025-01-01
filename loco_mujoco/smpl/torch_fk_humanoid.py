@@ -43,7 +43,7 @@ class ForwardKinematicsHumanoidTorch:
                 self.dof_axis.append(joint.axis)
                 self.has_freejoint = True
                 
-        self.dof_axis = torch.tensor(self.dof_axis).float()
+        self.dof_axis = torch.tensor(np.array(self.dof_axis)).float()
 
         for extend_config in cfg.extend_config:
             self.joint_names_augment += [extend_config.joint_name]
@@ -52,7 +52,6 @@ class ForwardKinematicsHumanoidTorch:
             self._local_rotation = torch.cat([self._local_rotation, torch.tensor([[extend_config.rot]]).to(device)], dim = 1)
             self._remove_idx += 1
             self.num_extend_dof += 1
-        
 
         self.joints_range = mjcf_data['joints_range'].to(device)
         self._local_rotation_mat = tRot.quaternion_to_matrix(self._local_rotation).float() # w, x, y ,z

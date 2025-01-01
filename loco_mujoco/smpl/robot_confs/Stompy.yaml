@@ -1,4 +1,4 @@
-name: stompy
+name: Stompy
 mjcf_file: loco_mujoco/environments/data/stompymini/robot.xml
 extend_config: []
 
@@ -23,3 +23,8 @@ joint_matches:
 
 smpl_pose_modifier: 
   - Pelvis: "[0, np.pi, 0]"
+
+
+env_params:
+  disable_arms: false
+  disable_back_joint: false

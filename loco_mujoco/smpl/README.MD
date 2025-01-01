@@ -24,6 +24,12 @@ loco-mujoco-set-amass-path --path "/path/to/amass/data"
 loco-mujoco-set-smpl-model-path --path "/path/to/smpl/models"
 ```
 
+Also, set the path to which the converted datasets (after retargeting) will be stored:
+
+```bash
+loco-mujoco-set-conv-amass-path --path "/path/to/conv/amass/data"
+```
+
 ### 2. Downloading the AMASS Dataset
 1. Visit the [AMASS website](https://amass.is.tue.mpg.de/index.html).
 2. Register and download the datasets you wish to use.

@@ -15,6 +15,7 @@ try:
 
     PATH_TO_MODELS = Path(__file__).resolve().parent / "models"
     PATH_TO_SMPL_CONF = Path(__file__).resolve().parent / "smpl" / "conf_paths.yaml"
+    PATH_TO_SMPL_ROBOT_CONF = Path(__file__).resolve().parent / "smpl" / "robot_confs"
 
 except ImportError as e:
     print(e)

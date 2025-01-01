@@ -4,7 +4,7 @@ requires = ["setuptools", "wheel", "wget"]
 [project]
 name = "loco-mujoco"
 dependencies = [
-    "numpy",
+    "numpy<2.0",
     "scipy>=1.14.0",
     "mujoco>=3.2.6",
     "mujoco-mjx>=3.2.6",
@@ -36,7 +36,7 @@ dynamic = ["version"]
 smpl = [
     "torch",
     "tqdm",
-    "smplx",
+    "smplx @ git+https://github.com/ZhengyiLuo/smplx",
     "easydict",
     "joblib"
 ]
@@ -52,3 +52,4 @@ loco-mujoco-download-real = "loco_mujoco.utils:download_real_datasets"
 loco-mujoco-download-perfect = "loco_mujoco.utils:download_perfect_datasets"
 loco-mujoco-set-smpl-model-path = "loco_mujoco.utils:set_smpl_model_path"
 loco-mujoco-set-amass-path = "loco_mujoco.utils:set_amass_path"
+loco-mujoco-set-conv-amass-path = "loco_mujoco.utils:set_converted_amass_path"

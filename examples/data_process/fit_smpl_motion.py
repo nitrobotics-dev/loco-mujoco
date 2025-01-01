@@ -42,8 +42,8 @@ def load_amass_data(data_path):
     }
 
 
-@hydra.main(version_base=None, config_path="../../loco_mujoco/cfg", config_name="config")
-def main(cfg: DictConfig) -> None:
+@hydra.main(version_base=None, config_path="../../loco_mujoco/smpl/robot_confs", config_name="UnitreeH1")
+def main(robot_conf: DictConfig) -> None:
     device = torch.device("cpu")
 
     path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
@@ -53,30 +53,31 @@ def main(cfg: DictConfig) -> None:
         data = yaml.load(file, Loader=yaml.FullLoader)
         path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
         path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+        path_to_converted_amass_datasets = data["LOCOMUJOCO_CONVERTED_AMASS_PATH"]
 
     assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
     assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
+    assert path_to_converted_amass_datasets is not None, ("Please set the environment "
+                                                          "variable LOCOMUJOCO_SMPL_MODEL_PATH.")
 
     # path to loco-mujoco robot models
     loco_mujoco_path = Path(loco_mujoco.__file__).parent
     path_to_all_amass_files = path_to_amass_datasets + "/**/*.npz"
 
-    humanoid_fk = ForwardKinematicsHumanoidTorch(cfg.robot) # load forward kinematics model
-    num_augment_joint = len(cfg.robot.extend_config)
+    humanoid_fk = ForwardKinematicsHumanoidTorch(robot_conf) # load forward kinematics model
+    num_augment_joint = len(robot_conf.extend_config)
 
     #### Define corresonpdances between h1 and smpl joints
     robot_joint_names_augment = humanoid_fk.joint_names_augment 
-    robot_joint_pick = [i[0] for i in cfg.robot.joint_matches]
-    smpl_joint_pick = [i[1] for i in cfg.robot.joint_matches]
+    robot_joint_pick = [i[0] for i in robot_conf.joint_matches]
+    smpl_joint_pick = [i[1] for i in robot_conf.joint_matches]
     robot_joint_pick_idx = [robot_joint_names_augment.index(j) for j in robot_joint_pick]
     smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
-
     all_pkls = glob.glob(str(path_to_all_amass_files), recursive=True)
     key_names = ["0-" + "_".join(data_path.split("/")[-3:]).replace(".npz", "") for data_path in all_pkls]
 
     data_key = "0-Transitions_mocap_mazen_c3d_airkick_jumpinplace_poses"
 
-    # todo: SMPLX_Parser works for python 3.11 but SMPL_Parser not!
     smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
 
     amass_data = load_amass_data(all_pkls[key_names.index(data_key)])
@@ -85,8 +86,8 @@ def main(cfg: DictConfig) -> None:
     N = trans.shape[0]
     pose_aa_walk = torch.from_numpy(amass_data['pose_aa'][::skip]).float()
     pose_aa_walk = torch.cat([pose_aa_walk, torch.zeros((pose_aa_walk.shape[0], 156 - pose_aa_walk.shape[1]))], axis = -1) # Setting the hand pose to zero. 
-    shape_new, scale = joblib.load(path_to_amass_datasets +
-                f"/{cfg.robot.name}/shape_optimized_v1.pkl")
+    shape_new, scale = joblib.load(path_to_converted_amass_datasets +
+                f"/{robot_conf.name}/shape_optimized_v1.pkl")
     
     with torch.no_grad():
         verts, joints = smpl_parser_n.get_joints_verts(pose_aa_walk.reshape(N, -1, 3), shape_new.repeat(N, 1), trans)
@@ -152,8 +153,8 @@ def main(cfg: DictConfig) -> None:
 
     joints_dump = joints.numpy().copy()
     joints_dump[..., 2] -= height_diff
-    os.makedirs(path_to_amass_datasets + f"/{cfg.robot.name}", exist_ok=True)
-    dumped_file = path_to_amass_datasets + f"/{cfg.robot.name}/{data_key}.pkl"
+    os.makedirs(path_to_amass_datasets + f"/{robot_conf.name}", exist_ok=True)
+    dumped_file = path_to_amass_datasets + f"/{robot_conf.name}/{data_key}.pkl"
     print(dumped_file)
     joblib.dump(
         {

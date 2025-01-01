@@ -16,8 +16,8 @@ from loco_mujoco.smpl import SMPLH_Parser, SMPLH_BONE_ORDER_NAMES
 from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
 
 
-@hydra.main(version_base=None, config_path="../../loco_mujoco/cfg", config_name="config")
-def main(cfg : DictConfig) -> None:
+@hydra.main(version_base=None, config_path="../../loco_mujoco/smpl/robot_confs", config_name="UnitreeH1")
+def main(robot_conf: DictConfig) -> None:
 
     path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
 
@@ -26,19 +26,19 @@ def main(cfg : DictConfig) -> None:
         data = yaml.load(file, Loader=yaml.FullLoader)
         path_to_smpl_model = data["LOCOMUJOCO_SMPL_MODEL_PATH"]
         path_to_amass_datasets = data["LOCOMUJOCO_AMASS_PATH"]
+        path_to_converted_amass_datasets = data["LOCOMUJOCO_CONVERTED_AMASS_PATH"]
 
     assert path_to_smpl_model is not None, "Please set the environment variable LOCOMUJOCO_SMPL_MODEL_PATH."
     assert path_to_amass_datasets is not None, "Please set the environment variable LOCOMUJOCO_AMASS_PATH."
+    assert path_to_converted_amass_datasets is not None, ("Please set the environment "
+                                                          "variable LOCOMUJOCO_SMPL_MODEL_PATH.")
 
-    #path_to_amass_datasets = Path(loco_mujoco.__file__).parent.parent / "data"
-    humanoid_fk = ForwardKinematicsHumanoidTorch(cfg.robot) # load forward kinematics model
-
-    robot_joint_names = humanoid_fk.joint_names
+    humanoid_fk = ForwardKinematicsHumanoidTorch(robot_conf) # load forward kinematics model
 
     #### Define corresonpdances between h1 and smpl joints
     robot_joint_names_augment = humanoid_fk.joint_names_augment 
-    robot_joint_pick = [i[0] for i in cfg.robot.joint_matches]
-    smpl_joint_pick = [i[1] for i in cfg.robot.joint_matches]
+    robot_joint_pick = [i[0] for i in robot_conf.joint_matches]
+    smpl_joint_pick = [i[1] for i in robot_conf.joint_matches]
     
     robot_joint_pick_idx = [ robot_joint_names_augment.index(j) for j in robot_joint_pick]
     smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
@@ -48,11 +48,11 @@ def main(cfg : DictConfig) -> None:
     pose_aa_robot = np.repeat(np.repeat(sRot.identity().as_rotvec()[None, None, None, ], humanoid_fk.num_extend_dof , axis = 2), 1, axis = 1)
     pose_aa_robot = torch.from_numpy(pose_aa_robot).float()
     
-    ###### prepare SMPL default pause for H1
+    ###### prepare SMPL default pose for H1
     pose_aa_stand = np.zeros((1, 156))
     pose_aa_stand = pose_aa_stand.reshape(-1, 52, 3)
     
-    for modifiers in cfg.robot.smpl_pose_modifier:
+    for modifiers in robot_conf.smpl_pose_modifier:
         modifier_key = list(modifiers.keys())[0]
         modifier_value = list(modifiers.values())[0]
         pose_aa_stand[:, SMPLH_BONE_ORDER_NAMES.index(modifier_key)] = sRot.from_euler("xyz", eval(modifier_value),  degrees = False).as_rotvec()
@@ -78,7 +78,7 @@ def main(cfg : DictConfig) -> None:
         verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, shape_new, trans[0:1])
         root_pos = joints[:, 0]
         joints = (joints - joints[:, 0]) * scale + root_pos
-        if len(cfg.robot.extend_config) > 0:
+        if len(robot_conf.extend_config) > 0:
             diff = fk_return.global_translation_extend[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
         else:
             diff = fk_return.global_translation[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
@@ -91,9 +91,11 @@ def main(cfg : DictConfig) -> None:
         loss.backward(retain_graph=True)
         optimizer_shape.step()
         
-    os.makedirs(path_to_amass_datasets + f"/{cfg.robot.name}", exist_ok=True)
-    joblib.dump((shape_new.detach(), scale), path_to_amass_datasets +
-                f"/{cfg.robot.name}/shape_optimized_v1.pkl") # V2 has hip joints
+    save_path = path_to_converted_amass_datasets + f"/{robot_conf.name}"
+    os.makedirs(save_path, exist_ok=True)
+    save_path += "/shape_optimized_v1.pkl"
+    joblib.dump((shape_new.detach(), scale), save_path)
+    print("Shape parameters saved at: ", save_path)
 
 
 if __name__ == "__main__":
