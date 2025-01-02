@@ -13,6 +13,7 @@ import jax.numpy as jnp
 import mujoco
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
+from typing import Union
 
 from loco_mujoco.core.observations.base import ObservationContainer
 
@@ -37,7 +38,7 @@ class Trajectory:
     transitions: TrajectoryTransitions = None
     obs_container: ObservationContainer = None
 
-    def save(self, path):
+    def save(self, path: str) -> None:
         """
         Serializes the trajectory and saves it to a npz file.
 
@@ -135,6 +136,8 @@ class TrajectoryInfo:
                 self.joint_name2ind_qvel[j_name] = np.array([j_qvel])
                 j_qpos += 1
                 j_qvel += 1
+            else:
+                raise ValueError(f"Unsupported joint type: {j_type} for joint {j_name}")
 
         self.body_name2ind = {}
         if self.body_names is not None:
@@ -195,13 +198,14 @@ class TrajectoryInfo:
     def get_attribute_names(cls):
         return [field.name for field in fields(cls)]
 
-    def add_joint(self, joint_name, joint_type):
+    def add_joint(self, joint_name, joint_type, backend=jnp):
         """
         Add a new joint to the trajectory info.
 
         Args:
-            joint_name (str): Joint name to add.
+            joint_name (list(str)): Joint name to add.
             joint_type (mujoco.mjtJoint): Joint type to add.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified joint added.
@@ -209,18 +213,19 @@ class TrajectoryInfo:
         assert isinstance(joint_name, str)
         joint_type = int(joint_type)
 
-        new_model = self.model.add_joint(joint_type)
+        new_model = self.model.add_joint(joint_type, backend)
         return replace(self,
                        joint_names=self.joint_names + [joint_name],
                        model=new_model
                        )
 
-    def add_body(self, body_name, body_rootid, body_weldid, body_mocapid, body_pos, body_quat, body_ipos, body_iquat):
+    def add_body(self, body_name, body_rootid, body_weldid, body_mocapid,
+                 body_pos, body_quat, body_ipos, body_iquat, backend=jnp):
         """
         Add a new body to the trajectory info.
 
         Args:
-            body_name (str): Body name to add.
+            body_name (list(str)): Body name to add.
             body_rootid (int): Root id of the new body.
             body_weldid (int): Weld id of the new body.
             body_mocapid (int): Mocap id of the new body.
@@ -228,28 +233,30 @@ class TrajectoryInfo:
             body_quat (Array): Quaternion of the new body.
             body_ipos (Array): Initial position of the new body.
             body_iquat (Array): Initial quaternion of the new body.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified body added.
         """
 
         new_model = self.model.add_body(body_rootid, body_weldid, body_mocapid, body_pos,
-                                        body_quat, body_ipos, body_iquat)
+                                        body_quat, body_ipos, body_iquat, backend)
 
         return replace(self,
                        body_names=self.body_names + [body_name],
                        model=new_model
                        )
 
-    def add_site(self, site_name, site_pos, site_quat, site_bodyid):
+    def add_site(self, site_name, site_pos, site_quat, site_bodyid, backend=jnp):
         """
         Add a new site to the trajectory info.
 
         Args:
-            site_name: site name to add.
+            site_name (list[str]): site name to add.
             site_pos (Array): Position of the new site.
             site_quat (Array): Quaternion of the new site.
             site_bodyid (int): Body id of the new site.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified site added.
@@ -258,95 +265,100 @@ class TrajectoryInfo:
         assert isinstance(site_pos, jax.Array) or isinstance(site_pos, np.ndarray)
         assert isinstance(site_quat, jax.Array) or isinstance(site_quat, np.ndarray)
 
-        new_model = self.model.add_site(site_pos, site_quat, site_bodyid)
+        new_model = self.model.add_site(site_pos, site_quat, site_bodyid, backend)
 
         return replace(self,
                        site_names=self.site_names + [site_name],
                        model=new_model
                        )
 
-    def remove_joints(self, joint_names):
+    def remove_joints(self, joint_names, backend=jnp):
         """
         Remove the joints with the specified ids from the trajectory info.
 
         Args:
-            joint_names: List of joint names to remove.
+            joint_names (list[str]): List of joint names to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified joints removed.
         """
-        new_model = self.model.remove_joints(jnp.array([self.joint_names.index(name) for name in joint_names]))
+        new_model = self.model.remove_joints(backend.array([self.joint_names.index(name) for name in joint_names])
+                                             , backend)
         return replace(self,
                        joint_names=[name for name in self.joint_names if name not in joint_names],
                        model=new_model
                        )
 
-    def remove_bodies(self, body_ids):
+    def remove_bodies(self, body_names, backend=jnp):
         """
         Remove the bodies with the specified ids from the trajectory info.
 
         Args:
-            body_ids: List of body ids to remove.
+            body_names (list[str]): List of body ids to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified bodies removed.
         """
-        new_model = self.model.remove_bodies(jnp.array([self.body_name2ind[name] for name in body_ids]))
+        new_model = self.model.remove_bodies(backend.array([self.body_name2ind[name] for name in body_names]),
+                                             backend)
         return replace(self,
-                       body_names=[name for i, name in enumerate(self.body_names) if i not in body_ids],
+                       body_names=[name for i, name in enumerate(self.body_names) if name not in body_names],
                        model=new_model
                        )
 
-    def remove_sites(self, site_ids):
+    def remove_sites(self, site_names, backend=jnp):
         """
         Remove the sites with the specified ids from the trajectory info.
 
         Args:
-            site_ids: List of site ids to remove.
+            site_names (list[str]): List of site ids to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
             A new instance of TrajectoryInfo with the specified sites removed.
         """
-        new_model = self.model.remove_sites(jnp.array([self.site_name2ind[name] for name in site_ids]))
+        new_model = self.model.remove_sites(backend.array([self.site_name2ind[name] for name in site_names]), backend)
         return replace(self,
-                       site_names=[name for i, name in enumerate(self.site_names) if i not in site_ids],
+                       site_names=[name for i, name in enumerate(self.site_names) if name not in site_names],
                        model=new_model
                        )
 
-    def reorder_joints(self, new_order):
+    def reorder_joints(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new joint order.
-
+            new_order (list[int]): List of indices of new joint order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
         """
-        new_model = self.model.reorder_joints(new_order)
+        new_model = self.model.reorder_joints(new_order, backend)
         return replace(self,
                        joint_names=[self.joint_names[i] for i in new_order],
                        model=new_model
                        )
 
-    def reorder_bodies(self, new_order):
+    def reorder_bodies(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new body order.
-
+            new_order (list[int]): List of indices of new body order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
         """
-        new_model = self.model.reorder_bodies(new_order)
+        new_model = self.model.reorder_bodies(new_order, backend)
         return replace(self,
                        body_names=[self.body_names[i] for i in new_order],
                        model=new_model
                        )
 
-    def reorder_sites(self, new_order):
+    def reorder_sites(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new site order.
-
+            new_order (list[int]): List of indices of new site order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
         """
-        new_model = self.model.reorder_sites(new_order)
+        new_model = self.model.reorder_sites(new_order, backend)
         return replace(self,
                        site_names=[self.site_names[i] for i in new_order],
                        model=new_model
@@ -361,23 +373,23 @@ class TrajectoryModel:
 
     # joint properties in Mujoco model
     njnt: int
-    jnt_type: jax.Array
+    jnt_type: Union[jax.Array, np.ndarray]
 
     # body properties in Mujoco model
     nbody: int = None
-    body_rootid: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_weldid: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_mocapid: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_pos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_quat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_ipos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    body_iquat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    body_rootid: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_weldid: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_mocapid: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_pos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_quat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_ipos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    body_iquat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     # site properties in Mujoco model
     nsite: int = None
-    site_bodyid: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    site_pos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    site_quat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    site_bodyid: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    site_pos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    site_quat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     def __eq__(self, other):
         if not isinstance(other, TrajectoryModel):
@@ -401,22 +413,24 @@ class TrajectoryModel:
             and jnp.array_equal(self.site_quat, other.site_quat)
         )
 
-    def add_joint(self, jnt_type):
+    def add_joint(self, jnt_type, backend=jnp):
         """
         Add a new joint to the trajectory model.
 
         Args:
             jnt_type: Type of the new joint.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the new joint added.
         """
         return self.replace(
             njnt=self.njnt + 1,
-            jnt_type=jnp.concatenate([self.jnt_type, jnp.array([jnt_type])])
+            jnt_type=backend.concatenate([self.jnt_type, backend.array([jnt_type])])
         )
 
-    def add_body(self, body_rootid, body_weldid, body_mocapid, body_pos, body_quat, body_ipos, body_iquat):
+    def add_body(self, body_rootid, body_weldid, body_mocapid, body_pos, body_quat,
+                 body_ipos, body_iquat, backend=jnp):
         """
         Add a new body to the trajectory model.
 
@@ -428,112 +442,118 @@ class TrajectoryModel:
             body_quat (Array): Quaternion of the new body.
             body_ipos (Array): Initial position of the new body.
             body_iquat (Array): Initial quaternion of the new body.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the new body added.
         """
         return self.replace(
             nbody=self.nbody + 1,
-            body_rootid=jnp.concatenate([self.body_rootid, jnp.array([body_rootid])]),
-            body_weldid=jnp.concatenate([self.body_weldid, jnp.array([body_weldid])]),
-            body_mocapid=jnp.concatenate([self.body_mocapid, jnp.array([body_mocapid])]),
-            body_pos=jnp.concatenate([self.body_pos, jnp.array([body_pos])]),
-            body_quat=jnp.concatenate([self.body_quat, jnp.array([body_quat])]),
-            body_ipos=jnp.concatenate([self.body_ipos, jnp.array([body_ipos])]),
-            body_iquat=jnp.concatenate([self.body_iquat, jnp.array([body_iquat])])
+            body_rootid=backend.concatenate([self.body_rootid, backend.array([body_rootid])]),
+            body_weldid=backend.concatenate([self.body_weldid, backend.array([body_weldid])]),
+            body_mocapid=backend.concatenate([self.body_mocapid, backend.array([body_mocapid])]),
+            body_pos=backend.concatenate([self.body_pos, backend.array([body_pos])]),
+            body_quat=backend.concatenate([self.body_quat, backend.array([body_quat])]),
+            body_ipos=backend.concatenate([self.body_ipos, backend.array([body_ipos])]),
+            body_iquat=backend.concatenate([self.body_iquat, backend.array([body_iquat])])
         )
 
-    def add_site(self, site_pos, site_quat, site_body_id):
+    def add_site(self, site_pos, site_quat, site_body_id, backend=jnp):
         """
         Add a new site to the trajectory model.
 
         Args:
             site_pos (Array): Position of the new site.
             site_quat (Array): Quaternion of the new site.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the new site added.
         """
         return self.replace(
             nsite=self.nsite + 1,
-            site_bodyid=jnp.concatenate([self.site_bodyid, jnp.array([site_body_id])]),
-            site_pos=jnp.concatenate([self.site_pos, jnp.array([site_pos])]),
-            site_quat=jnp.concatenate([self.site_quat, jnp.array([site_quat])],)
+            site_bodyid=backend.concatenate([self.site_bodyid, backend.array([site_body_id])]),
+            site_pos=backend.concatenate([self.site_pos, backend.array([site_pos])]),
+            site_quat=backend.concatenate([self.site_quat, backend.array([site_quat])],)
         )
 
-    def remove_joints(self, joint_ids):
+    def remove_joints(self, joint_ids, backend=jnp):
         """
         Remove the joints with the specified ids from the trajectory model.
 
         Args:
-            joint_ids (jax.Array): Array of joint ids to remove.
+            joint_ids (Union[jax.Array, np.ndarray]): Array of joint ids to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified joints removed.
         """
         return self.replace(
             njnt=self.njnt - len(joint_ids),
-            jnt_type=jnp.delete(self.jnt_type, joint_ids, axis=0)
+            jnt_type=backend.delete(self.jnt_type, joint_ids, axis=0)
         )
 
-    def remove_bodies(self, body_ids):
+    def remove_bodies(self, body_ids, backend=jnp):
         """
         Remove the bodies with the specified ids from the trajectory model.
 
         Args:
             body_ids (jax.Array): Array of body ids to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified bodies removed.
         """
         return self.replace(
             nbody=self.nbody - len(body_ids),
-            body_rootid=jnp.delete(self.body_rootid, body_ids, axis=0),
-            body_weldid=jnp.delete(self.body_weldid, body_ids, axis=0),
-            body_mocapid=jnp.delete(self.body_mocapid, body_ids, axis=0),
-            body_pos=jnp.delete(self.body_pos, body_ids, axis=0),
-            body_quat=jnp.delete(self.body_quat, body_ids, axis=0),
-            body_ipos=jnp.delete(self.body_ipos, body_ids, axis=0),
-            body_iquat=jnp.delete(self.body_iquat, body_ids, axis=0)
+            body_rootid=backend.delete(self.body_rootid, body_ids, axis=0),
+            body_weldid=backend.delete(self.body_weldid, body_ids, axis=0),
+            body_mocapid=backend.delete(self.body_mocapid, body_ids, axis=0),
+            body_pos=backend.delete(self.body_pos, body_ids, axis=0),
+            body_quat=backend.delete(self.body_quat, body_ids, axis=0),
+            body_ipos=backend.delete(self.body_ipos, body_ids, axis=0),
+            body_iquat=backend.delete(self.body_iquat, body_ids, axis=0)
         )
 
-    def remove_sites(self, site_ids):
+    def remove_sites(self, site_ids, backend=jnp):
         """
         Remove the sites with the specified ids from the trajectory model.
 
         Args:
-            site_ids (jax.Array): Array of site ids to remove.
+            site_ids (Union[jax.Array, np.ndarray]): Array of site ids to remove.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified sites removed.
         """
         return self.replace(
             nsite=self.nsite - len(site_ids),
-            site_bodyid=jnp.delete(self.site_bodyid, site_ids, axis=0),
-            site_pos=jnp.delete(self.site_pos, site_ids, axis=0),
-            site_quat=jnp.delete(self.site_quat, site_ids, axis=0)
+            site_bodyid=backend.delete(self.site_bodyid, site_ids, axis=0),
+            site_pos=backend.delete(self.site_pos, site_ids, axis=0),
+            site_quat=backend.delete(self.site_quat, site_ids, axis=0)
         )
 
-    def reorder_joints(self, new_order):
+    def reorder_joints(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new joint order.
+            new_order (list[int]): List of indices of new joint order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
 
         """
-        new_order = jnp.array(new_order)
+        new_order = backend.array(new_order)
         return self.replace(
             jnt_type=self.jnt_type[new_order]
         )
 
-    def reorder_bodies(self, new_order):
+    def reorder_bodies(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new body order.
-
+            new_order (list[int]): List of indices of new body order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
         """
-        new_order = jnp.array(new_order)
+        new_order = backend.array(new_order)
         return self.replace(
             body_rootid=self.body_rootid[new_order],
             body_weldid=self.body_weldid[new_order],
@@ -544,14 +564,14 @@ class TrajectoryModel:
             body_iquat=self.body_iquat[new_order]
         )
 
-    def reorder_sites(self, new_order):
+    def reorder_sites(self, new_order, backend=jnp):
         """
 
         Args:
-            new_order: List of indices of new site order.
-
+            new_order (list[int]): List of indices of new site order.
+            backend (Union[jax, numpy]): Backend to use for the computation.
         """
-        new_order = jnp.array(new_order)
+        new_order = backend.array(new_order)
         return self.replace(
             site_bodyid=self.site_bodyid[new_order],
             site_pos=self.site_pos[new_order],
@@ -584,21 +604,21 @@ class SingleData:
     While it currently stores just a few elements, it can be extended to store more elements in the future.
     """
     # joint properties in Mujoco datastructure
-    qpos: jax.Array
-    qvel: jax.Array
+    qpos: Union[jax.Array, np.ndarray]
+    qvel: Union[jax.Array, np.ndarray]
 
     # global body properties
-    xpos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    xquat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    cvel: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    subtree_com: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    xpos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    xquat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    cvel: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    subtree_com: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     # global site properties
-    site_xpos: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    site_xmat: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    site_xpos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    site_xmat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     # userdata is only used as a placeholder for goals during dataset creation
-    userdata: jax.Array = struct.field(default_factory=lambda: jnp.empty((0)))
+    userdata: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty((0)))
 
 
 @struct.dataclass
@@ -618,7 +638,7 @@ class TrajectoryData(SingleData):
     """
 
     # points defining the beginning of each trajectory, and the end of the last trajectory
-    split_points: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    split_points: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     def get(self, traj_index, sub_traj_index, backend=jnp):
         """
@@ -797,7 +817,7 @@ class TrajectoryData(SingleData):
         Returns:
             A new instance of TrajectoryData with the new body added.
         """
-        quats = jnp.broadcast_to(jnp.array([1.0, 0.0, 0.0, 0.0]), (self.xquat.shape[0], 1, 4))
+        quats = backend.broadcast_to(backend.array([1.0, 0.0, 0.0, 0.0]), (self.xquat.shape[0], 1, 4))
         return self.replace(
             xpos=backend.concatenate([self.xpos, backend.full((self.xpos.shape[0], 1, 3), xpos_value)], axis=1),
             xquat=backend.concatenate([self.xquat, quats], axis=1),
@@ -831,7 +851,8 @@ class TrajectoryData(SingleData):
         Remove the joints with the specified ids from the trajectory data.
 
         Args:
-            joint_ids (jax.Array): Array of joint ids to remove.
+            joint_qpos_ids (Union[jax.Array, np.ndarray]): Array of joint qpos ids to remove.
+            joint_qvel_ids (Union[jax.Array, np.ndarray]): Array of joint qvel ids to remove.
             backend: Backend to use for the computation.
 
         Returns:
@@ -849,7 +870,7 @@ class TrajectoryData(SingleData):
         Remove the bodies with the specified ids from the trajectory data.
 
         Args:
-            body_ids (jax.Array): Array of body ids to remove.
+            body_ids (Union[jax.Array, np.ndarray]): Array of body ids to remove.
             backend: Backend to use for the computation.
 
         Returns:
@@ -869,7 +890,7 @@ class TrajectoryData(SingleData):
         Remove the sites with the specified ids from the trajectory data.
 
         Args:
-            site_ids (jax.Array): Array of site ids to remove.
+            site_ids (Union[jax.Array, np.ndarray]): Array of site ids to remove.
             backend: Backend to use for the computation.
 
         Returns:
@@ -886,8 +907,8 @@ class TrajectoryData(SingleData):
         Reorder the joints in the trajectory data.
 
         Args:
-            new_order_qpos (jax.Array): Array of indices specifying the new order of the joints positions.
-            new_order_qvel (jax.Array): Array of indices specifying the new order of the joints velocities.
+            new_order_qpos (Union[jax.Array, np.ndarray]): Array of indices specifying the new order of the joints positions.
+            new_order_qvel (Union[jax.Array, np.ndarray]): Array of indices specifying the new order of the joints velocities.
 
         Returns:
             A new instance of TrajectoryData with the joints reordered.
@@ -902,7 +923,7 @@ class TrajectoryData(SingleData):
         Reorder the bodies in the trajectory data.
 
         Args:
-            new_order (jax.Array): Array of indices specifying the new order of the bodies.
+            new_order (Union[jax.Array, np.ndarray]): Array of indices specifying the new order of the bodies.
 
         Returns:
             A new instance of TrajectoryData with the bodies reordered.
@@ -919,7 +940,7 @@ class TrajectoryData(SingleData):
         Reorder the sites in the trajectory data.
 
         Args:
-            new_order (jax.Array): Array of indices specifying the new order of the sites.
+            new_order (Union[jax.Array, np.ndarray]): Array of indices specifying the new order of the sites.
 
         Returns:
             A new instance of TrajectoryData with the sites reordered.
@@ -972,7 +993,7 @@ class TrajectoryData(SingleData):
             if backend == jnp:
                 split_points = split_points.at[:].add(curr_n_samples)
             else:
-                split_points += curr_n_samples
+                split_points = split_points + curr_n_samples
             curr_n_samples = split_points[-1]
             new_split_points.append(split_points[:-1])
 
@@ -1020,7 +1041,7 @@ class TrajectoryData(SingleData):
         return TrajectoryData(**dic)
 
 
-def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float):
+def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float, backend=jnp):
     """
     Interpolate the trajectories to a new frequency.
 
@@ -1028,6 +1049,7 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
         traj_data: TrajectoryData instance containing the trajectories to interpolate.
         traj_info: TrajectoryInfo instance containing the trajectory information.
         new_frequency: The frequency to interpolate the trajectories to.
+        backend: Backend to use for the computation.
 
     Returns:
         A new instance of TrajectoryData and TrajectoryInfo containing the interpolated trajectories.
@@ -1073,7 +1095,7 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
             xmat_interpolated = Rotation.from_quat(xquat_interpolated).as_matrix().reshape(-1, 9)
             xmats_interpolated.append(xmat_interpolated)
 
-        return jnp.stack(xmats_interpolated, axis=1)
+        return backend.stack(xmats_interpolated, axis=1)
 
     old_frequency = traj_info.frequency
 
@@ -1087,31 +1109,31 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
 
         # interpolate the trajectory
         new_traj_sampling_factor = new_frequency / old_frequency
-        x = np.arange(traj_len)
-        x_new = np.linspace(0, traj_len - 1, round(traj_len * new_traj_sampling_factor), endpoint=True)
+        x = backend.arange(traj_len)
+        x_new = backend.linspace(0, traj_len - 1, round(traj_len * new_traj_sampling_factor), endpoint=True)
 
         # quaternions need SLERP interpolation
         if traj_data_slice.xquat.size > 0:
-            xquat_interpolated = jnp.stack([slerp_batch(traj_data_slice.xquat[:, i, :], x, x_new)
+            xquat_interpolated = backend.stack([slerp_batch(traj_data_slice.xquat[:, i, :], x, x_new)
                                             for i in range(traj_data_slice.xquat.shape[1])], axis=1)
         else:
-            xquat_interpolated = jnp.empty(0)
+            xquat_interpolated = backend.empty(0)
 
         # do slerp interpolation for rotation matrices as well
         if traj_data_slice.site_xmat.size > 0:
             xmat_interpolated = interpolate_xmat(traj_data_slice.site_xmat, x, x_new)
         else:
-            xmat_interpolated = jnp.empty(0)
+            xmat_interpolated = backend.empty(0)
 
         # do slerp interpolation for free joint orientation
         qpos_free_joint_quat_ids = [i[3:] for i in traj_info.joint_name2ind_qpos.values() if len(i) > 1]
         qpos_free_joint_quat_ids_flat = [item for sublist in qpos_free_joint_quat_ids for item in sublist]
-        qpos_other_ids = jnp.array([i for i in range(traj_data.qpos.shape[-1])
+        qpos_other_ids = backend.array([i for i in range(traj_data.qpos.shape[-1])
                                     if i not in qpos_free_joint_quat_ids_flat])
         qpos = jnp.zeros((x_new.shape[0], traj_data_slice.qpos.shape[-1]))
         qpos = qpos.at[:, qpos_other_ids].set(interp1d(x, traj_data_slice.qpos[:, qpos_other_ids], kind="cubic", axis=0)(x_new))
         for quat_ids in qpos_free_joint_quat_ids:
-            quat_ids = jnp.array(quat_ids)
+            quat_ids = backend.array(quat_ids)
             qpos = qpos.at[:, quat_ids].set(slerp_batch(traj_data_slice.qpos[:, quat_ids], x, x_new))
 
         traj_data_slice = traj_data_slice.replace(
@@ -1122,13 +1144,13 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
             cvel=interp1d(x, traj_data_slice.cvel, kind="cubic", axis=0)(x_new) if traj_data_slice.cvel.size > 0 else jnp.empty(0),
             site_xpos=interp1d(x, traj_data_slice.site_xpos, kind="cubic", axis=0)(x_new) if traj_data_slice.site_xpos.size > 0 else jnp.empty(0),
             site_xmat=xmat_interpolated,
-            split_points=jnp.array([0, len(x_new)]))
+            split_points=backend.array([0, len(x_new)]))
 
         new_traj_datas.append(traj_data_slice)
 
     traj_info = replace(traj_info, frequency=new_frequency)
 
-    new_traj_data, traj_info = TrajectoryData.concatenate(new_traj_datas, [traj_info] * len(new_traj_datas))
+    new_traj_data, traj_info = TrajectoryData.concatenate(new_traj_datas, [traj_info] * len(new_traj_datas), backend)
 
     return new_traj_data, traj_info
 
@@ -1143,14 +1165,14 @@ class TrajectoryTransitions:
 
     """
 
-    observations: jax.Array
-    next_observations: jax.Array
-    absorbings: jax.Array
-    dones: jax.Array
+    observations: Union[jax.Array, np.ndarray]
+    next_observations: Union[jax.Array, np.ndarray]
+    absorbings: Union[jax.Array, np.ndarray]
+    dones: Union[jax.Array, np.ndarray]
 
     # some datasets may not have actions and rewards (e.g., Mocap datasets)
-    actions: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
-    rewards: jax.Array = struct.field(default_factory=lambda: jnp.empty(0))
+    actions: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+    rewards: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     def to_jnp(self):
         return jax.tree_map(lambda x: jnp.array(x), self)
