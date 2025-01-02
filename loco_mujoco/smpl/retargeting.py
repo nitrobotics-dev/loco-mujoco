@@ -2,6 +2,8 @@ import os
 import glob
 from dataclasses import replace
 import logging
+from typing import Union, List
+import hashlib
 
 import yaml
 import joblib
@@ -182,7 +184,13 @@ def fit_smpl_motion(
     smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
 
     all_pkls = glob.glob(path_to_all_amass_files, recursive=True)
-    key_names = ["/".join(data_path.split("/")[-3:]).replace(".npz", "") for data_path in all_pkls]
+    key_names = [
+        "/".join(data_path.replace(path_to_amass_datasets+"/", "").split("/")).replace(".npz", "")
+        for data_path in all_pkls]
+
+    if motion_file_name.startswith("/"):
+        motion_file_name = motion_file_name[1:]
+    motion_file_name = motion_file_name.replace(".npz", "")
 
     smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
     amass_data = load_amass_data(all_pkls[key_names.index(motion_file_name)])
@@ -306,6 +314,7 @@ def fit_smpl_motion(
     jnt_names = [
         mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)
     ]
+
     traj_info = TrajectoryInfo(
         jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=fps
     )
@@ -356,18 +365,38 @@ def extend_motion(
     return traj
 
 
+def create_multi_trajectory_hash(names: List[str]) -> str:
+    """
+    Generates a stable hash for a list of strings using SHA256 with incremental updates.
+
+    Args:
+        names (list[str]): The list of strings to hash.
+
+    Returns:
+        str: A hexadecimal hash string.
+    """
+
+    # Sort the list to ensure order invariance
+    sorted_names = sorted(names)
+
+    hash_obj = hashlib.sha256()
+    for s in sorted_names:
+        hash_obj.update(s.encode())
+    return hash_obj.hexdigest()
+
+
 def load_retargeted_amass_trajectory(
-    env_name: str, dataset_name: str
+    env_name: str, dataset_name: Union[str, List[str]]
 ) -> Trajectory:
     """
     Load a retargeted AMASS trajectory for a specific environment.
 
     Args:
         env_name (str): Name of the environment.
-        dataset_name (str): Name of the dataset to process.
+        dataset_name (Union[str, List[str]]): Name of the dataset or list of datasets to process.
 
     Returns:
-        Trajectory: The retargeted trajectory.
+        Trajectory: The retargeted trajectories.
 
     """
     logger = setup_logger("amass", identifier="[LocoMuJoCo's AMASS Retargeting Pipeline]")
@@ -406,23 +435,51 @@ def load_retargeted_amass_trajectory(
     else:
         logger.info(f"Found existing robot shape file at {path_to_robot_smpl_shape}")
 
-    path_retargeted_motion_file = os.path.join(path_robot_smpl_data, f"{dataset_name}.npz")
-    if not os.path.exists(path_retargeted_motion_file):
-        logger.info("Retargeting AMASS motion file using optimized body shape ...")
-        trajectory = fit_smpl_motion(
-            robot_conf,
-            path_to_smpl_model,
-            path_to_amass_datasets,
-            path_to_converted_amass_datasets,
-            dataset_name,
-            logger
-        )
-        logger.info("Using Mujoco's forward kinematics to calculate other model-specific entities ...")
-        trajectory = extend_motion(robot_conf, trajectory, logger)
-        trajectory.save(path_retargeted_motion_file)
+    # if isinstance(dataset_name, list):
+    #     # create a hash to use it as a filename for multiple trajectories to store
+    #     file_name = create_multi_trajectory_hash(dataset_name)
+    #     path_retargeted_motion_file = os.path.join(path_robot_smpl_data, f"combined_datasets/{file_name}.npz")
+    #     logger.info(f"Multiple datasets passed. Combining them into a single for quick reloading "
+    #                 f"file stored at {path_retargeted_motion_file}")
+    # else:
+    #     path_retargeted_motion_file = os.path.join(path_robot_smpl_data, f"{dataset_name}.npz")
+
+    # load trajectory file(s)
+    if isinstance(dataset_name, str):
+        dataset_name = [dataset_name]
+
+    all_trajectories = []
+    for i, d_name in enumerate(dataset_name):
+        d_path = os.path.join(path_robot_smpl_data, f"{d_name}.npz")
+        if not os.path.exists(d_path):
+            logger.info(f"Dataset {i+1}/{len(dataset_name)}: "
+                        f"Retargeting AMASS motion file using optimized body shape ...")
+            trajectory = fit_smpl_motion(
+                robot_conf,
+                path_to_smpl_model,
+                path_to_amass_datasets,
+                path_to_converted_amass_datasets,
+                d_name,
+                logger
+            )
+            logger.info("Using Mujoco's forward kinematics to calculate other model-specific entities ...")
+            trajectory = extend_motion(robot_conf, trajectory, logger)
+            trajectory.save(d_path)
+            all_trajectories.append(trajectory)
+        else:
+            logger.info(f"Dataset {i+1}/{len(dataset_name)}: "
+                        f"Found existing retargeted motion file at {d_path}. Loading ...")
+            trajectory = Trajectory.load(d_path)
+            all_trajectories.append(trajectory)
+
+    if len(all_trajectories) == 1:
+        trajectory = all_trajectories[0]
     else:
-        logger.info(f"Found existing retargeted motion file at {path_retargeted_motion_file}. Loading ...")
-        trajectory = Trajectory.load(path_retargeted_motion_file)
+        logger.info("Concatenating trajectories ...")
+        traj_datas = [t.data for t in all_trajectories]
+        traj_infos = [t.info for t in all_trajectories]
+        traj_data, traj_info = TrajectoryData.concatenate(traj_datas, traj_infos)
+        trajectory = Trajectory(traj_info, traj_data)
 
     logger.info("Trajectory data loaded!")
 
