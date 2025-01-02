@@ -1,3 +1,0 @@
-HumanoidTorque.DEFAULT.real:
-  goal_type: NoGoal
-  reward_type: NoReward

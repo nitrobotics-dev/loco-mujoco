@@ -1,7 +1,0 @@
-UnitreeA1.DEFAULT.real:
-  goal_type: NoGoal
-  reward_type: NoReward
-
-MjxUnitreeA1.DEFAULT.real:
-  goal_type: NoGoal
-  reward_type: NoReward

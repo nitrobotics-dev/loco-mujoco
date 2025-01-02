@@ -413,7 +413,6 @@ class LocoEnv(Mjx):
 
         key, subkey = jax.random.split(key)
         self.reset(subkey)
-        traj_no = 0
         subtraj_step_no = 0
         traj_data_sample = self.th.get_current_traj_data(self._additional_carry, np)
         self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
@@ -427,12 +426,14 @@ class LocoEnv(Mjx):
             recorder(frame)
 
         highest_int = np.iinfo(np.int32).max
-        if n_steps_per_episode is None:
-            n_steps_per_episode = self.th.len_trajectory(traj_no)
         if n_episodes is None:
             n_episodes = highest_int
         for i in range(n_episodes):
-            for j in tqdm(range(n_steps_per_episode)):
+            if n_steps_per_episode is None:
+                nspe = self.th.len_trajectory(i)
+            else:
+                nspe = n_steps_per_episode
+            for j in tqdm(range(nspe)):
 
                 if callback_class is None:
                     self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
@@ -516,7 +517,7 @@ class LocoEnv(Mjx):
             "play_trajectory_from_velocity() is deprecated and will be removed in future. "
             "Use play_trajectory() and set from_velocity=True instead.",
             category=DeprecationWarning,
-            stacklevel=2
+            stacklevel=3
         )
         self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
                              record, recorder_params, callback_class, key)
@@ -663,20 +664,18 @@ class LocoEnv(Mjx):
 
         """
 
-        # load correct task configuration
-        config_key = ".".join((cls.__name__, task, dataset_type)) if task is not None\
-            else ".".join((cls.__name__, "DEFAULT", dataset_type))
-        task_config = cls.get_task_config(config_key, **kwargs)
+        warnings.warn(
+            "The methods `LocoEnv.make()` and `LocoEnv.generate()` are deprecated and will be"
+            "removed in a future release.\nPlease use the task factory classes instead: "
+            "`ImitationFactory`, `RLFactory`, or `AMASSImitationFactory`.",
+            category=DeprecationWarning,
+            stacklevel=3
+        )
 
-        # create the environment
-        env = cls(**task_config)
+        # import here to avoid circular dependency
+        from loco_mujoco.task_factories.default_imitation_factory import ImitationFactory
 
-        # load the trajectory
-        if task is not None:
-            traj_path = env.get_traj_path(cls, dataset_type, task, debug)
-            env.load_trajectory(traj_path=traj_path, warn=False)
-
-        return env
+        return ImitationFactory.make(cls.__name__, task, dataset_type, debug, **kwargs)
 
     @classmethod
     def get_default_xml_file_path(cls):
@@ -754,71 +753,6 @@ class LocoEnv(Mjx):
         """
         raise NotImplementedError(f"Please implement the _get_action_specification method "
                                   f"in the {type(spec).__name__} environment.")
-
-    @staticmethod
-    def get_task_config(config_key, **kwargs):
-
-        def load_all_yaml_at_path(path):
-            all_files = os.listdir(path)
-            yaml_files = [path  / f for f in all_files if f.endswith(".yaml")]
-            all_configs = dict()
-            for config_file_path in yaml_files:
-                with open(config_file_path, 'r') as file:
-                    one_config = yaml.safe_load(file)
-                    assert list(one_config.keys()) not in list(all_configs.keys())
-                    all_configs |= one_config
-            return all_configs
-
-        config_file_path = Path(loco_mujoco.__file__).resolve().parent / "tasks/"
-
-        # load all configurations
-        all_configs = load_all_yaml_at_path(config_file_path)
-
-        # get task-specific configuration
-        try:
-            if config_key in all_configs.keys():
-                task_config = all_configs[config_key]
-            else:
-                # load default config
-                def_config_key = config_key.split(".")
-                def_config_key[1] = "DEFAULT"
-                def_config_key = ".".join(def_config_key)
-                task_config = all_configs[def_config_key]
-        except KeyError:
-            raise KeyError("The specified task configuration could not be found: %s" % config_key)
-
-        if "reward_type" in kwargs.keys() and "reward_params" not in kwargs.keys():
-            try:
-                del task_config["reward_params"]
-            except:
-                pass
-
-        # overwrite the task_config with the kwargs
-        for key, value in task_config.items():
-            if key in kwargs.keys():
-                task_config[key] = kwargs[key]
-                del kwargs[key]  # delete from kwargs to avoid passing a kwarg twice
-
-        # add rest of kwargs to task_config
-        task_config |= kwargs
-
-        return task_config
-
-    @staticmethod
-    def get_traj_path(env_cls, dataset_type, task, debug):
-
-        if dataset_type == "real":
-            traj_path = str(env_cls.path_to_real_datasets() / (task+".npz"))
-            if debug:
-                traj_path = traj_path.split("/")
-                traj_path.insert(3, "mini_datasets")
-                traj_path = "/".join(traj_path)
-
-        elif dataset_type == "perfect":
-            # todo: this needs to be adapted to new traj_data
-            traj_path = None
-
-        return traj_path
 
     @staticmethod
     @jax.jit
