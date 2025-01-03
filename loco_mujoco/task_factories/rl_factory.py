@@ -1,3 +1,4 @@
+from loco_mujoco.environments.base import LocoEnv
 
 
 class RLFactory:
@@ -10,7 +11,7 @@ class RLFactory:
     """
 
     @staticmethod
-    def make(env_name: str, **kwargs) -> "LocoEnv":
+    def make(env_name: str, **kwargs) -> LocoEnv:
         """
         Creates and returns an RL environment based on the specified environment name.
 
@@ -24,7 +25,6 @@ class RLFactory:
         Raises:
             KeyError: If the specified environment is not registered in `Mujoco.registered_envs`.
         """
-        from loco_mujoco.environments.base import LocoEnv
 
         if env_name not in LocoEnv.registered_envs:
             raise KeyError(f"Environment '{env_name}' is not a registered LocoMuJoCo environment.")

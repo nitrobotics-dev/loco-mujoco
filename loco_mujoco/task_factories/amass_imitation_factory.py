@@ -1,5 +1,6 @@
 from typing import Union, List
 
+from loco_mujoco.environments.base import LocoEnv
 from loco_mujoco.smpl.retargeting import load_retargeted_amass_trajectory
 
 
@@ -13,7 +14,7 @@ class AMASSImitationFactory:
     """
 
     @staticmethod
-    def make(env_name: str, rel_dataset_path: Union[str, List[str]], **kwargs) -> "LocoEnv":
+    def make(env_name: str, rel_dataset_path: Union[str, List[str]], **kwargs) -> LocoEnv:
         """
         Creates and returns an imitation learning environment with a preloaded AMASS trajectory.
 
@@ -33,8 +34,6 @@ class AMASSImitationFactory:
         Raises:
             KeyError: If `env_name` is not found in `Mujoco.registered_envs`.
         """
-
-        from loco_mujoco.environments.base import LocoEnv
 
         if env_name not in LocoEnv.registered_envs:
             raise KeyError(f"Environment '{env_name}' is not a registered LocoMuJoCo environment.")

@@ -345,7 +345,7 @@ def extend_motion(
 
     """
     env_cls = LocoEnv.registered_envs[robot_conf.name]
-    env = env_cls(**robot_conf.env_params, random_start=False, fixed_start_conf=(0, 0))
+    env = env_cls(**robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
     traj_data, traj_info = interpolate_trajectories(traj.data, traj.info, 1.0 / env.dt)
     traj = Trajectory(info=traj_info, data=traj_data)

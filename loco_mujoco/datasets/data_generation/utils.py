@@ -19,6 +19,7 @@ class ReplayCallback:
         model, data, carry = env._simulation_pre_step(model, data, carry)
         mujoco.mj_forward(model, data)
         data, carry = env._simulation_post_step(model, data, carry)
+        return model, data, carry
 
 
 class ExtendTrajData(ReplayCallback):
@@ -59,7 +60,7 @@ class ExtendTrajData(ReplayCallback):
         self.current_length = 0
 
     def __call__(self, env, model, data, traj_sample, carry):
-        super().__call__(env, model, data, traj_sample, carry)
+        model, data, carry = super().__call__(env, model, data, traj_sample, carry)
 
         self.recorder["xpos"][self.current_length] = data.xpos[self.b_ids]
         self.recorder["xquat"][self.current_length] = data.xquat[self.b_ids]
@@ -73,6 +74,8 @@ class ExtendTrajData(ReplayCallback):
         self.recorder["qvel"][self.current_length] = data.qvel
 
         self.current_length += 1
+
+        return model, data, carry
 
     def extend_trajectory_data(self, traj_data: TrajectoryData, traj_info: TrajectoryInfo):
         assert self.current_length == traj_data.qpos.shape[0]
