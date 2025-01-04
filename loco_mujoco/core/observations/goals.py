@@ -10,6 +10,7 @@ from flax import struct
 
 from loco_mujoco.core.observations.base import StatefulObservation, ObservationType
 from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quat_scalarfirst2scalarlast
+from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid
 
 
 class Goal(StatefulObservation):
@@ -388,6 +389,11 @@ class GoalTrajMimic(Goal):
         self.__class__.main_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.main_body_name)
         self.__class__._body_rootid = model.body_rootid
         self.__class__._site_bodyid = model.site_bodyid
+        root_free_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, env.root_free_joint_xml_name)
+        self._qpos_ind = np.concatenate(
+            [mj_jntid2qposid(i, model)[2:] for i in range(model.njnt) if i == root_free_joint_id] +     # no xy for root
+            [mj_jntid2qposid(i, model) for i in range(model.njnt) if i != root_free_joint_id])
+        self._qvel_ind = np.concatenate([mj_jntid2qvelid(i, model) for i in range(model.njnt)])
         self._initialized_from_mj = True
 
     def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
@@ -437,16 +443,6 @@ class GoalTrajMimic(Goal):
 
     def init_from_traj(self, traj_handler):
         assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
-        # focus on joints in the observation space
-        self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self.obs_container.entries()
-                                         if (type(obs) is ObservationType.JointPos) or
-                                         (type(obs) is ObservationType.FreeJointPos) or
-                                         (type(obs) is ObservationType.EntryFromFreeJointPos) or
-                                         (type(obs) is ObservationType.FreeJointPosNoXY)])
-        self._qvel_ind = np.concatenate([obs.data_type_ind for obs in self.obs_container.entries()
-                                         if (type(obs) is ObservationType.JointVel) or
-                                         (type(obs) is ObservationType.EntryFromFreeJointVel) or
-                                         (type(obs) is ObservationType.FreeJointVel)])
         self._initialized_from_traj = True
 
     def get_obs_and_update_state(self, env, model, data, carry, backend):

@@ -359,6 +359,7 @@ class UnitreeH1(BaseRobotHumanoid):
                             ObservationType.JointPos("q_ankle_angle_l", xml_name="ankle_angle_l"),
 
                             # ------------- JOINT VEL -------------
+                            ObservationType.FreeJointVel("dq_root", xml_name="root"),
                             ObservationType.JointVel("dq_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointVel("dq_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointVel("dq_l_arm_shx", xml_name="l_arm_shx"),
