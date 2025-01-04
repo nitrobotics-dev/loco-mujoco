@@ -274,31 +274,55 @@ class LocoEnv(Mjx):
 
     def create_dataset(self, rng_key=None):
         """
-        Creates a dataset from the specified trajectories.
+        Generates a dataset from the specified trajectories without including actions.
+
+        Notes:
+        - Observations are created by following steps similar to the `reset()` and `step()` methods.
+        - TrajectoryData is used instead of MjData to reduce memory usage. Forward dynamics are applied
+          to compute additional entities.
+        - Since TrajectoryData only contains very few kinematic properties (to save memory), Mujoco's
+          forward dynamics are used to calculate other entities.
+        - Kinematic entities derived from mocap data are generally reliable, while dynamics-related
+          properties may be less accurate.
+        - Observations based on kinematic entities are recommended to ensure realistic datasets.
+        - The dataset is built iteratively to compute stateful observations consistently with the
+          `reset()` and `step()` methods.
 
         Args:
-            rng_key (jax.random.PRNGKey): Random key to use for creating the dataset.
+        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
 
         Returns:
-            Dictionary containing states, next_states and absorbing flags. For the states the shape is
-            (N_traj x N_samples_per_traj, dim_state), while the absorbing flag has the shape is
-            (N_traj x N_samples_per_traj). For perfect and preference datasets, the actions are also provided.
+        TrajectoryTransitions: A dictionary containing the following:
+            - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
+            - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
+            - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
+            - For non-mocap datasets, actions may also be included.
+
+        Raises:
+        ValueError: If no trajectory is provided to the environment.
 
         """
 
         if self.th is not None:
 
             if self.th.traj.transitions is None:
-                # save the original starting configuration
-                orig_random_start = self._random_start
-                orig_fix = self.th.use_fixed_start
-                orig_fix_conf = self._fixed_start_conf
-                orig_traj_data = deepcopy(self.th.traj.data)
 
-                # set it to a fixed start configuration
-                self._random_start = False
-                self.th.use_fixed_start = True
-                self._fixed_start_conf = (0, 0)
+                # create new trajectory and trajectory handler
+                info, data = deepcopy(self.th.traj.info), deepcopy(self.th.traj.data)
+                info.model = info.model.to_numpy()
+                data = data.to_numpy()
+                traj = Trajectory(info, data)
+                th = TrajectoryHandler(model=self._model, traj=traj, control_dt=self.dt,
+                                       random_start=False, fixed_start_conf=(0, 0))
+
+                # set trajectory handler and store old one for later
+                orig_th = self.th
+                self.th = th
+
+                # get a new model and data
+                model = self.mjspec.compile()
+                data = mujoco.MjData(model)
+                mujoco.mj_resetData(model, data)
 
                 # setup containers for the dataset
                 all_observations, all_next_observations, all_dones = [], [], []
@@ -306,30 +330,46 @@ class LocoEnv(Mjx):
                 if rng_key is None:
                     rng_key = jax.random.key(0)
 
-                for i in tqdm(range(self.n_trajectories(self.th.traj.data)), desc="Creating Transition Dataset"):
+                for i in tqdm(range(self.th.n_trajectories), desc="Creating Transition Dataset"):
 
                     # set configuration to the first state of the current trajectory
-                    self._fixed_start_conf = (i, 0)
+                    self.th.fixed_start_conf = (i, 0)
 
-                    self.th.traj = replace(self.th.traj, data=self.th.traj.data.to_numpy())
-                    traj_data_single = self.th.traj.data.get(i, 0, np)
-                    carry = self._init_additional_carry(rng_key, traj_data_single, np)
-                    traj_data_single = self._reset_init_data_and_model(None, traj_data_single, carry)
+                    # do a reset
+                    key, subkey = jax.random.split(rng_key)
+                    traj_data_single = self.th.traj.data.get(i, 0, np)  # get first sample
+                    carry = self._init_additional_carry(key, model, data, np)
 
-                    observations = [self._create_observation(self._model, traj_data_single, carry)]
-                    for j in range(1, self.len_trajectory(self.th.traj.data, i)):
-                        traj_data_single = self.th.traj.data.get(i, j, np)
-                        observations.append(self._create_observation(self._model, traj_data_single, carry))
-                        traj_data_single, carry = self._simulation_post_step(traj_data_single, carry, self._model)
+                    # set data from traj_data (qpos and qvel) and forward to calculate other kinematic entities.
+                    mujoco.mj_resetData(model, data)
+                    data = self.set_sim_state_from_traj_data(data, traj_data_single, carry)
+                    mujoco.mj_forward(model, data)
+
+                    data, carry = self._reset_init_data_and_model(model, data, carry)
+                    data, carry = (
+                        self.obs_container.reset_state(self, model, data, carry, np))
+                    obs, carry = self._create_observation(model, data, carry)
+                    info = self._reset_info_dictionary(obs, data, subkey)
+
+                    # initiate obs container
+                    observations = [obs]
+                    for j in range(1, self.th.len_trajectory(i)):
+                        # get next sample and calculate forward dynamics
+                        traj_data_single = self.th.traj.data.get(i, j, np)  # get next sample
+                        data = self.set_sim_state_from_traj_data(data, traj_data_single, carry)
+                        mujoco.mj_forward(model, data)
+
+                        data, carry = self._simulation_post_step(model, data, carry)
+                        obs, carry = self._create_observation(model, data, carry)
+                        obs, data, info, carry = (
+                            self._step_finalize(obs, model, data, info, carry))
+                        observations.append(obs)
 
                         # check if the current state is an absorbing state
-                        has_fallen, msg = self._has_fallen(observations[-1], None, traj_data_single,
-                                                           return_err_msg=True)
-                        if has_fallen:
-                            err_msg = "Some of the states in the created dataset are terminal states. " \
-                                      "This should not happen.\n\nViolations:\n"
-                            err_msg += msg
-                            raise ValueError(err_msg)
+                        is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
+                        if is_absorbing:
+                            warnings.warn("Some of the states in the created dataset are terminal states. "
+                                          "This should not happen.")
 
                     observations = np.vstack(observations)
                     all_observations.append(observations[:-1])
@@ -343,16 +383,17 @@ class LocoEnv(Mjx):
                 all_dones = np.concatenate(all_dones).astype(np.float32)
                 all_absorbing = np.zeros_like(all_dones).astype(np.float32)    # assume no absorbing states
 
-                # reset the original configuration
-                self._random_start = orig_random_start
-                self.th.use_fixed_start = orig_fix
-                self._fixed_start_conf = orig_fix_conf
-                self.th.traj = replace(self.th.traj, data=orig_traj_data)
+                if orig_th.is_numpy:
+                    backend = np
+                else:
+                    backend = jnp
 
-                transitions = TrajectoryTransitions(jnp.array(all_observations),
-                                                    jnp.array(all_next_observations),
-                                                    jnp.array(all_absorbing),
-                                                    jnp.array(all_dones))
+                transitions = TrajectoryTransitions(backend.array(all_observations),
+                                                    backend.array(all_next_observations),
+                                                    backend.array(all_absorbing),
+                                                    backend.array(all_dones))
+
+                self.th = orig_th
                 self.th.traj = replace(self.th.traj, transitions=transitions)
 
             return self.th.traj.transitions
@@ -415,7 +456,6 @@ class LocoEnv(Mjx):
         self.reset(subkey)
         subtraj_step_no = 0
         traj_data_sample = self.th.get_current_traj_data(self._additional_carry, np)
-        #self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
 
         if render:
             frame = self.render(record)

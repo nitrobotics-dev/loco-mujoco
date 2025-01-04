@@ -58,8 +58,8 @@ class TrajectoryHandler(StatefulObject):
         #self.check_if_trajectory_is_in_range(low, high, keys, joint_pos_idx, warn, clip_trajectory_to_joint_ranges)
 
         assert (fixed_start_conf is not None) != random_start, "Please specify either fixed_start_conf or random_start."
-        self._random_start = random_start
-        self._fixed_start_conf = fixed_start_conf
+        self.random_start = random_start
+        self.fixed_start_conf = fixed_start_conf
         self.use_fixed_start = True if fixed_start_conf is not None else False
 
         self.traj_dt = 1 / traj_info.frequency
@@ -237,7 +237,7 @@ class TrajectoryHandler(StatefulObject):
 
         key = carry.key
 
-        if self._random_start:
+        if self.random_start:
             if backend == jnp:
                 key, _k1, _k2 = jax.random.split(key, 3)
                 traj_idx = jax.random.randint(_k1, shape=(1,), minval=0, maxval=self.n_trajectories)
@@ -248,7 +248,7 @@ class TrajectoryHandler(StatefulObject):
                 subtraj_step_idx = np.random.randint(0, self.len_trajectory(traj_idx))
                 idx = [traj_idx, subtraj_step_idx]
         elif self.use_fixed_start:
-            idx = self._fixed_start_conf
+            idx = self.fixed_start_conf
         else:
             idx = [0, 0]
 
