@@ -276,7 +276,8 @@ class TrajectoryHandler(StatefulObject):
             # check whether to go to the next trajectory
             next_traj_no = jax.lax.cond(next_subtraj_step_no == 0, lambda t, nt: jnp.mod(t+1, nt),
                                         lambda t, nt: t, traj_no, self.n_trajectories)
-            next_subtraj_step_no_init = jax.lax.cond(next_traj_no != traj_no, 0, subtraj_step_no_init)
+            next_subtraj_step_no_init = jax.lax.cond(next_traj_no != traj_no, lambda: 0,
+                                                     lambda: subtraj_step_no_init)
         else:
             next_traj_no = traj_no if next_subtraj_step_no != 0 else (traj_no + 1) % self.n_trajectories
             next_subtraj_step_no_init = 0 if traj_no != next_traj_no else subtraj_step_no_init
