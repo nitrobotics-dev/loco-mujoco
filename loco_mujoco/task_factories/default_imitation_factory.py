@@ -1,7 +1,8 @@
+from .base import TaskFactory
 from loco_mujoco.environments.base import LocoEnv
 
 
-class ImitationFactory:
+class ImitationFactory(TaskFactory):
     """
     A factory class for creating imitation learning environments with preloaded trajectories.
 

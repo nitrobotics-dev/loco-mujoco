@@ -10,7 +10,7 @@ try:
 
     from .core import Mujoco, Mjx
     from .environments import LocoEnv
-    from .task_factories import AMASSImitationFactory, RLFactory, ImitationFactory
+    from .task_factories import TaskFactory, RLFactory, ImitationFactory, AMASSImitationFactory
 
     def get_all_task_names():
         return LocoEnv.get_all_task_names()

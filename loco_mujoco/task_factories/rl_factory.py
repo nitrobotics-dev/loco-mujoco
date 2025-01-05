@@ -1,7 +1,8 @@
+from .base import TaskFactory
 from loco_mujoco.environments.base import LocoEnv
 
 
-class RLFactory:
+class RLFactory(TaskFactory):
     """
     A factory class to create reinforcement learning (RL) environments.
 
