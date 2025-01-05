@@ -1,6 +1,7 @@
 from __future__ import annotations
 from copy import deepcopy
 from typing import List
+from collections import UserDict
 
 import numpy as np
 import mujoco
@@ -59,7 +60,7 @@ class ObservationIndexContainer:
         self.concatenated_indices = np.array(ind)
 
 
-class ObservationContainer(dict):
+class ObservationContainer(UserDict):
     """
     Container for observations. This is a dictionary with additional functionality to set the container reference
     for each observation.
