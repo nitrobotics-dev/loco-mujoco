@@ -89,7 +89,7 @@ If you don’t have Conda installed or prefer a manual setup, follow these steps
 3. **Run the Script**:
    ```bash
    cd path/to/loco-mujoco
-   python loco_mujoco/smpl/generate_script.py --smpl-conf-file loco_mujoco/smpl/conf_paths.yaml
+   python loco_mujoco/smpl/generate_smplh_model.py --smpl-conf-file loco_mujoco/smpl/conf_paths.yaml
    ```
 
 4. **Deactivate the Environment**:
