@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import wandb
 from dataclasses import fields
-from loco_mujoco import LocoEnv
+from loco_mujoco import TaskFactory
 from loco_mujoco.algorithms import AMPJax
 from loco_mujoco.utils.metrics import QuantityContainer
 from loco_mujoco.utils import MetricsHandler
@@ -33,8 +33,11 @@ def experiment(config: DictConfig):
         config_dict = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
         run = wandb.init(project=config.wandb.project, config=config_dict)
 
+        # get task factory
+        factory = TaskFactory.get_factory_cls(config.experiment.task_factory.name)
+
         # create env
-        env = LocoEnv.make(**config.experiment.env_params)
+        env = factory.make(**config.experiment.env_params, **config.experiment.task_factory.params)
 
         # check if dataset file exists
         if not os.path.exists(expert_dataset_path):
@@ -54,7 +57,7 @@ def experiment(config: DictConfig):
         agent_conf = agent_conf.add_expert_dataset(expert_dataset)
 
         # setup metric handler (optional)
-        mh = MetricsHandler(config, env)
+        mh = MetricsHandler(config, env) if config.experiment.validation.active else None
 
         # build training function
         train_fn = AMPJax.build_train_fn(env, agent_conf, mh=mh)
@@ -89,7 +92,7 @@ def experiment(config: DictConfig):
                          "Discriminator/Output Expert": training_metrics.discriminator_output_expert[i]},
                         step=int(training_metrics.max_timestep[i]))
 
-                if (i+1) % config.experiment.validation_interval == 0:
+                if (i+1) % config.experiment.validation_interval == 0 and config.experiment.validation.active:
                     run.log({"Validation Info/Mean Episode Return": validation_metrics.mean_episode_return[i],
                              "Validation Info/Mean Episode Length": validation_metrics.mean_episode_length[i]},
                             step=int(training_metrics.max_timestep[i]))

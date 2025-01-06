@@ -20,8 +20,12 @@ wandb:
   project: "free_joint_test"
 
 experiment:
+  task_factory:
+    name: AMASSImitationFactory
+    params:
+      dataset_group: AMASS_LOCOMOTION_DATASETS
   env_params:
-    env_name: MjxUnitreeH1.walk
+    env_name: MjxUnitreeH1
     disable_arms: false
     horizon: 1000
     goal_type: GoalTrajMimic
