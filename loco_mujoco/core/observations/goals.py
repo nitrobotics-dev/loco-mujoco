@@ -9,7 +9,8 @@ from scipy.spatial.transform import Rotation as np_R
 from flax import struct
 
 from loco_mujoco.core.observations.base import StatefulObservation, ObservationType
-from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quat_scalarfirst2scalarlast
+from loco_mujoco.core.utils.math import (calculate_relative_site_quatities, quat_scalarfirst2scalarlast,
+                                         quat_scalarlast2scalarfirst)
 from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid
 
 
@@ -540,7 +541,8 @@ class GoalTrajMimic(Goal):
         qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
         site_xpos = traj_data.get_site_xpos(traj_state.traj_no, traj_state.subtraj_step_no, backend)
         site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no, backend)
-        site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat(scalar_first=True)
+        site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat()
+        site_xquat = quat_scalarlast2scalarfirst(site_xquat)
         s_ids = jnp.array(self._rel_site_ids)
         if backend == jnp:
             site_xpos = site_xpos.at[:, :2].add(-qpos_init[:2]) # reset to the initial position
