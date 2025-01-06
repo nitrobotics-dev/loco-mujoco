@@ -404,7 +404,7 @@ def load_retargeted_amass_trajectory(
     if "Mjx" in env_name:
         env_name = env_name.replace("Mjx", "")
 
-    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+    path_to_conf = loco_mujoco.PATH_TO_VARIABLES
 
     with open(path_to_conf, "r") as file:
         data = yaml.load(file, Loader=yaml.FullLoader)

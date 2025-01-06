@@ -5,12 +5,13 @@ __version__ = '0.3.0'
 try:
 
     PATH_TO_MODELS = Path(__file__).resolve().parent / "models"
-    PATH_TO_SMPL_CONF = Path(__file__).resolve().parent / "smpl" / "conf_paths.yaml"
+    PATH_TO_VARIABLES = Path(__file__).resolve().parent / "LOCOMUJOCO_VARIABLES.yaml"
     PATH_TO_SMPL_ROBOT_CONF = Path(__file__).resolve().parent / "smpl" / "robot_confs"
 
     from .core import Mujoco, Mjx
     from .environments import LocoEnv
-    from .task_factories import TaskFactory, RLFactory, ImitationFactory, AMASSImitationFactory
+    from .task_factories import (TaskFactory, RLFactory, ImitationFactory,
+                                 AMASSImitationFactory, LAFAN1ImitationFactory)
 
     def get_all_task_names():
         return LocoEnv.get_all_task_names()
