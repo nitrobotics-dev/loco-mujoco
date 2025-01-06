@@ -715,8 +715,12 @@ class LocoEnv(Mjx):
 
         # import here to avoid circular dependency
         from loco_mujoco.task_factories.default_imitation_factory import ImitationFactory
+        from loco_mujoco.task_factories.rl_factory import RLFactory
 
-        return ImitationFactory.make(cls.__name__, task, dataset_type, debug, **kwargs)
+        if task is None:
+            return RLFactory.make(cls.__name__, **kwargs)
+        else:
+            return ImitationFactory.make(cls.__name__, task, dataset_type, debug, **kwargs)
 
     @classmethod
     def get_default_xml_file_path(cls):
