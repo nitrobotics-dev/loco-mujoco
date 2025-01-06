@@ -17,6 +17,8 @@ class AMASSImitationFactory(TaskFactory):
     def make(env_name: str,
              rel_dataset_path: Optional[Union[str, List[str]]] = None,
              dataset_group: Optional[str] = None,
+             terminal_state_type: str = "RootPoseTrajTerminalStateHandler",
+             init_state_type: str = "TrajInitialStateHandler",
              **kwargs) -> LocoEnv:
         """
         Creates and returns an imitation learning environment with a preloaded AMASS trajectory.
@@ -32,6 +34,8 @@ class AMASSImitationFactory(TaskFactory):
             dataset_group (Optional[str]): A predefined group of datasets to load.
                 For example: `AMASS_LOCOMOTION_DATASETS`, which is a collection of relative paths
                 focusing on locomotion tasks. Either this or `rel_dataset_path` must be set, but not both.
+            terminal_state_type: str ="RootPoseTrajTerminalStateHandler",
+            init_state_type: str = "TrajInitialStateHandler",
             **kwargs: Additional keyword arguments to pass to the environment constructor.
 
         Returns:
@@ -52,7 +56,7 @@ class AMASSImitationFactory(TaskFactory):
         env_cls = LocoEnv.registered_envs[env_name]
 
         # Create the environment
-        env = env_cls(**kwargs)
+        env = env_cls(init_state_type=init_state_type, terminal_state_type=terminal_state_type, **kwargs)
 
         # Determine dataset paths
         if dataset_group:
