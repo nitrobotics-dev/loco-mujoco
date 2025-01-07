@@ -414,14 +414,12 @@ class Mujoco:
             obs.init_from_mj(self, model, data, i, data_ind, obs_ind)
             i += obs.dim
             obs_container[obs.name] = obs
-
         # lock container to avoid unwanted modifications
         obs_container.lock()
 
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
         obs_ind.convert_to_numpy()
-
         return obs_container, data_ind, obs_ind
 
     def _setup_reward(self, reward_type, reward_params):
