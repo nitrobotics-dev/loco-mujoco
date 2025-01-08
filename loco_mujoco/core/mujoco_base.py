@@ -452,8 +452,12 @@ class Mujoco:
 
         return spec, goal
 
-    def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
-        return 0.0, carry
+    def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
+        """
+        Calls the reward function of the environment.
+
+        """
+        return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
 
     def _create_observation(self, model, data, carry):
         """
@@ -593,6 +597,16 @@ class Mujoco:
         data = mujoco.MjData(model)
 
         return model, deepcopy(model), data, spec
+
+    def reload_mujoco(self, xml_file):
+        """
+        Reloads the Mujoco model from the xml file.
+
+        Args:
+            xml_file (str/MjSpec): A string with a path to the xml or a Mujoco specification.
+
+        """
+        self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(xml_file)
 
     @staticmethod
     def _modify_option_spec(spec, option_config):

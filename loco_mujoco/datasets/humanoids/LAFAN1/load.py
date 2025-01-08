@@ -81,8 +81,8 @@ def load_lafan1_trajectory(
     """
     logger = setup_logger("lafan1", identifier="[LocoMuJoCo's LAFAN1 Retargeting Pipeline]")
 
-    if "Mjx" in env_name:
-        env_name = env_name.replace("Mjx", "")
+    # if "Mjx" in env_name:
+    #     env_name = env_name.replace("Mjx", "")
 
     path_to_conf = loco_mujoco.PATH_TO_VARIABLES
 
@@ -96,8 +96,8 @@ def load_lafan1_trajectory(
     assert path_to_convert_lafan1_datasets, ("Please use the command 'loco-mujoco-set-conv-lafan1-path' to set the "
                                             "path to the converted LAFAN1 datasets.")
 
-    assert env_name in ["UnitreeH1", "UnitreeG1"], ("Only UnitreeH1 and UnitreeG1 environments are "
-                                                    "supported for the LAFAN1 dataset.")
+    assert env_name in ["UnitreeH1", "UnitreeG1", "MjxUnitreeH1", "MjxUnitreeG1"],\
+        ("Only UnitreeH1 and UnitreeG1 environments are supported for the LAFAN1 dataset.")
 
     # load robot_conf
     robot_conf_path = os.path.join(Path(__file__).resolve().parent / "conf.yaml")
@@ -111,8 +111,8 @@ def load_lafan1_trajectory(
     for d_name in dataset_name:
 
         # load the csv file
-        target_path_dataset = os.path.join(path_to_convert_lafan1_datasets, robot_conf.dir_name, f"{d_name}.npz")
         d_name = d_name if d_name.endswith(".csv") else f"{d_name}.csv"
+        target_path_dataset = os.path.join(path_to_convert_lafan1_datasets, env_name, f"{d_name}.npz")
 
         # check if the dataset exists
         if not os.path.exists(target_path_dataset):

@@ -30,6 +30,7 @@ class MjxState:
 class MjxAdditionalCarry(AdditionalCarry):
     final_observation: jax.Array
     final_info: Dict[str, Any]
+    smallest_reward: float
 
 
 class Mjx(Mujoco):
@@ -126,6 +127,10 @@ class Mjx(Mujoco):
         # create the observation
         cur_obs, carry = self._mjx_create_observation(self._model, data, carry)
 
+        # handle nans and infs
+        is_nan = jnp.any(jnp.isnan(cur_obs))
+        cur_obs = jnp.nan_to_num(cur_obs, nan=0.0, posinf=1e6, neginf=-1e6)
+
         # modify the observation and the data if needed (does nothing by default)
         cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, self._model, data, cur_info, carry)
 
@@ -137,8 +142,10 @@ class Mjx(Mujoco):
 
         # calculate the reward
         reward, carry = self._mjx_reward(state.observation, action, cur_obs, absorbing, cur_info, self._model, data, carry)
+        reward = jnp.nan_to_num(reward, nan=-10)
 
         # check if done
+        absorbing = jnp.logical_or(absorbing, is_nan)
         done = self._mjx_is_done(cur_obs, absorbing, cur_info, data, carry)
 
         # create state
@@ -175,8 +182,19 @@ class Mjx(Mujoco):
     def _mjx_update_info_dictionary(self, info, obs, data, carry):
         return info
 
-    def _mjx_reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
-        return 0.0, carry
+    def _mjx_reward(self, state, action, next_state, absorbing, info, model, data, carry):
+        """
+        Calls the reward function of the environment.
+
+        """
+        reward, carry = self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, jnp)
+
+        # check if reward is nan
+        reward = jnp.nan_to_num(reward, nan=carry.smallest_reward)
+        # nan transitions should have lowest reward, so we update the smallest reward
+        carry = carry.replace(smallest_reward=jnp.minimum(carry.smallest_reward, reward))
+
+        return reward, carry
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
         return self._terminal_state_handler.mjx_is_absorbing(obs, info, data, carry)
@@ -315,6 +333,7 @@ class Mjx(Mujoco):
         carry = super()._init_additional_carry(key, model, data, backend)
         return MjxAdditionalCarry(final_observation=backend.zeros(self.info.observation_space.shape),
                                   final_info={},
+                                  smallest_reward=0.0,
                                   **vars(carry))
 
     @property

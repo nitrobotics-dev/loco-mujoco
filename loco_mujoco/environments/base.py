@@ -196,20 +196,6 @@ class LocoEnv(Mjx):
         self.info.action_space.low[:] = -1.0
         self.info.action_space.high[:] = 1.0
 
-    def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
-        """
-        Calls the reward function of the environment.
-
-        """
-        return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
-
-    def _mjx_reward(self, state, action, next_state, absorbing, info, model, data, carry):
-        """
-        Calls the reward function of the environment.
-
-        """
-        return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, jnp)
-
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = super()._mjx_is_done(obs, absorbing, info, data, carry)
 

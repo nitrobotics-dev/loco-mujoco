@@ -1,4 +1,4 @@
-UnitreeH1:
+UnitreeH1: &unitree_h1
   fps: 30
   dir_name: h1
   jnt_names:
@@ -25,3 +25,5 @@ UnitreeH1:
   env_params:
     disable_arms: false
     disable_back_joint: false
+
+MjxUnitreeH1: *unitree_h1
