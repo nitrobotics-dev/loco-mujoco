@@ -276,7 +276,7 @@ def optimize_for_collisions(
     sites_for_mimic = env.sites_for_mimic
     target_mocap_bodies = ["target_mocap_body_" + s for s in sites_for_mimic]
     mjspec = add_mocap_bodies(mjspec, sites_for_mimic, target_mocap_bodies)
-    env = LocoEnv.registered_envs[env_name](**robot_conf.env_params, xml_path=mjspec,
+    env = LocoEnv.registered_envs[env_name](**robot_conf.env_params, spec=mjspec,
                                             th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
     traj_data, traj_info = interpolate_trajectories(traj.data, traj.info, 1.0 / env.dt)
