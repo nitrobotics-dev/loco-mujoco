@@ -51,14 +51,14 @@ class ExtendTrajData(ReplayCallback):
             else:
                 dim_qpos += 1
                 dim_qvel += 1
-        self.recorder = dict(xpos=np.empty((n_samples, model.nbody, 3)),
-                             xquat=np.empty((n_samples, model.nbody, 4)),
-                             cvel=np.empty((n_samples, model.nbody, 6)),
-                             subtree_com=np.empty((n_samples, model.nbody, 3)),
-                             site_xpos=np.empty((n_samples, model.nsite, 3)),
-                             site_xmat=np.empty((n_samples, model.nsite, 9)),
-                             qpos=np.empty((n_samples, dim_qpos)),
-                             qvel=np.empty((n_samples, dim_qvel)))
+        self.recorder = dict(xpos=np.zeros((n_samples, model.nbody, 3)),
+                             xquat=np.zeros((n_samples, model.nbody, 4)),
+                             cvel=np.zeros((n_samples, model.nbody, 6)),
+                             subtree_com=np.zeros((n_samples, model.nbody, 3)),
+                             site_xpos=np.zeros((n_samples, model.nsite, 3)),
+                             site_xmat=np.zeros((n_samples, model.nsite, 9)),
+                             qpos=np.zeros((n_samples, dim_qpos)),
+                             qvel=np.zeros((n_samples, dim_qvel)))
         self.traj_model = TrajectoryModel(njnt=model.njnt,
                                           jnt_type=jnp.array(model.jnt_type),
                                           nbody=model.nbody,
