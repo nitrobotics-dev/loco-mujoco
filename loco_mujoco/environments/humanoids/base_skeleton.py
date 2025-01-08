@@ -20,7 +20,7 @@ class BaseSkeleton(LocoEnv):
     mjx_enabled = False
 
     def __init__(self, use_muscles=False, use_box_feet=True, disable_arms=False,
-                 alpha_box_feet=0.5, xml_path=None, observation_spec=None, action_spec=None, **kwargs):
+                 alpha_box_feet=0.5, spec=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
@@ -33,11 +33,11 @@ class BaseSkeleton(LocoEnv):
 
         """
 
-        if xml_path is None:
-            xml_path = self.get_default_xml_file_path()
+        if spec is None:
+            spec = self.get_default_xml_file_path()
 
         # load the model specification
-        spec = mujoco.MjSpec.from_file(xml_path)
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
 
         # get the observation and action specification
         if observation_spec is None:

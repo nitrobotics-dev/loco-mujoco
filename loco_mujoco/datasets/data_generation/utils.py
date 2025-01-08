@@ -1,12 +1,28 @@
-from dataclasses import replace
-import yaml
 import math
 from copy import deepcopy
+from dataclasses import replace
+from typing import List
+
+import jax.numpy as jnp
 import mujoco
 import numpy as np
-import jax.numpy as jnp
-from loco_mujoco.trajectory import TrajectoryInfo, TrajectoryModel, TrajectoryData
-from loco_mujoco.core.utils.math import calc_rel_positions, calc_rel_quaternions, calc_rel_body_velocities
+import yaml
+from mujoco import MjSpec
+from scipy.spatial.transform import Rotation as sRot
+from omegaconf import DictConfig
+
+from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
+from loco_mujoco.core.utils.mujoco import (
+    mj_jntid2qposid,
+    mj_jntid2qvelid,
+    mj_jntname2qposid,
+    mj_jntname2qvelid)
+from loco_mujoco.trajectory import (
+    Trajectory,
+    TrajectoryInfo,
+    TrajectoryModel,
+    TrajectoryData,
+    interpolate_trajectories)
 
 
 class ReplayCallback:
@@ -135,6 +151,152 @@ class ExtendTrajData(ReplayCallback):
             site_names.append(s_name)
         assert keys is None or len(keys) == 0, f"Could not find the following site names: {keys}"
         return site_names, list(ids)
+
+
+def add_mocap_bodies(mjspec: MjSpec,
+                     sites_for_mimic: List[str],
+                     mocap_bodies: List[str]):
+    """
+    Add mocap bodies to the model specification.
+
+    Args:
+        mjspec (MjSpec): The model specification.
+        sites_for_mimic (List[str]): The sites to mimic.
+        mocap_bodies (List[str]): The names of the mocap bodies to be added to the model specification.
+        mocap_bodies_init_pos: The initial positions of the mocap bodies.
+
+    """
+
+    for mb_name in mocap_bodies:
+        b_handle = mjspec.worldbody.add_body(name=mb_name, mocap=True)
+        b_handle.add_site(name=mb_name, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.1, 0.05, 0.01],
+                          rgba=[1.0, 0.0, 0.0, 0.5], group=1)
+
+    for b1, b2 in zip(sites_for_mimic, mocap_bodies):
+        mjspec.add_equality(type=mujoco.mjtEq.mjEQ_WELD, name1=b1, name2=b2, objtype=mujoco.mjtObj.mjOBJ_SITE)
+
+    return mjspec
+
+
+class CollisionExtender(ExtendTrajData):
+    """
+    This class takes a trajectory of target qpos and calculates new qpos, which respect collisions.
+    Joint velocities are calculated using finite difference.
+
+    """
+
+    def __init__(self, env, n_samples, model, target_qpos, body_names=None, site_names=None, max_steps=50):
+        super().__init__(env, n_samples, model, body_names, site_names)
+        self.target_qpos = target_qpos
+        self.data_for_sites = env.get_data()
+        self.sites_for_mimic = env.sites_for_mimic
+        self.site_for_mimic_ids = np.array([mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, s)
+                                            for s in self.sites_for_mimic])
+        self.free_joint_name = env.root_free_joint_xml_name
+        self.free_joint_qpos_ids = np.array(mj_jntname2qposid(self.free_joint_name, model))
+        self.free_joint_qvel_ids = np.array(mj_jntname2qvelid(self.free_joint_name, model))
+        self.joints_ids = [i for i, t in enumerate(model.jnt_type) if t != mujoco.mjtJoint.mjJNT_FREE]
+        self.joints_qpos_ids = np.squeeze([mj_jntid2qposid(i, model) for i in self.joints_ids])
+        self.joints_qvel_ids = np.squeeze([mj_jntid2qvelid(i, model) for i in self.joints_ids])
+
+        self.max_steps = max_steps
+
+    def __call__(self, env, model, data, traj_sample, carry):
+        # calculate the site position by setting the simulation state from the trajectory and forward kinematics
+        self.data_for_sites.qpos = self.target_qpos[self.current_length]
+        mujoco.mj_kinematics(model, self.data_for_sites)
+
+        # set the required mocap positions and quaternions and simulate
+        data.mocap_pos = self.data_for_sites.site_xpos[self.site_for_mimic_ids]
+        data.mocap_quat = sRot.from_matrix(
+            self.data_for_sites.site_xmat[self.site_for_mimic_ids].reshape(-1, 3, 3)).as_quat(scalar_first=True)
+        mujoco.mj_step(model, data, self.max_steps)
+
+        # add joint properties
+        self.recorder["qpos"][self.current_length] = data.qpos
+        self.recorder["qvel"][self.current_length] = np.zeros_like(data.qvel)  # not useful, but kept for dimensionality
+
+        self.current_length += 1
+
+        return model, data, carry
+
+    def extend_trajectory_data(self, traj_data: TrajectoryData, traj_info: TrajectoryInfo):
+        traj_data, traj_info = super().extend_trajectory_data(traj_data, traj_info)
+
+        # calculate qvel using finite difference.
+        free_joint_pos = traj_data.qpos[:, self.free_joint_qpos_ids[:3]]
+        free_joint_quat_scalarfirst = traj_data.qpos[:, self.free_joint_qpos_ids[3:]]
+        free_joint_quat = quat_scalarfirst2scalarlast(free_joint_quat_scalarfirst)
+        free_joint_rotvec = sRot.from_quat(free_joint_quat).as_rotvec()
+        joint_qpos = traj_data.qpos[:, self.joints_qpos_ids]
+
+        free_joint_vel = (free_joint_pos[2:] - free_joint_pos[:-2]) / (2 * (1 / traj_info.frequency))
+        free_joint_vel_rot = (free_joint_rotvec[2:] - free_joint_rotvec[:-2]) / (2 * (1 / traj_info.frequency))
+        joints_vel = (joint_qpos[2:] - joint_qpos[:-2]) / (2 * (1 / traj_info.frequency))
+
+        qvel = traj_data.qvel
+        qvel = qvel.at[1:-1, self.free_joint_qvel_ids].set(jnp.concatenate([free_joint_vel, free_joint_vel_rot], axis=1))
+        qvel = qvel.at[1:-1, self.joints_qvel_ids].set(joints_vel)
+
+        qpos = traj_data.qpos
+        free_joint_pose = jnp.concatenate([free_joint_pos, free_joint_quat_scalarfirst], axis=1)[1:-1]
+        joint_qpos = joint_qpos[1:-1]
+        qpos = qpos.at[1:-1, self.free_joint_qpos_ids].set(free_joint_pose)
+        qpos = qpos.at[1:-1, self.joints_qpos_ids].set(joint_qpos)
+
+        # create new traj_info including only joint properties
+        traj_info = TrajectoryInfo(joint_names=traj_info.joint_names,
+                                   model=TrajectoryModel(njnt=traj_info.model.njnt, jnt_type=traj_info.model.jnt_type),
+                                   frequency=traj_info.frequency)
+
+        return TrajectoryData(qpos=qpos, qvel=qvel, split_points=jnp.array([0, len(qpos)])), traj_info
+
+
+def optimize_for_collisions(
+        env_name: str,
+        robot_conf: DictConfig,
+        traj: Trajectory,
+        max_steps: int = 100
+) -> Trajectory:
+    """
+    Optimize a motion trajectory to consider collisions with the environment.
+
+    Args:
+        env_name (str): The name of the environment.
+        robot_conf (DictConfig): The robot configuration.
+        traj (Trajectory): The trajectory to optimize.
+        max_steps (int): The maximum number of steps to optimize the trajectory for collisions.
+
+    """
+    from loco_mujoco import LocoEnv
+    # add mocap bodies for all 'site_for_mimic' instances of an environment
+    env_cls = LocoEnv.registered_envs[env_name]
+    env = env_cls(**robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
+    mjspec = env.mjspec
+    sites_for_mimic = env.sites_for_mimic
+    target_mocap_bodies = ["target_mocap_body_" + s for s in sites_for_mimic]
+    mjspec = add_mocap_bodies(mjspec, sites_for_mimic, target_mocap_bodies)
+    env = LocoEnv.registered_envs[env_name](**robot_conf.env_params, xml_path=mjspec,
+                                            th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
+
+    traj_data, traj_info = interpolate_trajectories(traj.data, traj.info, 1.0 / env.dt)
+    traj = Trajectory(info=traj_info, data=traj_data)
+
+    env.load_trajectory(traj, warn=False)
+    traj_data, traj_info = env.th.traj.data, env.th.traj.info
+
+    callback = CollisionExtender(env, model=env._model, target_qpos=traj_data.qpos,
+                                 n_samples=traj_data.n_samples, max_steps=max_steps)
+    env.play_trajectory(
+        n_episodes=env.th.n_trajectories,
+        render=False,
+        callback_class=callback
+    )
+    traj_data, traj_info = callback.extend_trajectory_data(traj_data, traj_info)
+
+    traj = replace(traj, data=traj_data, info=traj_info)
+
+    return traj
 
 
 def expression_constructor(loader, node):

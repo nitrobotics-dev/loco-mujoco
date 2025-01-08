@@ -252,6 +252,17 @@ def set_lafan1_path():
     _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_LAFAN1_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
 
 
+def set_converted_lafan1_path():
+    """
+    Set the path to which the converted LAFAN1 dataset is stored.
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which the converted LAFAN1 dataset is stored.")
+    parser.add_argument("--path", type=str, help="Path to which the converted LAFAN1 dataset is stored.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_LAFAN1_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
 def _set_path_in_yaml_conf(path: str, attr: str, path_to_conf: str):
     """
     Set the path in the yaml configuration file.

@@ -293,7 +293,7 @@ class TrajectoryInfo:
         """
         new_model = self.model.remove_bodies(jnp.array([self.body_name2ind[name] for name in body_ids]))
         return replace(self,
-                       body_names=[name for i, name in enumerate(self.body_names) if i not in body_ids],
+                       body_names=[name for name in self.body_names if name not in body_ids],
                        model=new_model
                        )
 
@@ -309,7 +309,7 @@ class TrajectoryInfo:
         """
         new_model = self.model.remove_sites(jnp.array([self.site_name2ind[name] for name in site_ids]))
         return replace(self,
-                       site_names=[name for i, name in enumerate(self.site_names) if i not in site_ids],
+                       site_names=[name for name in self.site_names if name not in site_ids],
                        model=new_model
                        )
 
