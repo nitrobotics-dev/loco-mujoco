@@ -126,6 +126,9 @@ def load_lafan1_trajectory(
             # convert free joint quaternion from scalar last to scalar first
             qpos[:, 3:7] = quat_scalarlast2scalarfirst(qpos[:, 3:7])
 
+            # add offset
+            qpos[:, 2] += robot_conf.root_height_offset
+
             # put into Trajectory
             njnt = len(robot_conf.jnt_names)
             jnt_type = np.array(
@@ -138,16 +141,14 @@ def load_lafan1_trajectory(
             traj = Trajectory(info=traj_info, data=traj_data)
 
             # order and extend the motion
-            logger.info("Using Mujoco to optimize dataset for collisions ...")
-            traj = optimize_for_collisions(env_name, robot_conf, traj, max_steps=max_steps)
+            logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
+            traj = extend_motion(env_name, robot_conf, traj)
+
             traj.save(target_path_dataset)
 
         else:
             logger.info(f"Found converted dataset at: {target_path_dataset}.")
             traj = Trajectory.load(target_path_dataset)
-
-        logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
-        traj = extend_motion(env_name, robot_conf, traj)
 
         all_trajectories.append(traj)
 

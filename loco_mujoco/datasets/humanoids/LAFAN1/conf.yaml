@@ -22,6 +22,7 @@ UnitreeH1: &unitree_h1
     - r_arm_shx
     - r_arm_shz
     - right_elbow
+  root_height_offset: 0.02
   env_params:
     disable_arms: false
     disable_back_joint: false

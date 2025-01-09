@@ -185,11 +185,11 @@ class CollisionExtender(ExtendTrajData):
 
     """
 
-    def __init__(self, env, n_samples, model, target_qpos, body_names=None, site_names=None, max_steps=50):
+    def __init__(self, env, n_samples, model, target_qpos, sites_for_mimic, body_names=None, site_names=None, max_steps=50):
         super().__init__(env, n_samples, model, body_names, site_names)
         self.target_qpos = target_qpos
         self.data_for_sites = env.get_data()
-        self.sites_for_mimic = env.sites_for_mimic
+        self.sites_for_mimic = sites_for_mimic
         self.site_for_mimic_ids = np.array([mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, s)
                                             for s in self.sites_for_mimic])
         self.free_joint_name = env.root_free_joint_xml_name
@@ -284,7 +284,7 @@ def optimize_for_collisions(
     env.load_trajectory(traj, warn=False)
     traj_data, traj_info = env.th.traj.data, env.th.traj.info
 
-    callback = CollisionExtender(env, model=env._model, target_qpos=traj_data.qpos,
+    callback = CollisionExtender(env, model=env._model, target_qpos=traj_data.qpos, sites_for_mimic=sites_for_mimic,
                                  n_samples=traj_data.n_samples, max_steps=max_steps)
     env.play_trajectory(
         n_episodes=env.th.n_trajectories,
