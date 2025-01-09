@@ -103,7 +103,6 @@ class LocoEnv(Mjx):
             super(LocoEnv, self).__init__(n_envs, spec=spec, actuation_spec=action_spec,
                                           observation_spec=observation_spec, gamma=gamma,
                                           horizon=horizon, n_substeps=n_substeps,
-                                          n_intermediate_steps=1,
                                           timestep=timestep,
                                           default_camera_mode=default_camera_mode,
                                           model_option_conf=model_option_conf, **core_params)
@@ -112,7 +111,7 @@ class LocoEnv(Mjx):
             # call grandparent constructor (Mujoco (CPU) environment)
             super(Mjx, self).__init__(spec=spec, actuation_spec=action_spec,
                                       observation_spec=observation_spec, gamma=gamma,
-                                      horizon=horizon, n_substeps=n_substeps, n_intermediate_steps=1,
+                                      horizon=horizon, n_substeps=n_substeps,
                                       timestep=timestep,
                                       default_camera_mode=default_camera_mode,
                                       model_option_conf=model_option_conf, **core_params)

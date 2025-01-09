@@ -110,20 +110,20 @@ class Mjx(Mujoco):
 
         def _inner_loop(idx, _runner_state):
 
-            _sys, _data, _carry = _runner_state
+            _data, _carry = _runner_state
 
             ctrl_action, _carry = self._mjx_compute_action(processed_action, self._model, _data, _carry)
 
             # step in the environment using the action
             ctrl = _data.ctrl.at[jnp.array(self._action_indices)].set(ctrl_action)
             _data = _data.replace(ctrl=ctrl)
-            step_fn = lambda _, x: mjx.step(_sys, x)
+            step_fn = lambda _, x: mjx.step(sys, x)
             _data = jax.lax.fori_loop(0, self._n_substeps, step_fn, _data)
 
-            return _sys, _data, _carry
+            return _data, _carry
 
         # run inner loop
-        _, data, _, carry = jax.lax.fori_loop(0, self._n_intermediate_steps, _inner_loop, (sys, data, carry))
+        data, carry = jax.lax.fori_loop(0, self._n_intermediate_steps, _inner_loop, (data, carry))
 
         # modify data *after* step if needed (does nothing by default)
         data, carry = self._mjx_simulation_post_step(self._model, data, carry)

@@ -72,6 +72,13 @@ class ControlFunction(StatefulObject):
         return self._controller_frequency
 
     @property
+    def run_with_simulation_frequency(self):
+        """
+        If true, the control function is called with the simulation frequency.
+        """
+        return False
+
+    @property
     def action_limits(self):
         """
         Get the action space limits defined by the controller.

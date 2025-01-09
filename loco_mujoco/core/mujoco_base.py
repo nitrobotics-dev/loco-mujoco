@@ -44,7 +44,7 @@ class Mujoco:
     registered_envs = dict()
 
     def __init__(self, spec, actuation_spec, observation_spec, gamma, horizon,
-                 n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1, model_option_conf=None,
+                 n_environments=1, timestep=None, n_substeps=1, model_option_conf=None,
                  reward_type="NoReward", reward_params=None,
                  goal_type="NoGoal", goal_params=None,
                  terminal_state_type="NoTerminalStateHandler", terminal_state_params=None,
@@ -65,8 +65,8 @@ class Mujoco:
         self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(spec, model_option_conf)
 
         # set some attributes
-        self._n_intermediate_steps = n_intermediate_steps
         self._n_substeps = n_substeps
+        self._n_intermediate_steps = 1
         self._viewer_params = viewer_params
         self._viewer = None
         self._obs = None
@@ -98,6 +98,9 @@ class Mujoco:
         if control_params is None:
             control_params = {}
         self._control_func = ControlFunction.registered[control_type](self, **control_params)
+        if self._control_func.run_with_simulation_frequency:
+            self._n_intermediate_steps = n_substeps
+            self._n_substeps = 1
 
         # define action space bounding box
         action_space = Box(*self._control_func.action_limits)
