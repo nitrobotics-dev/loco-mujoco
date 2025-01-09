@@ -38,7 +38,8 @@ smpl = [
     "tqdm",
     "smplx @ git+https://github.com/ZhengyiLuo/smplx",
     "easydict",
-    "joblib"
+    "joblib",
+    "lxml"
 ]
 
 [project.urls]
