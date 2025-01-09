@@ -106,6 +106,8 @@ class PPOJax(JaxRLAlgorithmBase):
                 optax.adam(config.experiment.lr, eps=1e-5),
             )
 
+        tx = optax.apply_if_finite(tx, max_consecutive_errors=10)
+
         return tx
 
     @classmethod
