@@ -54,7 +54,9 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
         assert_backend_is_supported(backend)
         return data, carry
 
-    def is_absorbing(self, obs: np.ndarray,
+    def is_absorbing(self,
+                     env: Any,
+                     obs: np.ndarray,
                      info: Dict[str, Any],
                      data: MjData,
                      carry: Any) -> Union[bool, Any]:
@@ -62,6 +64,7 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
         Check if the current state is terminal. Function for CPU Mujoco.
 
         Args:
+            env (Any): The environment instance.
             obs (np.ndarray): Observations with shape (n_samples, n_obs).
             info (Dict[str, Any]): The info dictionary.
             data (MjData): The Mujoco data structure.
@@ -71,9 +74,11 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
             Union[bool, Any]: Whether the current state is terminal, and the carry.
 
         """
-        return self._is_absorbing_compat(obs, info, data, carry, backend=np)
+        return self._is_absorbing_compat(env, obs, info, data, carry, backend=np)
 
-    def mjx_is_absorbing(self, obs: jnp.ndarray,
+    def mjx_is_absorbing(self,
+                         env: Any,
+                         obs: jnp.ndarray,
                          info: Dict[str, Any],
                          data: Data,
                          carry: Any) -> Union[bool, Any]:
@@ -81,6 +86,7 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
         Check if the current state is terminal. Function for Mjx.
 
         Args:
+            env (Any): The environment instance.
             obs (jnp.ndarray): Observations with shape (n_samples, n_obs).
             info (Dict[str, Any]): The info dictionary.
             data (Data): The Mujoco data structure for Mjx.
@@ -90,9 +96,11 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
             Union[bool, Any]: Whether the current state is terminal, and the carry.
 
         """
-        return self._is_absorbing_compat(obs, info, data, carry, backend=jnp)
+        return self._is_absorbing_compat(env, obs, info, data, carry, backend=jnp)
 
-    def _is_absorbing_compat(self, obs: Union[np.ndarray, jnp.ndarray],
+    def _is_absorbing_compat(self,
+                             env: Any,
+                             obs: Union[np.ndarray, jnp.ndarray],
                              info: Dict[str, Any],
                              data: Union[MjData, Data],
                              carry: Any,
@@ -101,6 +109,7 @@ class HeightBasedTerminalStateHandler(TerminalStateHandler):
         Check if the current state is terminal. Compatible with both CPU Mujoco and Mjx.
 
         Args:
+            env (Any): The environment instance.
             obs (Union[np.ndarray, jnp.ndarray]): Observations with shape (n_samples, n_obs).
             info (Dict[str, Any]): The info dictionary.
             data (Union[MjData, Data]): The Mujoco data structure.

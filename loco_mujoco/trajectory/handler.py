@@ -292,6 +292,11 @@ class TrajectoryHandler(StatefulObject):
         subtraj_step_no = carry.traj_state.subtraj_step_no
         return self.traj.data.get(traj_no, subtraj_step_no, backend)
 
+    def get_init_traj_data(self, carry, backend):
+        traj_no = carry.traj_state.traj_no
+        subtraj_step_no_init = carry.traj_state.subtraj_step_no_init
+        return self.traj.data.get(traj_no, subtraj_step_no_init, backend)
+
     def to_numpy(self):
         if not self._is_numpy:
             traj_model = self.traj.info.model.to_numpy()

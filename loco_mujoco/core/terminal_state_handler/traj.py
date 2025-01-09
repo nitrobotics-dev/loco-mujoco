@@ -17,7 +17,8 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
     def __init__(self, env: Any, 
                  root_height_margin: float = 0.3, 
-                 root_rot_margin_degrees: float = 30.0):
+                 root_rot_margin_degrees: float = 30.0,
+                 max_root_pos_deviation: float = 1e6):
         """
         Initialize the TerminalStateHandler.
 
@@ -27,6 +28,7 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
                 height before being terminal.
             root_rot_margin_degrees (float): Margin added to the minimum and maximum root
                 orientation before being terminal.
+            max_root_pos_deviation (float): Maximum deviation of the root position from the reference trajectory.
         """
         super(RootPoseTrajTerminalStateHandler, self).__init__(env)
         
@@ -36,8 +38,10 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
         self.root_height_margin = root_height_margin
         self.root_rot_margin_degrees = root_rot_margin_degrees
+        self.max_root_pos_deviation = max_root_pos_deviation
 
         # to be determined in init_from_traj
+        self.root_xy = None
         self.root_height_ind = None
         self.root_quat_ind = None
         self.root_height_range = None
@@ -78,6 +82,7 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
         traj = th.traj
         root_ind = traj.info.joint_name2ind_qpos[self.root_joint_name]
+        self.root_xy = root_ind[:2]
         self.root_height_ind = root_ind[2]
         self.root_quat_ind = root_ind[3:7]
         assert len(self.root_quat_ind) == 4
@@ -96,7 +101,9 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
         self._initialized = True
 
-    def is_absorbing(self, obs: np.ndarray,
+    def is_absorbing(self,
+                     env: Any,
+                     obs: np.ndarray,
                      info: Dict[str, Any],
                      data: MjData,
                      carry: Any) -> Union[bool, Any]:
@@ -105,6 +112,7 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
         root rotation is outside the valid threshold. Function for CPU Mujoco.
 
         Args:
+            env (Any): The environment instance.
             obs (np.ndarray): shape (n_samples, n_obs), the observations
             info (dict): the info dictionary
             data (MjData): Mujoco data structure
@@ -115,11 +123,13 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
         """
         if self.initialized:
-            return self._is_absorbing_compat(obs, info, data, carry, backend=np)
+            return self._is_absorbing_compat(env, obs, info, data, carry, backend=np)
         else:
             return False, carry
 
-    def mjx_is_absorbing(self, obs: jnp.ndarray,
+    def mjx_is_absorbing(self,
+                         env: Any,
+                         obs: jnp.ndarray,
                          info: Dict[str, Any],
                          data: Data,
                          carry: Any) -> Union[bool, Any]:
@@ -138,11 +148,13 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
 
         """
         if self.initialized:
-            return self._is_absorbing_compat(obs, info, data, carry, backend=jnp)
+            return self._is_absorbing_compat(env, obs, info, data, carry, backend=jnp)
         else:
             return False, carry
 
-    def _is_absorbing_compat(self, obs: Union[np.ndarray, jnp.ndarray],
+    def _is_absorbing_compat(self,
+                             env: Any,
+                             obs: Union[np.ndarray, jnp.ndarray],
                              info: Dict[str, Any],
                              data: Union[MjData, Data],
                              carry: Any,
@@ -162,9 +174,17 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
             Boolean indicating whether the current state is terminal or not.
 
         """
-        # get height and rotation of the root joint
+        # get position, height and rotation of the root joint
+        pos = data.qpos[self.root_xy]
         height = data.qpos[self.root_height_ind]
         root_quat = quat_scalarfirst2scalarlast(data.qpos[self.root_quat_ind])
+
+        # check if the root position is outside the maximum deviation
+        traj_data = env.th.get_current_traj_data(carry, backend)
+        traj_data_init = env.th.get_init_traj_data(carry, backend)
+        traj_root_pos = traj_data.qpos[self.root_xy] - traj_data_init.qpos[self.root_xy]
+        pos_deviation = backend.linalg.norm(pos - traj_root_pos)
+        pos_cond = backend.greater(pos_deviation, self.max_root_pos_deviation)
 
         # check if the root height is outside the range
         height_cond = backend.logical_or(backend.less(height, self.root_height_range[0]),
@@ -175,7 +195,9 @@ class RootPoseTrajTerminalStateHandler(TerminalStateHandler):
         angular_distance = 2 * backend.arccos(backend.clip(backend.dot(self._centroid_quat, root_quat), -1, 1))
         root_rot_cond = backend.greater(angular_distance, self._valid_threshold)
 
-        return backend.logical_or(height_cond, root_rot_cond), carry
+        is_absorbing = backend.logical_or(pos_cond, backend.logical_or(height_cond, root_rot_cond))
+
+        return is_absorbing, carry
 
     def _calc_root_rot_centroid_and_margin(self, root_quats: np.ndarray) -> Tuple[np.ndarray, float]:
         """

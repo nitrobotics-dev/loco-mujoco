@@ -50,7 +50,9 @@ class NoTerminalStateHandler(TerminalStateHandler):
         assert_backend_is_supported(backend)
         return data, carry
 
-    def is_absorbing(self, obs: np.ndarray,
+    def is_absorbing(self,
+                     env: Any,
+                     obs: np.ndarray,
                      info: Dict[str, Any],
                      data: MjData,
                      carry: Any) -> Union[bool, Any]:
@@ -58,6 +60,7 @@ class NoTerminalStateHandler(TerminalStateHandler):
         Always returns false. Function for CPU Mujoco.
 
         Args:
+            env (Any): The environment instance.
             obs (np.ndarray): Observations with shape (n_samples, n_obs).
             info (Dict[str, Any]): The info dictionary.
             data (MjData): The Mujoco data structure.
@@ -69,7 +72,9 @@ class NoTerminalStateHandler(TerminalStateHandler):
         """
         return False, carry
 
-    def mjx_is_absorbing(self, obs: jnp.ndarray,
+    def mjx_is_absorbing(self,
+                         env: Any,
+                         obs: jnp.ndarray,
                          info: Dict[str, Any],
                          data: Data,
                          carry: Any) -> Union[bool, Any]:
@@ -77,6 +82,7 @@ class NoTerminalStateHandler(TerminalStateHandler):
         Always returns false. Function for Mjx.
 
         Args:
+            env (Any): The environment instance.
             obs (jnp.ndarray): Observations with shape (n_samples, n_obs).
             info (Dict[str, Any]): The info dictionary.
             data (Data): The Mujoco data structure for Mjx.
