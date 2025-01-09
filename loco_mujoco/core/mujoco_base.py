@@ -137,6 +137,9 @@ class Mujoco:
         # set the warning callback to stop the simulation when a mujoco warning occurs
         mujoco.set_mju_user_warning(self.user_warning_raise_exception)
 
+        # path to the video file if one is recorded
+        self._video_file_path = None
+
         atexit.register(self.stop)
 
     def seed(self, seed):
@@ -222,7 +225,7 @@ class Mujoco:
 
     def stop(self):
         if self._viewer is not None:
-            self._viewer.stop()
+            self._video_file_path = self._viewer.stop()
             del self._viewer
             self._viewer = None
 
@@ -685,6 +688,14 @@ class Mujoco:
             raise RuntimeError(warning + 'Check for NaN in simulation.')
         else:
             raise RuntimeError('Got MuJoCo Warning: ' + warning)
+
+    @property
+    def video_file_path(self):
+        """
+        Returns:
+             The path to the recorded video file if it exists.
+        """
+        return self._video_file_path
 
     @property
     def info(self):
