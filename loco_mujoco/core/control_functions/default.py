@@ -61,30 +61,6 @@ class DefaultControl(ControlFunction):
         unnormalized_action = self._unnormalize_action(action)
         return unnormalized_action, carry
 
-    @staticmethod
-    def get_action_indices(model, data, actuation_spec):
-        """
-        Returns the action indices given the MuJoCo model, data, and actuation_spec.
-
-        Args:
-            model: MuJoCo model.
-            data: MuJoCo data structure.
-             actuation_spec (list): A list specifying the names of the joints
-                which should be controllable by the agent. Can be left empty
-                when all actuators should be used;
-
-        Returns:
-            A list of actuator indices.
-
-        """
-        if len(actuation_spec) == 0:
-            action_indices = [i for i in range(0, len(data.actuator_force))]
-        else:
-            action_indices = []
-            for name in actuation_spec:
-                action_indices.append(model.actuator(name).id)
-        return action_indices
-
     def _unnormalize_action(self, action: Union[np.ndarray, jax.Array]) -> Union[np.ndarray, jax.Array]:
         """
         Rescale the action from [-1, 1] to the desired action space.

@@ -96,13 +96,11 @@ class Mjx(Mujoco):
     def mjx_step(self, state: MjxState, action: jax.Array):
 
         data = state.data
+        cur_info = state.info
         carry = state.additional_carry
 
         # reset dones
         state = state.replace(done=jnp.zeros_like(state.done, dtype=bool))
-
-        # modify the observation and the data if needed (does nothing by default)
-        cur_obs, data, cur_info, carry = self._step_init(state.observation, data, state.info, carry)
 
         # preprocess action
         processed_action, carry = self._mjx_preprocess_action(action, self._model, data, carry)
@@ -110,11 +108,22 @@ class Mjx(Mujoco):
         # modify data and model *before* step if needed
         sys, data, carry = self._mjx_simulation_pre_step(self.sys, data, carry)
 
-        # step in the environment using the action
-        ctrl = data.ctrl.at[jnp.array(self._action_indices)].set(processed_action)
-        data = data.replace(ctrl=ctrl)
-        step_fn = lambda _, x: mjx.step(sys, x)
-        data = jax.lax.fori_loop(0, self._n_substeps, step_fn, data)
+        def _inner_loop(idx, _runner_state):
+
+            _sys, _data, _carry = _runner_state
+
+            ctrl_action, _carry = self._mjx_compute_action(processed_action, self._model, _data, _carry)
+
+            # step in the environment using the action
+            ctrl = _data.ctrl.at[jnp.array(self._action_indices)].set(ctrl_action)
+            _data = _data.replace(ctrl=ctrl)
+            step_fn = lambda _, x: mjx.step(_sys, x)
+            _data = jax.lax.fori_loop(0, self._n_substeps, step_fn, _data)
+
+            return _sys, _data, _carry
+
+        # run inner loop
+        _, data, _, carry = jax.lax.fori_loop(0, self._n_intermediate_steps, _inner_loop, (sys, data, carry))
 
         # modify data *after* step if needed (does nothing by default)
         data, carry = self._mjx_simulation_post_step(self._model, data, carry)
@@ -180,7 +189,7 @@ class Mjx(Mujoco):
         return reward, carry
 
     def _mjx_is_absorbing(self, obs, info, data, carry):
-        return self._terminal_state_handler.mjx_is_absorbing(obs, info, data, carry)
+        return self._terminal_state_handler.mjx_is_absorbing(self, obs, info, data, carry)
 
     def _mjx_is_done(self, obs, absorbing, info, data, carry):
         done = jnp.greater_equal(carry.cur_step_in_episode, self.info.horizon)
@@ -210,8 +219,25 @@ class Mjx(Mujoco):
         Returns:
             The action to be used for the current step and the updated carry.
         """
-        action, carry = self._control_func.generate_action(self, action, model, data, carry, jnp)
         action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, jnp)
+        return action, carry
+
+    def _mjx_compute_action(self, action, model, data, carry):
+        """
+        Compute a transformation of the action at every intermediate step.
+        Useful to add control signals simulated directly in python.
+
+        Args:
+            action (jax.Array): numpy array with the actions, provided at every step.
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
+
+        Returns:
+            The action to be used for the current step and the updated carry.
+
+        """
+        action, carry = self._control_func.generate_action(self, action, model, data, carry, jnp)
         return action, carry
 
     def _mjx_reset_init_data_and_model(self, model, data, carry):
@@ -231,12 +257,6 @@ class Mjx(Mujoco):
         data, carry = self._init_state_handler.reset(self, model, data, carry, jnp)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, jnp)
         return data, carry
-
-    def _mjx_step_init(self, obs, data, info, carry):
-        """
-        Allows information to be accessed at the end of a step.
-        """
-        return obs, data, info, carry
 
     def _mjx_step_finalize(self, obs, model, data, info, carry):
         """
