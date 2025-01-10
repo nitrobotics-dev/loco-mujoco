@@ -108,8 +108,9 @@ class RunningMeanStd(nn.Module):
         normalized_x = (x - new_mean) / (new_std + 1e-8)
 
         # Update the parameters
-        mean.value = new_mean
-        std.value = new_std
+        mean.value = jax.numpy.where(jax.numpy.isnan(new_mean), mean.value, new_mean)
+        std.value = jax.numpy.where(jax.numpy.isnan(new_std), std.value, new_std)
+
         count.value = updated_count
 
         return jnp.squeeze(normalized_x)
