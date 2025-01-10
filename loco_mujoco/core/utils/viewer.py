@@ -44,7 +44,7 @@ class MujocoViewer:
 
     """
 
-    def __init__(self, model, dt, width=1280, height=720, start_paused=False,
+    def __init__(self, model, dt, viewer_size=(1280, 720), start_paused=False,
                  custom_render_callback=None, record=False, camera_params=None,
                  default_camera_mode="static", hide_menu_on_startup=None,
                  geom_group_visualization_on_startup=None, headless=False, recorder_params=None):
@@ -54,8 +54,7 @@ class MujocoViewer:
         Args:
             model: Mujoco model.
             dt (float): Timestep of the environment, (not the simulation).
-            width (int): Width of the viewer window.
-            height (int): Height of the viewer window.
+            viewer_size (tuple): Tuple of width and height of the viewer window.
             start_paused (bool): If True, the rendering is paused in the beginning of the simulation.
             custom_render_callback (func): Custom render callback function, which is supposed to be called
                 during rendering.
@@ -89,6 +88,7 @@ class MujocoViewer:
         self._headless = headless
         self._model = model
         self._font_scale = 100
+        width, height = viewer_size
 
         if headless:
             # use the OpenGL render that is available on the machine
