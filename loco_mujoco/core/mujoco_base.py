@@ -410,7 +410,7 @@ class Mujoco:
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
         obs_ind.convert_to_numpy()
-
+        
         return obs_container, data_ind, obs_ind
 
     def _setup_goal(self, spec, goal_type, goal_params):

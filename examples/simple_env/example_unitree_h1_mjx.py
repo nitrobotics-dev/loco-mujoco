@@ -48,4 +48,3 @@ while i < 100000:
         previous_time = current_time
 
     i+=1
-
