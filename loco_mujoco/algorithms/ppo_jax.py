@@ -96,16 +96,16 @@ class PPOJax(JaxRLAlgorithmBase):
         if config.experiment.anneal_lr:
             tx = optax.chain(
                 optax.clip_by_global_norm(config.experiment.max_grad_norm),
+                optax.zero_nans(),
                 optax.adam(learning_rate=lambda count: cls._linear_lr_schedule(count, config.experiment.num_minibatches,
                                                                                config.experiment.update_epochs, config.lr,
-                                                                               config.experiment.num_updates), eps=1e-5),
-                optax.zero_nans()
+                                                                               config.experiment.num_updates), eps=1e-5)
             )
         else:
             tx = optax.chain(
                 optax.clip_by_global_norm(config.experiment.max_grad_norm),
+                optax.zero_nans(),
                 optax.adam(config.experiment.lr, eps=1e-5),
-                optax.zero_nans()
             )
 
         #tx = optax.apply_if_finite(tx, max_consecutive_errors=10)
