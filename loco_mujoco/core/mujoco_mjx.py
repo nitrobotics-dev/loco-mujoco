@@ -117,7 +117,7 @@ class Mjx(Mujoco):
             # step in the environment using the action
             ctrl = _data.ctrl.at[jnp.array(self._action_indices)].set(ctrl_action)
             _data = _data.replace(ctrl=ctrl)
-            step_fn = lambda _, x: jax.tree.map(lambda x: jnp.nan_to_num(x, nan=0, posinf=1e6, neginf=-1e6), mjx.step(sys, x))
+            step_fn = lambda _, x: mjx.step(sys, x)
             _data = jax.lax.fori_loop(0, self._n_substeps, step_fn, _data)
 
             return _data, _carry
@@ -145,6 +145,9 @@ class Mjx(Mujoco):
 
         # check if done
         done = self._mjx_is_done(cur_obs, absorbing, cur_info, data, carry)
+
+        done = jnp.logical_or(done, jnp.any(jnp.isnan(cur_obs)))
+        cur_obs = jnp.nan_to_num(cur_obs, nan=0.0)
 
         # create state
         carry = carry.replace(cur_step_in_episode=carry.cur_step_in_episode + 1, last_action=action)
