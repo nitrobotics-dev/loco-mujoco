@@ -298,6 +298,64 @@ def optimize_for_collisions(
     return traj
 
 
+def calculate_qvel_with_finite_difference(qpos, frequency):
+    """
+    Calculate joint velocities (qvel) using finite differences for a given trajectory.
+
+    This function computes joint velocities by applying a central finite difference
+    method to the joint positions (`qpos`). It handles free joints (e.g., floating-base
+    joints with translational and rotational components) separately from other joints.
+    The input `qpos` is expected to be a 2D NumPy array, where the first dimension
+    corresponds to time steps (`Nsampleintraj`) and the second dimension corresponds
+    to joint states (`njoints`).
+
+    Args:
+        qpos (numpy.ndarray):
+            A 2D array of shape `(nsamples, qpos_dim)` representing the joint positions.
+            The first 7 columns correspond to the free joint (3 for position and 4 for orientation
+            as a quaternion), and the remaining columns correspond to other joint positions.
+        frequency (float):
+            The sampling frequency of the trajectory in Hz.
+
+    Returns:
+
+        numpy.ndarray:
+            A 2D array of shape `(nsamples - 2, qpos_dim-1)` representing the computed joint velocities.
+            The velocities include translational (3 components) and rotational (3 components) velocities
+            for the free joint.
+
+    Notes:
+        - The function uses a central finite difference formula for velocity computation:
+          `(qpos[t+1] - qpos[t-1]) / (2 * delta_t)`.
+        - The quaternion orientation in `qpos` is assumed to have the scalar part first.
+        - Free joint velocities are split into translational and rotational components.
+
+    """
+
+    free_joint_qpos_ids = np.arange(7)
+    free_joint_qvel_ids = np.arange(6)
+    njnt = qpos.shape[1] - 7
+    joints_qpos_ids = np.arange(7, 7+njnt)
+    joints_qvel_ids = np.arange(6, 6+njnt)
+
+    # Calculate qvel using finite difference
+    free_joint_pos = qpos[:, free_joint_qpos_ids[:3]]
+    free_joint_quat_scalarfirst = qpos[:, free_joint_qpos_ids[3:]]
+    free_joint_quat = quat_scalarfirst2scalarlast(free_joint_quat_scalarfirst)
+    free_joint_rotvec = sRot.from_quat(free_joint_quat).as_rotvec()
+    joint_qpos = qpos[:, joints_qpos_ids]
+
+    delta_t = 1 / frequency
+    free_joint_vel = (free_joint_pos[2:] - free_joint_pos[:-2]) / (2 * delta_t)
+    free_joint_vel_rot = (free_joint_rotvec[2:] - free_joint_rotvec[:-2]) / (2 * delta_t)
+    joints_vel = (joint_qpos[2:] - joint_qpos[:-2]) / (2 * delta_t)
+
+    qvel = np.concatenate([free_joint_vel, free_joint_vel_rot, joints_vel], axis=1)
+    qpos = qpos[1:-1]
+
+    return qpos, qvel
+
+
 def expression_constructor(loader, node):
     # Get the scalar value (the expression in string form)
     value = loader.construct_scalar(node)

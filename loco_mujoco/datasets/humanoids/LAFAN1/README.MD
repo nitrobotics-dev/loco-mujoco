@@ -21,5 +21,12 @@ loco-mujoco-set-lafan1-path --path "/path/to/LAFAN1_Retargeting_Dataset"
 
 Replace /path/to/LAFAN1_Retargeting_Dataset with the actual path to the cloned dataset on your system.
 
+Also, set the path to which the converted dataset will be saved:
+
+``` bash
+loco-mujoco-set-conv-lafan1-path --path "/path/to/converted/LAFAN1_Retargeting_Dataset"
+```
+
+
 ## That's It! 🎉
 You're now ready to use the LAFAN1 Retargeting Dataset with LocoMuJoCo. Enjoy!

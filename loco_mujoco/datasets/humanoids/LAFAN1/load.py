@@ -12,7 +12,7 @@ from scipy.spatial.transform import Rotation as sRot
 
 import loco_mujoco
 from loco_mujoco.core.utils.math import quat_scalarlast2scalarfirst
-from loco_mujoco.datasets.data_generation import ExtendTrajData, optimize_for_collisions
+from loco_mujoco.datasets.data_generation import ExtendTrajData, optimize_for_collisions, calculate_qvel_with_finite_difference
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.trajectory import (
     Trajectory,
@@ -27,6 +27,7 @@ def extend_motion(
         env_name: str,
         robot_conf: DictConfig,
         traj: Trajectory,
+        replace_qvel_with_finite_diff: bool,
 ) -> Trajectory:
     """
     Extend a motion trajectory to include more model-specific entities
@@ -41,6 +42,9 @@ def extend_motion(
         Trajectory: The extended trajectory.
 
     """
+
+    assert traj.data.n_trajectories == 1
+
     env_cls = LocoEnv.registered_envs[env_name]
     env = env_cls(**robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
@@ -135,14 +139,15 @@ def load_lafan1_trajectory(
                 [int(mujoco.mjtJoint.mjJNT_FREE)] + [int(mujoco.mjtJoint.mjJNT_HINGE)] * (njnt-1))
             traj_info = TrajectoryInfo(joint_names=robot_conf.jnt_names,
                                        model=TrajectoryModel(njnt, jnt_type), frequency=robot_conf.fps)
-            # set qvel to 0 for now (will be calculated by optimize_for_collisions later)
-            qvel = np.zeros_like(qpos)[:, 1:]
+            # calculate velocities
+            qpos, qvel = calculate_qvel_with_finite_difference(qpos, robot_conf.fps)
+
             traj_data = TrajectoryData(qpos=qpos, qvel=qvel, split_points=jnp.array([0, len(qpos)]))
             traj = Trajectory(info=traj_info, data=traj_data)
 
             # order and extend the motion
             logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
-            traj = extend_motion(env_name, robot_conf, traj)
+            traj = extend_motion(env_name, robot_conf, traj, replace_qvel_with_finite_diff=True)
 
             traj.save(target_path_dataset)
 
