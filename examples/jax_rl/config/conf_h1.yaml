@@ -28,6 +28,7 @@ wandb:
 experiment:
   task_factory:
     name: RLFactory
+    params: {}
   env_params:
     env_name: MjxUnitreeH1
     horizon: 1000
