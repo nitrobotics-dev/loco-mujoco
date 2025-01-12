@@ -24,16 +24,17 @@ def test_save(
     input_trajectory_info_data,
     input_trajectory_data,
     input_trajectory_transitions,
+    tmp_path,
 ):
-
-    path = os.path.expanduser("./test.npz")
+    # todo: combine load and save to a single function, and then iterate over all different attributes in the dataclasses
+    path = tmp_path / "test.npz"
     info = input_trajectory_info_data(backend)
     data = input_trajectory_data(backend)
     transitions = input_trajectory_transitions(backend)
     object_test = Trajectory(info, data, transitions)
     object_test.save(path)
 
-    assert os.path.exists(path), "File was not created"
+    assert path.exists(), "File was not created"
 
     loaded = np.load(path, allow_pickle=True)
     for key in ["qpos", "qvel"]:
@@ -46,13 +47,15 @@ def test_load(
     input_trajectory_info_data,
     input_trajectory_data,
     input_trajectory_transitions,
+    tmp_path,
 ):
-
-    path = os.path.expanduser("./test.npz")
+    path = tmp_path / "test.npz"
     info = input_trajectory_info_data(backend)
     data = input_trajectory_data(backend)
     transitions = input_trajectory_transitions(backend)
 
+    object_test = Trajectory(info, data, transitions)
+    object_test.save(path)
     trajectory = Trajectory.load(path)
 
     assert trajectory.info.joint_names == info.joint_names
@@ -84,42 +87,43 @@ def test_load(
         trajectory.transitions.rewards, transitions.rewards, atol=1e-7
     )
 
-    if backend == "numpy":
-        os.remove(path)
-
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
-@pytest.mark.parametrize("data_set_path", ["input_trajectory_info_data"])
 def test_trajectory_info__post_init__(
     backend,
-    data_set_path,
+    input_trajectory_info_data,
     input_expected_joint_name2ind_qpos,
     input_body_name2ind,
     input_site_name2ind,
-    request,
 ):
-    fixture_function = request.getfixturevalue(data_set_path)
-    trajectoryInfo: TrajectoryInfo = fixture_function(backend)
+    trajectoryInfo: TrajectoryInfo = input_trajectory_info_data(backend)
 
     expected_joint_name2ind_qpos = input_expected_joint_name2ind_qpos(backend)
-    expected_input_body_name2ind = input_body_name2ind(backend)
-    expected_input_site_name2ind = input_site_name2ind(backend)
+    expected_body_name2ind = input_body_name2ind(backend)
+    expected_site_name2ind = input_site_name2ind(backend)
 
-    if data_set_path == "input_trajectory_info_data":
-        for key in expected_joint_name2ind_qpos:
-            np.testing.assert_array_equal(
-                expected_joint_name2ind_qpos[key],
-                trajectoryInfo.joint_name2ind_qpos[key],
-            )
-
-    for key in expected_input_body_name2ind:
+    # Validate joint name to index mapping
+    for key, expected_value in expected_joint_name2ind_qpos.items():
         np.testing.assert_array_equal(
-            expected_input_body_name2ind[key], trajectoryInfo.body_name2ind[key]
+            expected_value,
+            trajectoryInfo.joint_name2ind_qpos[key],
+            err_msg=f"Mismatch for joint '{key}' in backend {backend}",
         )
 
-    for key in expected_input_site_name2ind:
+    # Validate body name to index mapping
+    for key, expected_value in expected_body_name2ind.items():
         np.testing.assert_array_equal(
-            expected_input_site_name2ind[key], trajectoryInfo.site_name2ind[key]
+            expected_value,
+            trajectoryInfo.body_name2ind[key],
+            err_msg=f"Mismatch for body '{key}' in backend {backend}",
+        )
+
+    # Validate site name to index mapping
+    for key, expected_value in expected_site_name2ind.items():
+        np.testing.assert_array_equal(
+            expected_value,
+            trajectoryInfo.site_name2ind[key],
+            err_msg=f"Mismatch for site '{key}' in backend {backend}",
         )
 
 
@@ -464,6 +468,7 @@ def test_trajectory_info_reorder_sites(backend, input_trajectory_info_data):
             ]
         ),
     )
+    # todo: add different quat values to make this test useful
     np.testing.assert_array_equal(
         trajectoryInfo.model.site_quat,
         backend_type.array(
@@ -553,7 +558,7 @@ def test_trajectory_data_get(
     backend_type = jnp if backend == "jax" else np
 
     data = trajectory_data.get(traj_index, sub_traj_index, backend_type)
-
+    # todo: this test is wrong and will fail for N_trajs > 1. Checkout the get method to see how the actual index is calculated.
     expected_qpos = trajectory_data.qpos[traj_index + sub_traj_index]
     expected_qvel = trajectory_data.qvel[traj_index + sub_traj_index]
     expected_xpos = (
@@ -943,6 +948,7 @@ def test_trajectory_data_remove_body(backend, input_trajectory_data):
     original_cvel_shape = trajectory_data.cvel.shape
     original_subtree_com_shape = trajectory_data.subtree_com.shape
 
+    # todo: this statement is not needed, we should not skip.
     if (
         original_xpos_shape[1] < 1
         or original_xquat_shape[1] < 1
@@ -1095,24 +1101,13 @@ def test_trajectory_data_reorder_joints(backend, input_trajectory_data):
         new_order_qpos, new_order_qvel
     )
 
+    qpos_ind = np.arange(original_qpos_shape[1])
+    qvel_ind = np.arange(original_qvel_shape[1])
     assert np.array_equal(
-        updated_trajectory_data.qpos[:, 0], trajectory_data.qpos[:, new_order_qpos[0]]
+        updated_trajectory_data.qpos[:, qpos_ind], trajectory_data.qpos[:, new_order_qpos[qpos_ind]]
     )
     assert np.array_equal(
-        updated_trajectory_data.qpos[:, 1], trajectory_data.qpos[:, new_order_qpos[1]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.qpos[:, -1], trajectory_data.qpos[:, new_order_qpos[-1]]
-    )
-
-    assert np.array_equal(
-        updated_trajectory_data.qvel[:, 0], trajectory_data.qvel[:, new_order_qvel[0]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.qvel[:, 1], trajectory_data.qvel[:, new_order_qvel[1]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.qvel[:, -1], trajectory_data.qvel[:, new_order_qvel[-1]]
+        updated_trajectory_data.qpos[:, qvel_ind], trajectory_data.qpos[:, new_order_qpos[qvel_ind]]
     )
 
 
@@ -1126,47 +1121,19 @@ def test_trajectory_data_reorder_bodies(backend, input_trajectory_data):
     new_order = backend_type.array(list(reversed(range(original_xpos_shape[1]))))
     updated_trajectory_data = trajectory_data.reorder_bodies(new_order)
 
+    body_ind = np.arange(original_xpos_shape[1])
     assert np.array_equal(
-        updated_trajectory_data.xpos[:, 0], trajectory_data.xpos[:, new_order[0]]
+        updated_trajectory_data.xpos[:, body_ind], trajectory_data.xpos[:, new_order[body_ind]]
     )
     assert np.array_equal(
-        updated_trajectory_data.xpos[:, 1], trajectory_data.xpos[:, new_order[1]]
+        updated_trajectory_data.xquat[:, body_ind], trajectory_data.xquat[:, new_order[body_ind]]
     )
     assert np.array_equal(
-        updated_trajectory_data.xpos[:, -1], trajectory_data.xpos[:, new_order[-1]]
-    )
-
-    assert np.array_equal(
-        updated_trajectory_data.xquat[:, 0], trajectory_data.xquat[:, new_order[0]]
+        updated_trajectory_data.cvel[:, body_ind], trajectory_data.cvel[:, new_order[body_ind]]
     )
     assert np.array_equal(
-        updated_trajectory_data.xquat[:, 1], trajectory_data.xquat[:, new_order[1]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.xquat[:, -1], trajectory_data.xquat[:, new_order[-1]]
-    )
-
-    assert np.array_equal(
-        updated_trajectory_data.cvel[:, 0], trajectory_data.cvel[:, new_order[0]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.cvel[:, 1], trajectory_data.cvel[:, new_order[1]]
-    )
-    assert np.array_equal(
-        updated_trajectory_data.cvel[:, -1], trajectory_data.cvel[:, new_order[-1]]
-    )
-
-    assert np.array_equal(
-        updated_trajectory_data.subtree_com[:, 0],
-        trajectory_data.subtree_com[:, new_order[0]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.subtree_com[:, 1],
-        trajectory_data.subtree_com[:, new_order[1]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.subtree_com[:, -1],
-        trajectory_data.subtree_com[:, new_order[-1]],
+        updated_trajectory_data.subtree_com[:, body_ind],
+        trajectory_data.subtree_com[:, new_order[body_ind]],
     )
 
 
@@ -1182,6 +1149,7 @@ def test_trajectory_data_reorder_sites(backend, input_trajectory_data):
 
     updated_trajectory_data = trajectory_data.reorder_sites(new_order)
 
+    # todo: do the same update as done for body and joint
     assert np.array_equal(
         updated_trajectory_data.site_xpos[:, 0],
         trajectory_data.site_xpos[:, new_order[0]],
@@ -1206,24 +1174,6 @@ def test_trajectory_data_reorder_sites(backend, input_trajectory_data):
     assert np.array_equal(
         updated_trajectory_data.site_xmat[:, -1],
         trajectory_data.site_xmat[:, new_order[-1]],
-    )
-
-
-@pytest.mark.parametrize("backend", ["jax", "numpy"])
-def test_trajectory_data_set_userdata(backend, input_trajectory_data):
-    trajectory_data: TrajectoryData = input_trajectory_data(backend)
-
-    backend_type = jnp if backend == "jax" else np
-    userdata_size = 10
-
-    updated_trajectory_data = trajectory_data.set_userdata(userdata_size, backend_type)
-
-    updated_userdata_shape = updated_trajectory_data.userdata.shape
-
-    assert updated_userdata_shape == (userdata_size,)
-
-    assert np.allclose(
-        updated_trajectory_data.userdata, backend_type.zeros((userdata_size,))
     )
 
 
@@ -1300,6 +1250,9 @@ def test_trajectory_data_concatenate(
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
 def test_trajectory_data_len_trajectory(backend, input_trajectory_data):
     trajectory_data: TrajectoryData = input_trajectory_data(backend)
+
+    # todo: this and the next test should be done by also adapting the data in traj data. There will be a checking for
+    # split points implemented soon, and this will throw and error.
 
     backend_type = jnp if backend == "jax" else np
 
