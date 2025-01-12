@@ -32,6 +32,11 @@ class ControlFunction(StatefulObject):
         self._low = low
         self._high = high
 
+        # compute the controller frequency
+        n_intermediate_steps = env._n_intermediate_steps
+        env_frequency = 1 / env.simulation_dt
+        self._controller_frequency = env_frequency * n_intermediate_steps
+
     def generate_action(self, env: Any,
                         action: Union[np.ndarray, jax.Array],
                         model: Union[MjModel, Model],
@@ -58,6 +63,20 @@ class ControlFunction(StatefulObject):
         """
         assert_backend_is_supported(backend)
         raise NotImplementedError
+
+    @property
+    def frequency(self):
+        """
+        Get the controller frequency. This can differ from the environment frequency if intermediate steps are used.
+        """
+        return self._controller_frequency
+
+    @property
+    def run_with_simulation_frequency(self):
+        """
+        If true, the control function is called with the simulation frequency.
+        """
+        return False
 
     @property
     def action_limits(self):

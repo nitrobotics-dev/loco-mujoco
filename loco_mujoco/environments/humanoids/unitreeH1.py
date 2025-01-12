@@ -231,7 +231,7 @@ class UnitreeH1(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=False, disable_back_joint=False, xml_path=None,
+    def __init__(self, disable_arms=False, disable_back_joint=False, spec=None,
                  observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
@@ -241,11 +241,11 @@ class UnitreeH1(BaseRobotHumanoid):
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
 
-        if xml_path is None:
-            xml_path = self.get_default_xml_file_path()
+        if spec is None:
+            spec = self.get_default_xml_file_path()
 
         # load the model specification
-        spec = mujoco.MjSpec.from_file(xml_path)
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
 
         # get the observation and action specification
         if observation_spec is None:
@@ -359,6 +359,7 @@ class UnitreeH1(BaseRobotHumanoid):
                             ObservationType.JointPos("q_ankle_angle_l", xml_name="ankle_angle_l"),
 
                             # ------------- JOINT VEL -------------
+                            ObservationType.FreeJointVel("dq_root", xml_name="root"),
                             ObservationType.JointVel("dq_back_bkz", xml_name="back_bkz"),
                             ObservationType.JointVel("dq_l_arm_shy", xml_name="l_arm_shy"),
                             ObservationType.JointVel("dq_l_arm_shx", xml_name="l_arm_shx"),

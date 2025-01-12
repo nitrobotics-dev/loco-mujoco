@@ -38,7 +38,8 @@ smpl = [
     "tqdm",
     "smplx @ git+https://github.com/ZhengyiLuo/smplx",
     "easydict",
-    "joblib"
+    "joblib",
+    "lxml"
 ]
 
 [project.urls]
@@ -53,3 +54,5 @@ loco-mujoco-download-perfect = "loco_mujoco.utils:download_perfect_datasets"
 loco-mujoco-set-smpl-model-path = "loco_mujoco.utils:set_smpl_model_path"
 loco-mujoco-set-amass-path = "loco_mujoco.utils:set_amass_path"
 loco-mujoco-set-conv-amass-path = "loco_mujoco.utils:set_converted_amass_path"
+loco-mujoco-set-lafan1-path = "loco_mujoco.utils:set_lafan1_path"
+loco-mujoco-set-conv-lafan1-path = "loco_mujoco.utils:set_converted_lafan1_path"

@@ -20,6 +20,8 @@ wandb:
   project: "unitreeGo2"
 
 experiment:
+  task_factory:
+    name: RLFactory
   env_params:
     env_name: MjxUnitreeGo2
     horizon: 1000

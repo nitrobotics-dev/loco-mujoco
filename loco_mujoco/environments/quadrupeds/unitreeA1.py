@@ -185,7 +185,7 @@ class UnitreeA1(BaseRobotQuadruped):
 
     mjx_enabled = False
 
-    def __init__(self, xml_path=None, camera_params=None,
+    def __init__(self, spec=None, camera_params=None,
                  observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
@@ -196,11 +196,11 @@ class UnitreeA1(BaseRobotQuadruped):
 
         """
 
-        if xml_path is None:
-            xml_path = self.get_default_xml_file_path()
+        if spec is None:
+            spec = self.get_default_xml_file_path()
 
         # load the model specification
-        spec = mujoco.MjSpec.from_file(xml_path)
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
 
         # get the observation and action specification
         if observation_spec is None:

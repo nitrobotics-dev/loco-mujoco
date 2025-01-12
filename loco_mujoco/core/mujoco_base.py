@@ -44,7 +44,7 @@ class Mujoco:
     registered_envs = dict()
 
     def __init__(self, spec, actuation_spec, observation_spec, gamma, horizon,
-                 n_environments=1, timestep=None, n_substeps=1, n_intermediate_steps=1, model_option_conf=None,
+                 n_environments=1, timestep=None, n_substeps=1, model_option_conf=None,
                  reward_type="NoReward", reward_params=None,
                  goal_type="NoGoal", goal_params=None,
                  terminal_state_type="NoTerminalStateHandler", terminal_state_params=None,
@@ -65,8 +65,8 @@ class Mujoco:
         self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(spec, model_option_conf)
 
         # set some attributes
-        self._n_intermediate_steps = n_intermediate_steps
         self._n_substeps = n_substeps
+        self._n_intermediate_steps = 1
         self._viewer_params = viewer_params
         self._viewer = None
         self._obs = None
@@ -98,6 +98,9 @@ class Mujoco:
         if control_params is None:
             control_params = {}
         self._control_func = ControlFunction.registered[control_type](self, **control_params)
+        if self._control_func.run_with_simulation_frequency:
+            self._n_intermediate_steps = n_substeps
+            self._n_substeps = 1
 
         # define action space bounding box
         action_space = Box(*self._control_func.action_limits)
@@ -129,17 +132,13 @@ class Mujoco:
         if terminal_state_params is None:
             terminal_state_params = {}
         self._terminal_state_handler = TerminalStateHandler.registered[terminal_state_type](self,
-                                                                 **terminal_state_params)
+                                                                                            **terminal_state_params)
 
         # set the warning callback to stop the simulation when a mujoco warning occurs
         mujoco.set_mju_user_warning(self.user_warning_raise_exception)
 
-        # check whether the function compute_action was overridden or not. If yes, we want to compute
-        # the action at simulation frequency, if not we do it at control frequency. (not supported for Mjx)
-        if type(self)._compute_action == Mujoco._compute_action:
-            self._recompute_action_per_step = False
-        else:
-            self._recompute_action_per_step = True
+        # path to the video file if one is recorded
+        self._video_file_path = None
 
         atexit.register(self.stop)
 
@@ -164,40 +163,29 @@ class Mujoco:
         return self._obs
 
     def step(self, action):
-        cur_obs = self._obs.copy()
         cur_info = self._info.copy()
         carry = self._additional_carry
 
         # preprocess action
         processed_action, carry = self._preprocess_action(action, self._model, self._data, carry)
 
-        # modify obs and data, before stepping in the env (does nothing by default)
-        cur_obs, self._data, cur_info, carry = self._step_init(cur_obs, self._data, cur_info, carry)
-
-        ctrl_action = None
+        # modify data and model during simulation, before main step
+        self._model, self._data, carry = self._simulation_pre_step(self._model, self._data, carry)
 
         for i in range(self._n_intermediate_steps):
 
-            if self._recompute_action_per_step or ctrl_action is None:
-                ctrl_action = self._compute_action(cur_obs, processed_action)
-                self._data.ctrl[self._action_indices] = ctrl_action
-
-            # modify data and model during simulation, before main step
-            self._model, self._data, carry = self._simulation_pre_step(self._model, self._data, carry)
+            # compute the action at every intermediate step
+            ctrl_action, carry = self._compute_action(processed_action, self._model, self._data, carry)
 
             # main mujoco step, runs the sim for n_substeps
+            self._data.ctrl[self._action_indices] = ctrl_action
             mujoco.mj_step(self._model, self._data, self._n_substeps)
 
-            # modify data during simulation, after main step (does nothing by default)
-            self._data, carry = self._simulation_post_step(self._model, self._data, carry)
-
-            # recompute thef action at each intermediate step (not executed by default)
-            if self._recompute_action_per_step:
-                cur_obs, carry = self._create_observation(self._model, self._data, carry)
+        # modify data during simulation, after main step (does nothing by default)
+        self._data, carry = self._simulation_post_step(self._model, self._data, carry)
 
         # create the final observation
-        if not self._recompute_action_per_step:
-            cur_obs, carry = self._create_observation(self._model, self._data, carry)
+        cur_obs, carry = self._create_observation(self._model, self._data, carry)
 
         # modify obs and data, before stepping in the env (does nothing by default)
         cur_obs, self._data, cur_info, carry = self._step_finalize(cur_obs, self._model, self._data, cur_info, carry)
@@ -237,7 +225,7 @@ class Mujoco:
 
     def stop(self):
         if self._viewer is not None:
-            self._viewer.stop()
+            self._video_file_path = self._viewer.stop()
             del self._viewer
             self._viewer = None
 
@@ -262,7 +250,7 @@ class Mujoco:
             A boolean flag indicating whether this state is absorbing or not.
 
         """
-        return self._terminal_state_handler.is_absorbing(obs, info, data, carry)
+        return self._terminal_state_handler.is_absorbing(self, obs, info, data, carry)
 
     def _is_done(self, obs, absorbing, info, data, carry):
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
@@ -285,9 +273,6 @@ class Mujoco:
         data, carry = self._init_state_handler.reset(self, model, data, carry, np)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, np)
         return data, carry
-
-    def _step_init(self, obs, data, info, carry):
-        return obs, data, info, carry
 
     def _step_finalize(self, obs, model, data, info, carry):
         """
@@ -317,24 +302,26 @@ class Mujoco:
         Returns:
             The action to be used for the current step and the updated carry.
         """
-        action, carry = self._control_func.generate_action(self, action, model, data, carry, np)
         action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
         return action, carry
 
-    def _compute_action(self, obs, action):
+    def _compute_action(self, action, model, data, carry):
         """
         Compute a transformation of the action at every intermediate step.
         Useful to add control signals simulated directly in python.
 
         Args:
-            obs (np.ndarray): numpy array with the current state of teh simulation;
             action (np.ndarray): numpy array with the actions, provided at every step.
+            model: Mujoco model.
+            data: Mujoco data structure.
+            carry: Additional carry information.
 
         Returns:
-            The action to be set in the actual pybullet simulation.
+            The action to be used for the current step and the updated carry.
 
         """
-        return action
+        action, carry = self._control_func.generate_action(self, action, model, data, carry, np)
+        return action, carry
 
     def _simulation_pre_step(self, model, data, carry):
         """
@@ -364,7 +351,7 @@ class Mujoco:
 
         """
         self._action_indices = self.get_action_indices(self._model, self._data, actuation_spec)
-        self._mdp_info.action_space = Box(*self._get_action_limits(self._action_indices, self._model))
+        self._mdp_info.action_space = Box(*self._control_func.action_limits)
         self.action_dim = len(actuation_spec)
 
     def set_observation_spec(self, observation_spec):
@@ -423,7 +410,7 @@ class Mujoco:
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
         obs_ind.convert_to_numpy()
-
+        
         return obs_container, data_ind, obs_ind
 
     def _setup_goal(self, spec, goal_type, goal_params):
@@ -452,8 +439,12 @@ class Mujoco:
 
         return spec, goal
 
-    def _reward(self, obs, action, next_obs, absorbing, info, model, data, carry):
-        return 0.0, carry
+    def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
+        """
+        Calls the reward function of the environment.
+
+        """
+        return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
 
     def _create_observation(self, model, data, carry):
         """
@@ -594,6 +585,16 @@ class Mujoco:
 
         return model, deepcopy(model), data, spec
 
+    def reload_mujoco(self, xml_file):
+        """
+        Reloads the Mujoco model from the xml file.
+
+        Args:
+            xml_file (str/MjSpec): A string with a path to the xml or a Mujoco specification.
+
+        """
+        self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(xml_file)
+
     @staticmethod
     def _modify_option_spec(spec, option_config):
         if option_config is not None:
@@ -687,6 +688,14 @@ class Mujoco:
             raise RuntimeError(warning + 'Check for NaN in simulation.')
         else:
             raise RuntimeError('Got MuJoCo Warning: ' + warning)
+
+    @property
+    def video_file_path(self):
+        """
+        Returns:
+             The path to the recorded video file if it exists.
+        """
+        return self._video_file_path
 
     @property
     def info(self):

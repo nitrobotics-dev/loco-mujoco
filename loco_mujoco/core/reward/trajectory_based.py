@@ -267,4 +267,6 @@ class MimicReward(TrajectoryBasedReward):
                         + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
                         + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
 
+        total_reward = backend.nan_to_num(total_reward, nan=0.0)
+
         return total_reward, carry

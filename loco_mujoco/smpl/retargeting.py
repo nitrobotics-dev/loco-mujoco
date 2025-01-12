@@ -30,7 +30,7 @@ from loco_mujoco.trajectory import (
     TrajectoryData,
     interpolate_trajectories,
 )
-from loco_mujoco.datasets.data_generation import ExtendTrajData
+from loco_mujoco.datasets.data_generation import ExtendTrajData, optimize_for_collisions
 from loco_mujoco import PATH_TO_SMPL_ROBOT_CONF
 from loco_mujoco.utils import setup_logger
 
@@ -149,6 +149,7 @@ def load_amass_data(data_path: str) -> dict:
 
 
 def fit_smpl_motion(
+    env_name: str,
     robot_conf: DictConfig,
     path_to_smpl_model: str,
     path_to_amass_datasets: str,
@@ -159,6 +160,7 @@ def fit_smpl_motion(
     """Fit SMPL motion data to a robot configuration.
 
     Args:
+        env_name (str): Name of the environment.
         robot_conf (DictConfig): Configuration of the robot.
         path_to_smpl_model (str): Path to the SMPL model.
         path_to_amass_datasets (str): Path to the AMASS dataset directory.
@@ -204,7 +206,7 @@ def fit_smpl_motion(
     )
 
     shape_new, scale = joblib.load(
-        os.path.join(path_to_converted_amass_datasets, f"{robot_conf.name}/shape_optimized.pkl")
+        os.path.join(path_to_converted_amass_datasets, f"{env_name}/shape_optimized.pkl")
     )
 
     with torch.no_grad():
@@ -305,7 +307,7 @@ def fit_smpl_motion(
     qpos = np.concatenate([free_joint_pos, free_joint_quat, joints], axis=1)
     qvel = np.concatenate([free_joint_vel, free_joint_vel_rot, joints_vel], axis=1)
 
-    robot_cls = LocoEnv.registered_envs[robot_conf.name]
+    robot_cls = LocoEnv.registered_envs[env_name]
     spec = mujoco.MjSpec.from_file(robot_cls.get_default_xml_file_path())
     model = spec.compile()
 
@@ -327,6 +329,7 @@ def fit_smpl_motion(
 
 
 def extend_motion(
+    env_name: str,
     robot_conf: DictConfig,
     traj: Trajectory,
     logger: logging.Logger
@@ -336,6 +339,7 @@ def extend_motion(
     like body xpos, site positions, etc. and to match the environment's frequency.
 
     Args:
+        env_name (str): Name of the environment.
         robot_conf (DictConfig): Configuration of the robot.
         traj (Trajectory): The original trajectory data.
         logger (logging.Logger): Logger for status updates.
@@ -344,8 +348,8 @@ def extend_motion(
         Trajectory: The extended trajectory.
 
     """
-    env_cls = LocoEnv.registered_envs[robot_conf.name]
-    env = env_cls(**robot_conf.env_params, random_start=False, fixed_start_conf=(0, 0))
+    env_cls = LocoEnv.registered_envs[env_name]
+    env = env_cls(**robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
     traj_data, traj_info = interpolate_trajectories(traj.data, traj.info, 1.0 / env.dt)
     traj = Trajectory(info=traj_info, data=traj_data)
@@ -402,9 +406,11 @@ def load_retargeted_amass_trajectory(
     logger = setup_logger("amass", identifier="[LocoMuJoCo's AMASS Retargeting Pipeline]")
 
     if "Mjx" in env_name:
-        env_name = env_name.replace("Mjx", "")
+        conf_name = env_name.replace("Mjx", "")
+    else:
+        conf_name = env_name
 
-    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
+    path_to_conf = loco_mujoco.PATH_TO_VARIABLES
 
     with open(path_to_conf, "r") as file:
         data = yaml.load(file, Loader=yaml.FullLoader)
@@ -418,13 +424,13 @@ def load_retargeted_amass_trajectory(
         "Please set the environment variable LOCOMUJOCO_CONVERTED_AMASS_PATH."
     )
 
-    filename = f"{env_name}.yaml"
+    filename = f"{conf_name}.yaml"
     filepath = os.path.join(PATH_TO_SMPL_ROBOT_CONF, filename)
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"YAML file '{filename}' not found in path: {PATH_TO_SMPL_ROBOT_CONF}")
     robot_conf = OmegaConf.load(filepath)
 
-    path_robot_smpl_data = os.path.join(path_to_converted_amass_datasets, robot_conf.name)
+    path_robot_smpl_data = os.path.join(path_to_converted_amass_datasets, env_name)
     if not os.path.exists(path_robot_smpl_data):
         os.makedirs(path_robot_smpl_data, exist_ok=True)
 
@@ -434,15 +440,6 @@ def load_retargeted_amass_trajectory(
         fit_smpl_shape(robot_conf, path_to_smpl_model, path_to_robot_smpl_shape, logger)
     else:
         logger.info(f"Found existing robot shape file at {path_to_robot_smpl_shape}")
-
-    # if isinstance(dataset_name, list):
-    #     # create a hash to use it as a filename for multiple trajectories to store
-    #     file_name = create_multi_trajectory_hash(dataset_name)
-    #     path_retargeted_motion_file = os.path.join(path_robot_smpl_data, f"combined_datasets/{file_name}.npz")
-    #     logger.info(f"Multiple datasets passed. Combining them into a single for quick reloading "
-    #                 f"file stored at {path_retargeted_motion_file}")
-    # else:
-    #     path_retargeted_motion_file = os.path.join(path_robot_smpl_data, f"{dataset_name}.npz")
 
     # load trajectory file(s)
     if isinstance(dataset_name, str):
@@ -455,6 +452,7 @@ def load_retargeted_amass_trajectory(
             logger.info(f"Dataset {i+1}/{len(dataset_name)}: "
                         f"Retargeting AMASS motion file using optimized body shape ...")
             trajectory = fit_smpl_motion(
+                env_name,
                 robot_conf,
                 path_to_smpl_model,
                 path_to_amass_datasets,
@@ -462,8 +460,9 @@ def load_retargeted_amass_trajectory(
                 d_name,
                 logger
             )
-            logger.info("Using Mujoco's forward kinematics to calculate other model-specific entities ...")
-            trajectory = extend_motion(robot_conf, trajectory, logger)
+            logger.info("Using Mujoco to optimize for collisions and to calculate other model-specific entities ...")
+            trajectory = optimize_for_collisions(env_name, robot_conf, trajectory)
+            trajectory = extend_motion(env_name, robot_conf, trajectory, logger)
             trajectory.save(d_path)
             all_trajectories.append(trajectory)
         else:

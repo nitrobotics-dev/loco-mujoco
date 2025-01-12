@@ -262,7 +262,7 @@ class Talos(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=True, disable_back_joint=False, xml_path=None,
+    def __init__(self, disable_arms=True, disable_back_joint=False, spec=None,
                  observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
@@ -272,11 +272,11 @@ class Talos(BaseRobotHumanoid):
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
 
-        if xml_path is None:
-            xml_path = self.get_default_xml_file_path()
+        if spec is None:
+            spec = self.get_default_xml_file_path()
 
         # load the model specification
-        spec = mujoco.MjSpec.from_file(xml_path)
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
 
         # get the observation and action specification
         if observation_spec is None:

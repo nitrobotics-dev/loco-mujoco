@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import wandb
 from dataclasses import fields
-from loco_mujoco import LocoEnv
+from loco_mujoco import TaskFactory
 from loco_mujoco.algorithms import PPOJax
 from loco_mujoco.utils.metrics import QuantityContainer
 from loco_mujoco.utils import MetricsHandler
@@ -30,8 +30,11 @@ def experiment(config: DictConfig):
         config_dict = OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
         run = wandb.init(project=config.wandb.project, config=config_dict)
 
+        # get task factory
+        factory = TaskFactory.get_factory_cls(config.experiment.task_factory.name)
+
         # create env
-        env = LocoEnv.make(**config.experiment.env_params)
+        env = factory.make(**config.experiment.env_params, **config.experiment.task_factory.params)
 
         # get initial agent configuration
         agent_conf = PPOJax.init_agent_conf(env, config)

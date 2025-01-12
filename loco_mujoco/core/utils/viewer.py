@@ -44,7 +44,7 @@ class MujocoViewer:
 
     """
 
-    def __init__(self, model, dt, width=1920, height=1080, start_paused=False,
+    def __init__(self, model, dt, viewer_size=(1280, 720), start_paused=False,
                  custom_render_callback=None, record=False, camera_params=None,
                  default_camera_mode="static", hide_menu_on_startup=None,
                  geom_group_visualization_on_startup=None, headless=False, recorder_params=None):
@@ -54,8 +54,7 @@ class MujocoViewer:
         Args:
             model: Mujoco model.
             dt (float): Timestep of the environment, (not the simulation).
-            width (int): Width of the viewer window.
-            height (int): Height of the viewer window.
+            viewer_size (tuple): Tuple of width and height of the viewer window.
             start_paused (bool): If True, the rendering is paused in the beginning of the simulation.
             custom_render_callback (func): Custom render callback function, which is supposed to be called
                 during rendering.
@@ -73,7 +72,7 @@ class MujocoViewer:
 
         if hide_menu_on_startup is None and headless:
             hide_menu_on_startup = True
-        elif hide_menu_on_startup is None and not headless:
+        elif hide_menu_on_startup is None:
             hide_menu_on_startup = False
 
         self.button_left = False
@@ -89,6 +88,7 @@ class MujocoViewer:
         self._headless = headless
         self._model = model
         self._font_scale = 100
+        width, height = viewer_size
 
         if headless:
             # use the OpenGL render that is available on the machine
@@ -575,11 +575,16 @@ class MujocoViewer:
         """
         Destroys the glfw image.
 
+        Returns:
+            If record was True, the video is saved and the path is returned.
+
         """
         if not self._headless:
             glfw.destroy_window(self._window)
         if self._recorder:
-            self._recorder.stop()
+            return self._recorder.stop()
+        else:
+            return None
 
     def _create_overlay(self):
         """
@@ -784,3 +789,10 @@ class MujocoViewer:
 
         """
         mujoco.mjr_uploadHField(model, self._context, hfield_id)
+
+    @property
+    def video_file_path(self):
+        if self._recorder is not None:
+            return self._recorder.file_path
+        else:
+            return None

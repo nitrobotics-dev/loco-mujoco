@@ -218,7 +218,7 @@ def set_amass_path():
     parser = argparse.ArgumentParser(description="Set the AMASS dataset path.")
     parser.add_argument("--path", type=str, help="Path to the AMASS dataset.")
     args = parser.parse_args()
-    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_AMASS_PATH")
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_AMASS_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
 
 
 def set_smpl_model_path():
@@ -228,7 +228,7 @@ def set_smpl_model_path():
     parser = argparse.ArgumentParser(description="Set the SMPL model path.")
     parser.add_argument("--path", type=str, help="Path to the SMPL model.")
     args = parser.parse_args()
-    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH")
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
 
 
 def set_converted_amass_path():
@@ -238,14 +238,35 @@ def set_converted_amass_path():
     parser = argparse.ArgumentParser(description="Set the path to which the converted AMASS dataset is stored.")
     parser.add_argument("--path", type=str, help="Path to which the converted AMASS dataset is stored.")
     args = parser.parse_args()
-    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_AMASS_PATH")
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_AMASS_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
 
 
-def _set_path_in_yaml_conf(path: str, attr: str):
+def set_lafan1_path():
+    """
+    Set the path to the LAFAN1 dataset.
+    """
+    parser = argparse.ArgumentParser(description="Set the LAFAN1 dataset path.")
+    parser.add_argument("--path", type=str, help="Path to the LAFAN1 dataset.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_LAFAN1_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def set_converted_lafan1_path():
+    """
+    Set the path to which the converted LAFAN1 dataset is stored.
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which the converted LAFAN1 dataset is stored.")
+    parser.add_argument("--path", type=str, help="Path to which the converted LAFAN1 dataset is stored.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_LAFAN1_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def _set_path_in_yaml_conf(path: str, attr: str, path_to_conf: str):
     """
     Set the path in the yaml configuration file.
     """
-    path_to_conf = loco_mujoco.PATH_TO_SMPL_CONF
 
     # create an empty yaml file if it does not exist
     if not os.path.exists(path_to_conf):
@@ -262,3 +283,5 @@ def _set_path_in_yaml_conf(path: str, attr: str):
     # save the yaml file
     with open(path_to_conf, "w") as file:
         yaml.dump(data, file)
+
+    print(f"Set {attr} to {path} in file {path_to_conf}.")

@@ -58,8 +58,8 @@ class TrajectoryHandler(StatefulObject):
         #self.check_if_trajectory_is_in_range(low, high, keys, joint_pos_idx, warn, clip_trajectory_to_joint_ranges)
 
         assert (fixed_start_conf is not None) != random_start, "Please specify either fixed_start_conf or random_start."
-        self._random_start = random_start
-        self._fixed_start_conf = fixed_start_conf
+        self.random_start = random_start
+        self.fixed_start_conf = fixed_start_conf
         self.use_fixed_start = True if fixed_start_conf is not None else False
 
         self.traj_dt = 1 / traj_info.frequency
@@ -237,7 +237,7 @@ class TrajectoryHandler(StatefulObject):
 
         key = carry.key
 
-        if self._random_start:
+        if self.random_start:
             if backend == jnp:
                 key, _k1, _k2 = jax.random.split(key, 3)
                 traj_idx = jax.random.randint(_k1, shape=(1,), minval=0, maxval=self.n_trajectories)
@@ -248,7 +248,7 @@ class TrajectoryHandler(StatefulObject):
                 subtraj_step_idx = np.random.randint(0, self.len_trajectory(traj_idx))
                 idx = [traj_idx, subtraj_step_idx]
         elif self.use_fixed_start:
-            idx = self._fixed_start_conf
+            idx = self.fixed_start_conf
         else:
             idx = [0, 0]
 
@@ -263,6 +263,7 @@ class TrajectoryHandler(StatefulObject):
         traj_state = carry.traj_state
         traj_no = traj_state.traj_no
         subtraj_step_no = traj_state.subtraj_step_no
+        subtraj_step_no_init = traj_state.subtraj_step_no_init
 
         length_trajectory = self.len_trajectory(traj_no)
 
@@ -275,10 +276,14 @@ class TrajectoryHandler(StatefulObject):
             # check whether to go to the next trajectory
             next_traj_no = jax.lax.cond(next_subtraj_step_no == 0, lambda t, nt: jnp.mod(t+1, nt),
                                         lambda t, nt: t, traj_no, self.n_trajectories)
+            next_subtraj_step_no_init = jax.lax.cond(next_traj_no != traj_no, lambda: 0,
+                                                     lambda: subtraj_step_no_init)
         else:
             next_traj_no = traj_no if next_subtraj_step_no != 0 else (traj_no + 1) % self.n_trajectories
+            next_subtraj_step_no_init = 0 if traj_no != next_traj_no else subtraj_step_no_init
 
-        traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no)
+        traj_state = traj_state.replace(traj_no=next_traj_no, subtraj_step_no=next_subtraj_step_no,
+                                        subtraj_step_no_init=next_subtraj_step_no_init)
 
         return carry.replace(traj_state=traj_state)
 
@@ -286,6 +291,11 @@ class TrajectoryHandler(StatefulObject):
         traj_no = carry.traj_state.traj_no
         subtraj_step_no = carry.traj_state.subtraj_step_no
         return self.traj.data.get(traj_no, subtraj_step_no, backend)
+
+    def get_init_traj_data(self, carry, backend):
+        traj_no = carry.traj_state.traj_no
+        subtraj_step_no_init = carry.traj_state.subtraj_step_no_init
+        return self.traj.data.get(traj_no, subtraj_step_no_init, backend)
 
     def to_numpy(self):
         if not self._is_numpy:

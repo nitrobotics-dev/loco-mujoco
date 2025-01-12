@@ -174,3 +174,10 @@ class PDControl(ControlFunction):
         """
         unnormalized_action = ((action * self.norm_act_delta) + self.norm_act_mean)
         return unnormalized_action
+
+    @property
+    def run_with_simulation_frequency(self):
+        """
+        If true, the control function is called with the simulation frequency.
+        """
+        return True

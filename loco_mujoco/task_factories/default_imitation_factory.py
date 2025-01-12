@@ -1,7 +1,8 @@
+from .base import TaskFactory
 from loco_mujoco.environments.base import LocoEnv
 
 
-class ImitationFactory:
+class ImitationFactory(TaskFactory):
     """
     A factory class for creating imitation learning environments with preloaded trajectories.
 
@@ -14,7 +15,13 @@ class ImitationFactory:
     """
 
     @classmethod
-    def make(cls, env_name: str, task: str, dataset_type: str, debug: bool = False, **kwargs) -> LocoEnv:
+    def make(cls, env_name: str,
+             task: str,
+             dataset_type: str,
+             debug: bool = False,
+             terminal_state_type: str ="RootPoseTrajTerminalStateHandler",
+             init_state_type: str = "TrajInitialStateHandler",
+             **kwargs) -> LocoEnv:
         """
         Creates and returns an imitation learning environment with the specified parameters.
 
@@ -23,6 +30,9 @@ class ImitationFactory:
             task (str): The main task to solve, used to select the appropriate trajectory.
             dataset_type (str): The type of dataset to use, either "real" or "perfect".
             debug (bool, optional): Whether to use debug mode for smaller datasets. Defaults to False.
+            terminal_state_type (str, optional): The terminal state handler to use.
+                Defaults to "RootPoseTrajTerminalStateHandler".
+            init_state_type (str, optional): The initial state handler to use. Defaults to "TrajInitialStateHandler".
             **kwargs: Additional keyword arguments to pass to the environment constructor.
 
         Returns:
@@ -39,7 +49,7 @@ class ImitationFactory:
         env_cls = LocoEnv.registered_envs[env_name]
 
         # Create and return the environment
-        env = env_cls(**kwargs)
+        env = env_cls(init_state_type=init_state_type, terminal_state_type=terminal_state_type, **kwargs)
 
         # Load the trajectory
         traj_path = cls.get_traj_path(env_cls, dataset_type, task, debug)

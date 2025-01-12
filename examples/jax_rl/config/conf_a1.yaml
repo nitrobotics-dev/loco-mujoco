@@ -26,6 +26,8 @@ wandb:
   project: "unitreeA1_wyaw"
 
 experiment:
+  task_factory:
+    name: RLFactory
   env_params:
     env_name: MjxUnitreeA1
     horizon: 1000
