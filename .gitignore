@@ -18,4 +18,5 @@ multirun/
 home/
 loco_mujoco/smpl/conf_paths.yaml
 data/
+*.vscode
 loco_mujoco/LOCOMUJOCO_VARIABLES.yaml
