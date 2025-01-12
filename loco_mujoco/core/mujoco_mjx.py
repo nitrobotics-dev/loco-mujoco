@@ -83,6 +83,7 @@ class Mjx(Mujoco):
         # reset carry
         carry = carry.replace(cur_step_in_episode=1,
                               final_observation=state.observation,
+                              last_action=jnp.zeros_like(carry.last_action),
                               final_info=state.info)
 
         # update all stateful entities
