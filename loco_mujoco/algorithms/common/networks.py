@@ -80,37 +80,42 @@ class ActorCritic(nn.Module):
 
 
 class RunningMeanStd(nn.Module):
-    """Layer that maintains running mean and std for input normalization."""
+    """Layer that maintains running mean and variance for input normalization."""
 
     @nn.compact
     def __call__(self, x):
 
         x = jnp.atleast_2d(x)
 
-        # Initialize running mean, std, and count
+        # Initialize running mean, variance, and count
         mean = self.variable('run_stats', 'mean', lambda: jnp.zeros(x.shape[-1]))
-        std = self.variable('run_stats', 'std', lambda: jnp.ones(x.shape[-1]))
+        var = self.variable('run_stats', 'var', lambda: jnp.ones(x.shape[-1]))
         count = self.variable('run_stats', 'count', lambda: jnp.array(1e-6))
 
         # Compute batch mean and variance
         batch_mean = jnp.mean(x, axis=0)
-        batch_var = jnp.var(x, axis=0)
+        batch_var = jnp.var(x, axis=0) + 1e-6  # Add epsilon for numerical stability
+        batch_count = x.shape[0]
 
-        batch_var = jnp.where(batch_var < 1e-3, jnp.ones_like(batch_var), batch_var) # dimensions which almost not change, won't be scaled
+        # Update counts
+        updated_count = count.value + batch_count
 
-        # Update the running mean and std using a simple moving average
-        updated_count = count.value + 1
-        new_mean = (count.value * mean.value + batch_mean) / updated_count
-        new_std = jnp.sqrt((count.value * (
-                    std.value ** 2 + mean.value ** 2) + batch_var + batch_mean ** 2) / updated_count - new_mean ** 2)
+        # Numerically stable mean and variance update
+        delta = batch_mean - mean.value
+        new_mean = mean.value + delta * batch_count / updated_count
 
-        # Normalize the input
-        normalized_x = (x - new_mean) / (new_std + 1e-8)
+        # Compute the new variance using Welford's method
+        m_a = var.value * count.value
+        m_b = batch_var * batch_count
+        M2 = m_a + m_b + jnp.square(delta) * count.value * batch_count / updated_count
+        new_var = M2 / updated_count
 
-        # Update the parameters
-        mean.value = jax.numpy.where(jax.numpy.isnan(new_mean), mean.value, new_mean)
-        std.value = jax.numpy.where(jax.numpy.isnan(new_std), std.value, new_std)
+        # Normalize input
+        normalized_x = (x - new_mean) / jnp.sqrt(new_var + 1e-8)
 
+        # Update state variables
+        mean.value = new_mean
+        var.value = new_var
         count.value = updated_count
 
         return jnp.squeeze(normalized_x)
