@@ -304,7 +304,7 @@ class TrajectoryInfo:
         new_model = self.model.remove_bodies(backend.array([self.body_name2ind[name] for name in body_names]),
                                              backend)
         return replace(self,
-                       body_names=[name for name in self.body_names if name not in body_ids],
+                       body_names=[name for name in self.body_names if name not in body_names],
                        model=new_model
                        )
 
@@ -321,7 +321,7 @@ class TrajectoryInfo:
         """
         new_model = self.model.remove_sites(backend.array([self.site_name2ind[name] for name in site_names]), backend)
         return replace(self,
-                       site_names=[name for name in self.site_names if name not in site_ids],
+                       site_names=[name for name in self.site_names if name not in site_names],
                        model=new_model
                        )
 
