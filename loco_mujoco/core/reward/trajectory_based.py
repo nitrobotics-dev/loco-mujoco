@@ -14,7 +14,7 @@ from loco_mujoco.core.observations.base import ObservationType
 from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid
 from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quaternion_angular_distance
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
-
+from loco_mujoco.core.reward.utils import out_of_bounds_action_cost
 
 def check_traj_provided(method):
     """
@@ -158,7 +158,8 @@ class MimicReward(TrajectoryBasedReward):
         self._qvel_w_sum = kwargs.get("qvel_w_sum", 0.0)
         self._rpos_w_sum = kwargs.get("rpos_w_sum", 0.5)
         self._rquat_w_sum = kwargs.get("rquat_w_sum", 0.3)
-        self._rvel_w_sum = kwargs.get("rvel_w_sum", 0.1)
+        self._rvel_w_sum = kwargs.get("rvel_w_sum", 0.0)
+        self._action_out_of_bounds_cost = kwargs.get("action_out_of_bounds_cost", 0.01)
 
         # get main body name of the environment
         self.main_body_name = self._info_props["upper_body_xml_name"]
@@ -172,12 +173,14 @@ class MimicReward(TrajectoryBasedReward):
         # focus on joints in the observation space
         self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
                                          if (type(obs) is ObservationType.JointPos) or
+                                         (type(obs) is ObservationType.JointPosArray) or
                                          (type(obs) is ObservationType.FreeJointPos) or
                                          (type(obs) is ObservationType.EntryFromFreeJointPos) or
                                          (type(obs) is ObservationType.FreeJointPosNoXY)])
 
         self._qvel_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
                                          if (type(obs) is ObservationType.JointVel) or
+                                         (type(obs) is ObservationType.JointVelArray) or
                                          (type(obs) is ObservationType.EntryFromFreeJointVel) or
                                          (type(obs) is ObservationType.FreeJointVel)])
 
@@ -263,10 +266,20 @@ class MimicReward(TrajectoryBasedReward):
         rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
         rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
+        # calculate out of bounds action cost
+        action_cost = out_of_bounds_action_cost(action, lower_bound=env.mdp_info.action_space.low,
+                                                upper_bound=env.mdp_info.action_space.high, backend=backend)
+
+        # calculate total reward
         total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward
                         + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
-                        + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
+                        + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
+                        + self._action_out_of_bounds_cost * action_cost)
 
+        # clip to positive values
+        total_reward = backend.maximum(total_reward, 0.0)
+
+        # set nan values to 0
         total_reward = backend.nan_to_num(total_reward, nan=0.0)
 
         return total_reward, carry

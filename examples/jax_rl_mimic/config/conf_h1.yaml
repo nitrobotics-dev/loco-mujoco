@@ -17,18 +17,24 @@ defaults:
 #      experiment.env_params.env_name: MjxUnitreeH1.walk, MjxUnitreeH1.run
 
 wandb:
-  project: "free_joint_test"
+  project: "h1_lafan1_loco"
 
 experiment:
   task_factory:
-    name: AMASSImitationFactory
+    name: LAFAN1ImitationFactory
     params:
-      dataset_group: AMASS_LOCOMOTION_DATASETS
+      dataset_name: walk1_subject2
   env_params:
     env_name: MjxUnitreeH1
+    #viewer_size: [640, 360]
+    headless: True
     disable_arms: false
     horizon: 1000
     goal_type: GoalTrajMimic
+    goal_params:
+      visualize_goal: true
+    domain_randomization_type: DefaultRandomizer
+    domain_randomization_params: ${domain_randomization}
     reward_type: MimicReward
     reward_params:
       qpos_w_sum: 0.0
@@ -46,7 +52,7 @@ experiment:
   lr: 1e-4
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 5e7
+  total_timesteps: 5e6
   update_epochs: 4
   proportion_env_reward: 0.0
   num_minibatches: 32
@@ -62,10 +68,10 @@ experiment:
   anneal_lr: false
   normalize_env: true
   debug: false
-  n_seeds: 3  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 1  # will automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
-    active: true
+    active: false
     num_steps: 100
     num_envs: 100
     num: 10 # set to 0 to disable validation

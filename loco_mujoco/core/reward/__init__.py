@@ -1,6 +1,7 @@
 from .base import Reward
 from .default import NoReward, TargetVelocityGoalReward, TargetXVelocityReward, LocomotionReward
 from .trajectory_based import TargetVelocityTrajReward, MimicReward
+from .utils import *
 
 # register all rewards
 NoReward.register()
