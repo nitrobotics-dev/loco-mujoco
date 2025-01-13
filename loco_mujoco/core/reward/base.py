@@ -84,6 +84,25 @@ class Reward(StatefulObject):
         """
         raise NotImplementedError
 
+    def reset(self,
+              env: Any,
+              model: Union[MjModel, Model],
+              data: Union[MjData, Data],
+              carry: Any,
+              backend: ModuleType):
+        """
+        Reset the reward.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Additional carry.
+            backend (ModuleType): Backend module used for computation (either numpy or jax.numpy).
+
+        """
+        return data, carry
+
     @classmethod
     def register(cls) -> None:
         """

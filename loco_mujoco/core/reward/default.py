@@ -296,6 +296,30 @@ class LocomotionReward(TargetVelocityGoalReward):
         return LocomotionRewardState(last_qvel=data.qvel, last_action=backend.zeros(env.info.action_space.shape[0]),
                                      time_since_last_touchdown=backend.zeros(len(self._foot_ids)))
 
+    def reset(self,
+              env: Any,
+              model: Union[MjModel, Model],
+              data: Union[MjData, Data],
+              carry: Any,
+              backend: ModuleType):
+        """
+        Reset the reward state.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Additional carry.
+            backend (ModuleType): Backend module used for computation (either numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjData, Data], Any]: The updated data and carry.
+
+        """
+        reward_state = self.init_state(env, None, model, data, backend)
+        carry = carry.replace(reward_state=reward_state)
+        return data, carry
+
     def __call__(self,
                  state: Union[np.ndarray, jnp.ndarray],
                  action: Union[np.ndarray, jnp.ndarray],

@@ -4,6 +4,7 @@ from typing import Any, Dict, Tuple, Union
 import mujoco
 from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
+from flax import struct
 import numpy as np
 import jax.numpy as jnp
 from jax._src.scipy.spatial.transform import Rotation as jnp_R
@@ -15,6 +16,7 @@ from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_jnti
 from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quaternion_angular_distance
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 from loco_mujoco.core.reward.utils import out_of_bounds_action_cost
+
 
 def check_traj_provided(method):
     """
@@ -123,6 +125,15 @@ class TargetVelocityTrajReward(TrajectoryBasedReward):
         return tracking_reward, carry
 
 
+@struct.dataclass
+class MimicRewardState:
+    """
+    State of LocomotionReward.
+    """
+    last_qvel: Union[np.ndarray, jnp.ndarray]
+    last_action: Union[np.ndarray, jnp.ndarray]
+
+
 class MimicReward(TrajectoryBasedReward):
     """
     DeepMimic reward function that computes the reward based on the deviation from the trajectory. The reward is
@@ -161,7 +172,10 @@ class MimicReward(TrajectoryBasedReward):
         self._rpos_w_sum = kwargs.get("rpos_w_sum", 0.5)
         self._rquat_w_sum = kwargs.get("rquat_w_sum", 0.3)
         self._rvel_w_sum = kwargs.get("rvel_w_sum", 0.0)
-        self._action_out_of_bounds_cost = kwargs.get("action_out_of_bounds_cost", 0.01)
+        self._action_out_of_bounds_coeff = kwargs.get("action_out_of_bounds_coeff", 0.01)
+        self._joint_acc_coeff = kwargs.get("joint_acc_coeff", 0.0)
+        self._joint_torque_coeff = kwargs.get("joint_torque_coeff", 0.0)
+        self._action_rate_coeff = kwargs.get("action_rate_coeff", 0.0)
 
         # get main body name of the environment
         self.main_body_name = self._info_props["upper_body_xml_name"]
@@ -189,6 +203,56 @@ class MimicReward(TrajectoryBasedReward):
         self._qvel_ind = np.concatenate(qvel_ind)
         quat_in_qpos = np.concatenate(quat_in_qpos)
         self._quat_in_qpos = np.array([True if q in quat_in_qpos else False for q in self._qpos_ind])
+
+        # calc mask for the root free joint velocities
+        self._free_joint_qvel_ind = np.array(mj_jntname2qvelid(self._info_props["root_free_joint_xml_name"], model))
+        self._free_joint_qvel_mask = np.zeros(model.nv, dtype=bool)
+        self._free_joint_qvel_mask[self._free_joint_qvel_ind] = True
+
+    def init_state(self, env: Any,
+                   key: Any,
+                   model: Union[MjModel, Model],
+                   data: Union[MjData, Data],
+                   backend: ModuleType):
+        """
+        Initialize the reward state.
+
+        Args:
+            env (Any): The environment instance.
+            key (Any): Key for the reward state.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            backend (ModuleType): Backend module used for computation (either numpy or jax.numpy).
+
+        Returns:
+            LocomotionRewardState: The initialized reward state.
+
+        """
+        return MimicRewardState(last_qvel=data.qvel, last_action=backend.zeros(env.info.action_space.shape[0]))
+
+    def reset(self,
+              env: Any,
+              model: Union[MjModel, Model],
+              data: Union[MjData, Data],
+              carry: Any,
+              backend: ModuleType):
+        """
+        Reset the reward state.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The simulation model.
+            data (Union[MjData, Data]): The simulation data.
+            carry (Any): Additional carry.
+            backend (ModuleType): Backend module used for computation (either numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[MjData, Data], Any]: The updated data and carry.
+
+        """
+        reward_state = self.init_state(env, None, model, data, backend)
+        carry = carry.replace(reward_state=reward_state)
+        return data, carry
 
     @check_traj_provided
     def __call__(self,
@@ -227,6 +291,8 @@ class MimicReward(TrajectoryBasedReward):
             ValueError: If trajectory handler is not provided.
 
         """
+        # get current reward state
+        reward_state = carry.reward_state
 
         # get trajectory data
         traj_data = env.th.traj.data
@@ -263,20 +329,56 @@ class MimicReward(TrajectoryBasedReward):
         rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
         rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
-        # calculate out of bounds action cost
-        action_cost = out_of_bounds_action_cost(action, lower_bound=env.mdp_info.action_space.low,
-                                                upper_bound=env.mdp_info.action_space.high, backend=backend)
+        # calculate costs
+        # out of bounds action cost
+        if self._action_out_of_bounds_coeff > 0.0:
+            action_cost = out_of_bounds_action_cost(action, lower_bound=env.mdp_info.action_space.low,
+                                                    upper_bound=env.mdp_info.action_space.high, backend=backend)
+        else:
+            action_cost = 0.0
+
+        # joint acceleration reward
+        if self._joint_acc_coeff > 0.0:
+            last_joint_vel = reward_state.last_qvel[~self._free_joint_qvel_mask]
+            joint_vel = data.qvel[~self._free_joint_qvel_mask]
+            acceleration_norm = backend.sum(backend.square(joint_vel - last_joint_vel) / env.dt)
+            acceleration_reward = self._joint_acc_coeff * -acceleration_norm
+        else:
+            acceleration_reward = 0.0
+
+        # joint torque reward
+        if self._joint_torque_coeff > 0.0:
+            torque_norm = backend.sum(backend.square(data.qfrc_actuator[~self._free_joint_qvel_mask]))
+            torque_reward = self._joint_torque_coeff * -torque_norm
+        else:
+            torque_reward = 0.0
+
+        # action rate reward
+        if self._action_rate_coeff > 0.0:
+            action_rate_norm = backend.sum(backend.square(action - reward_state.last_action))
+            action_rate_reward = self._action_rate_coeff * -action_rate_norm
+        else:
+            action_rate_reward = 0.0
+
+        # total costs
+        total_cost = (self._action_out_of_bounds_coeff * action_cost + self._joint_acc_coeff * acceleration_reward +
+                      self._joint_torque_coeff * torque_reward + self._action_rate_coeff * action_rate_reward)
+        total_cost = backend.maximum(total_cost, -1.0)
 
         # calculate total reward
         total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward
                         + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
                         + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
-                        + self._action_out_of_bounds_cost * action_cost)
+                        - total_cost)
 
         # clip to positive values
         total_reward = backend.maximum(total_reward, 0.0)
 
         # set nan values to 0
         total_reward = backend.nan_to_num(total_reward, nan=0.0)
+
+        # update reward state
+        reward_state = reward_state.replace(last_qvel=data.qvel, last_action=action)
+        carry = carry.replace(reward_state=reward_state)
 
         return total_reward, carry

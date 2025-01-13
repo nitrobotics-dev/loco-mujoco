@@ -272,6 +272,8 @@ class Mujoco:
         data, carry = self._terrain.reset(self, model, data, carry, np)
         data, carry = self._init_state_handler.reset(self, model, data, carry, np)
         data, carry = self._domain_randomizer.reset(self, model, data, carry, np)
+        data, carry = self._reward_function.reset(self, model, data, carry, np)
+
         return data, carry
 
     def _step_finalize(self, obs, model, data, info, carry):
