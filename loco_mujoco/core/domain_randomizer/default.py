@@ -553,7 +553,7 @@ class DefaultRandomizer(DomainRandomizer):
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            interpolation = jax.random.uniform(_k, shape=3)
+            interpolation = jax.random.uniform(_k, shape=(3,))
             carry = carry.replace(key=key)
         else:
             interpolation = np.random.uniform(size=3)
@@ -563,11 +563,6 @@ class DefaultRandomizer(DomainRandomizer):
             if self.rand_conf["randomize_com_displacement"]
             else backend.array([0.0, 0.0, 0.0])
         )
-
-        jax.debug.print("inside com_displacement")
-        jax.debug.print("sampled_com_displacement.shape: {}", sampled_com_displacement.shape)
-        jax.debug.print("sampled_com_displacement: {}", sampled_com_displacement)
-        jax.debug.print("interpolation: {}", interpolation)
 
         return sampled_com_displacement, carry
     
@@ -647,7 +642,7 @@ class DefaultRandomizer(DomainRandomizer):
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            interpolation = jax.random.uniform(_k, shape=len(init_p_gain), minval=-1.0, maxval=1.0)
+            interpolation = jax.random.uniform(_k, shape=(len(init_p_gain),), minval=-1.0, maxval=1.0)
             carry = carry.replace(key=key)
         else:
             interpolation = np.random.normal(size=len(init_p_gain))
@@ -685,7 +680,7 @@ class DefaultRandomizer(DomainRandomizer):
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            interpolation = jax.random.uniform(_k, shape=len(init_d_gain), minval=-1.0, maxval=1.0)
+            interpolation = jax.random.uniform(_k, shape=(len(init_d_gain),), minval=-1.0, maxval=1.0)
             carry = carry.replace(key=key)
         else:
             interpolation = np.random.uniform(size=len(init_d_gain), low=-1.0, high=1.0)
