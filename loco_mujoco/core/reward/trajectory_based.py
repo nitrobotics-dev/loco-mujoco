@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as np_R
 
 from loco_mujoco.core.reward.base import Reward
 from loco_mujoco.core.observations.base import ObservationType
-from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid
+from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
 from loco_mujoco.core.utils.math import calculate_relative_site_quatities, quaternion_angular_distance
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 from loco_mujoco.core.reward.utils import out_of_bounds_action_cost
@@ -135,13 +135,15 @@ class MimicReward(TrajectoryBasedReward):
 
     def __init__(self, env: Any,
                  sites_for_mimic=None,
+                 joints_for_mimic=None,
                  **kwargs):
         """
         Initialize the DeepMimic reward function.
 
         Args:
             env (Any): Environment instance.
-            sites_for_mimic (List[str], optional): List of site names to mimic. Defaults to None.
+            sites_for_mimic (List[str], optional): List of site names to mimic. Defaults to None, taking all.
+            joints_for_mimic (List[str], optional): List of joint names to mimic. Defaults to None, taking all.
             **kwargs (Any): Additional keyword arguments.
 
         """
@@ -170,26 +172,21 @@ class MimicReward(TrajectoryBasedReward):
                                        for name in rel_site_names])
         self._rel_body_ids = np.array([model.site_bodyid[site_id] for site_id in self._rel_site_ids])
 
-        # focus on joints in the observation space
-        self._qpos_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
-                                         if (type(obs) is ObservationType.JointPos) or
-                                         (type(obs) is ObservationType.JointPosArray) or
-                                         (type(obs) is ObservationType.FreeJointPos) or
-                                         (type(obs) is ObservationType.EntryFromFreeJointPos) or
-                                         (type(obs) is ObservationType.FreeJointPosNoXY)])
-
-        self._qvel_ind = np.concatenate([obs.data_type_ind for obs in self._obs_container.entries()
-                                         if (type(obs) is ObservationType.JointVel) or
-                                         (type(obs) is ObservationType.JointVelArray) or
-                                         (type(obs) is ObservationType.EntryFromFreeJointVel) or
-                                         (type(obs) is ObservationType.FreeJointVel)])
-
-        # determine the quaternions in qpos.
+        # determine qpos and qvel indices
         quat_in_qpos = []
+        qpos_ind = []
+        qvel_ind = []
         for i in range(model.njnt):
-            if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
-                quat = mj_jntid2qposid(i, model)[3:]
-                quat_in_qpos.append(quat)
+            jnt_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            if joints_for_mimic is None or jnt_name in joints_for_mimic:
+                qposid = mj_jntid2qposid(i, model)
+                qvelid = mj_jntid2qvelid(i, model)
+                qpos_ind.append(qposid)
+                qvel_ind.append(qvelid)
+                if model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE:
+                    quat_in_qpos.append(qposid[3:])
+        self._qpos_ind = np.concatenate(qpos_ind)
+        self._qvel_ind = np.concatenate(qvel_ind)
         quat_in_qpos = np.concatenate(quat_in_qpos)
         self._quat_in_qpos = np.array([True if q in quat_in_qpos else False for q in self._qpos_ind])
 
