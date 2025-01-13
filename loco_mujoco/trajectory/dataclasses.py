@@ -617,9 +617,6 @@ class SingleData:
     site_xpos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
     site_xmat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
-    # userdata is only used as a placeholder for goals during dataset creation
-    userdata: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty((0)))
-
 
 @struct.dataclass
 class TrajectoryData(SingleData):
@@ -667,8 +664,7 @@ class TrajectoryData(SingleData):
             cvel=backend.squeeze(self.cvel[ind].copy()) if self.cvel.size > 0 else backend.empty((1, 0)),
             subtree_com=backend.squeeze(self.subtree_com[ind].copy()) if self.subtree_com.size > 0 else backend.empty((1, 0)),
             site_xpos=backend.squeeze(self.site_xpos[ind].copy()) if self.site_xpos.size > 0 else backend.empty((1, 0)),
-            site_xmat=backend.squeeze(self.site_xmat[ind].copy()) if self.site_xmat.size > 0 else backend.empty((1, 0)),
-            userdata=backend.squeeze(self.userdata[ind].copy()) if self.userdata.size > 0 else backend.empty((1, 0))
+            site_xmat=backend.squeeze(self.site_xmat[ind].copy()) if self.site_xmat.size > 0 else backend.empty((1, 0))
         )
 
     @classmethod
@@ -948,22 +944,6 @@ class TrajectoryData(SingleData):
         return self.replace(
             site_xpos=self.site_xpos[:, new_order],
             site_xmat=self.site_xmat[:, new_order]
-        )
-
-    def set_userdata(self, userdata_size, backend=jnp):
-        """
-        Set the userdata size for the trajectory data. Note that userdata has *no* batch dimension! This is only
-        used as a placeholder for goals during dataset creation.
-
-        Args:
-            userdata_size (int): Size of the userdata.
-            backend: Backend to use for the computation.
-
-        Returns:
-            A new instance of TrajectoryData with the userdata set.
-        """
-        return self.replace(
-            userdata=backend.zeros((userdata_size, ))
         )
 
     @staticmethod

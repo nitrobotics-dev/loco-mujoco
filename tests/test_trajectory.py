@@ -591,11 +591,6 @@ def test_trajectory_data_get(
         if trajectory_data.site_xmat.size > 0
         else backend_type.empty(0)
     )
-    expected_userdata = (
-        trajectory_data.userdata[traj_index + sub_traj_index]
-        if trajectory_data.userdata.size > 0
-        else backend_type.empty(0)
-    )
 
     assert np.allclose(data.qpos, expected_qpos)
     assert np.allclose(data.qvel, expected_qvel)
@@ -605,7 +600,6 @@ def test_trajectory_data_get(
     assert np.allclose(data.subtree_com, expected_subtree_com)
     assert np.allclose(data.site_xpos, expected_site_xpos)
     assert np.allclose(data.site_xmat, expected_site_xmat)
-    assert np.allclose(data.userdata, expected_userdata)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -1294,7 +1288,6 @@ def test_trajectory_data_get_attribute_names():
         "subtree_com",
         "site_xpos",
         "site_xmat",
-        "userdata",
         "split_points",
     ]
 

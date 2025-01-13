@@ -225,9 +225,6 @@ class TrajectoryHandler(StatefulObject):
         traj_data = traj_data.reorder_sites(jnp.array(new_site_order)) \
             if traj_info.site_names is not None else traj_data
 
-        # setup userdata
-        traj_data = traj_data.set_userdata(model.nuserdata)
-
         return traj_data, traj_info
 
     def init_state(self, env, key, model, data, backend):

@@ -178,10 +178,7 @@ def input_trajectory_data() -> TrajectoryData:
         site_xmat = data.site_xmat
         site_xmat = backend_type.tile(site_xmat, (N_steps, 1, 1))
 
-        userdata = data.userdata
-        userdata = backend_type.tile(userdata, (N_steps, 1))
-
-        trajectoryData: TrajectoryData = TrajectoryData(
+        trajectoryData = TrajectoryData(
             qpos,
             qvel,
             xpos,
@@ -190,7 +187,6 @@ def input_trajectory_data() -> TrajectoryData:
             subtree_com,
             site_xpos,
             site_xmat,
-            userdata,
             split_points=backend_type.array([0, N_steps]),
         )
 
