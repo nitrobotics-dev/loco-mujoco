@@ -149,7 +149,7 @@ class TrajectoryInfo:
             for i, s_name in enumerate(self.site_names):
                 self.site_name2ind[s_name] = np.array([i])
 
-    def __eq__(self, other):
+    def __eq__(self, other, backend=jnp):
         if not isinstance(other, TrajectoryInfo):
             return False
 
@@ -157,28 +157,28 @@ class TrajectoryInfo:
         if self.joint_name2ind_qpos.keys() != other.joint_name2ind_qpos.keys():
             return False
         for key in self.joint_name2ind_qpos:
-            if not jnp.array_equal(self.joint_name2ind_qpos[key], other.joint_name2ind_qpos[key]):
+            if not backend.array_equal(self.joint_name2ind_qpos[key], other.joint_name2ind_qpos[key]):
                 return False
 
         # Compare joint_name2ind_qvel dictionaries
         if self.joint_name2ind_qvel.keys() != other.joint_name2ind_qvel.keys():
             return False
         for key in self.joint_name2ind_qvel:
-            if not jnp.array_equal(self.joint_name2ind_qvel[key], other.joint_name2ind_qvel[key]):
+            if not backend.array_equal(self.joint_name2ind_qvel[key], other.joint_name2ind_qvel[key]):
                 return False
 
         # Compare body_name2ind dictionaries
         if self.body_name2ind.keys() != other.body_name2ind.keys():
             return False
         for key in self.body_name2ind:
-            if not jnp.array_equal(self.body_name2ind[key], other.body_name2ind[key]):
+            if not backend.array_equal(self.body_name2ind[key], other.body_name2ind[key]):
                 return False
 
         # Compare site_name2ind dictionaries
         if self.site_name2ind.keys() != other.site_name2ind.keys():
             return False
         for key in self.site_name2ind:
-            if not jnp.array_equal(self.site_name2ind[key], other.site_name2ind[key]):
+            if not backend.array_equal(self.site_name2ind[key], other.site_name2ind[key]):
                 return False
 
         # Compare other attributes
@@ -391,26 +391,25 @@ class TrajectoryModel:
     site_pos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
     site_quat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
-    def __eq__(self, other):
+    def __eq__(self, other, backend=jnp):
         if not isinstance(other, TrajectoryModel):
             return False
 
-        # Compare all attributes using JAX's array comparison for arrays
         return (
             self.njnt == other.njnt
-            and jnp.array_equal(self.jnt_type, other.jnt_type)
+            and backend.array_equal(self.jnt_type, other.jnt_type)
             and self.nbody == other.nbody
-            and jnp.array_equal(self.body_rootid, other.body_rootid)
-            and jnp.array_equal(self.body_weldid, other.body_weldid)
-            and jnp.array_equal(self.body_mocapid, other.body_mocapid)
-            and jnp.array_equal(self.body_pos, other.body_pos)
-            and jnp.array_equal(self.body_quat, other.body_quat)
-            and jnp.array_equal(self.body_ipos, other.body_ipos)
-            and jnp.array_equal(self.body_iquat, other.body_iquat)
+            and backend.array_equal(self.body_rootid, other.body_rootid)
+            and backend.array_equal(self.body_weldid, other.body_weldid)
+            and backend.array_equal(self.body_mocapid, other.body_mocapid)
+            and backend.array_equal(self.body_pos, other.body_pos)
+            and backend.array_equal(self.body_quat, other.body_quat)
+            and backend.array_equal(self.body_ipos, other.body_ipos)
+            and backend.array_equal(self.body_iquat, other.body_iquat)
             and self.nsite == other.nsite
-            and jnp.array_equal(self.site_bodyid, other.site_bodyid)
-            and jnp.array_equal(self.site_pos, other.site_pos)
-            and jnp.array_equal(self.site_quat, other.site_quat)
+            and backend.array_equal(self.site_bodyid, other.site_bodyid)
+            and backend.array_equal(self.site_pos, other.site_pos)
+            and backend.array_equal(self.site_quat, other.site_quat)
         )
 
     def add_joint(self, jnt_type, backend=jnp):
@@ -636,6 +635,23 @@ class TrajectoryData(SingleData):
 
     # points defining the beginning of each trajectory, and the end of the last trajectory
     split_points: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
+
+    def __eq__(self, other, backend=jnp):
+        if not isinstance(other, TrajectoryData):
+            return False
+
+        # Compare attributes from SingleData
+        if not (backend.array_equal(self.qpos, other.qpos) and
+                backend.array_equal(self.qvel, other.qvel) and
+                backend.array_equal(self.xpos, other.xpos) and
+                backend.array_equal(self.xquat, other.xquat) and
+                backend.array_equal(self.cvel, other.cvel) and
+                backend.array_equal(self.subtree_com, other.subtree_com) and
+                backend.array_equal(self.site_xpos, other.site_xpos) and
+                backend.array_equal(self.site_xmat, other.site_xmat) and
+                backend.array_equal(self.split_points, other.split_points)):
+            return False
+        return True
 
     def get(self, traj_index, sub_traj_index, backend=jnp):
         """
@@ -1019,7 +1035,6 @@ class TrajectoryData(SingleData):
         for key, value in dic.items():
             dic[key] = jnp.array(value)
         return TrajectoryData(**dic)
-
 
 def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float, backend=jnp):
     """
