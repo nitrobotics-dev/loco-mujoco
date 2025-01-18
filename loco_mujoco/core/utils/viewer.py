@@ -124,6 +124,7 @@ class MujocoViewer:
         # glfw.swap_interval(0)
 
         self._scene = mujoco.MjvScene(self._model, 100000)
+        self._user_scene = mujoco.MjvScene(self._model, 1000)
         self._scene_option = mujoco.MjvOption()
         self._camera = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(model, self._camera)
@@ -349,6 +350,23 @@ class MujocoViewer:
 
         return width, height
 
+    def _add_user_scene_geoms(self):
+        for i in range(self._user_scene.ngeom):
+            j = self._scene.ngeom
+            #self._scene.geoms[j] = self._user_scene.geoms[i]
+            # Copy all attributes from obj1 to obj2
+            mujoco.mjv_initGeom(self._scene.geoms[j],
+                                self._user_scene.geoms[i].type,
+                                self._user_scene.geoms[i].size,
+                                self._user_scene.geoms[i].pos,
+                                self._user_scene.geoms[i].mat.reshape(-1),
+                                self._user_scene.geoms[i].rgba)
+            self._scene.ngeom += 1
+            if self._scene.ngeom >= self._scene.maxgeom:
+                raise RuntimeError(
+                    'Ran out of geoms. maxgeom: %d' %
+                    self._scene.ngeom.maxgeom)
+
     def render(self, data, record):
         """
         Main rendering function.
@@ -372,6 +390,8 @@ class MujocoViewer:
             mujoco.mjv_updateScene(self._model, data, self._scene_option, None, self._camera,
                                    mujoco.mjtCatBit.mjCAT_ALL,
                                    self._scene)
+
+            self._add_user_scene_geoms()
 
             if not self._headless:
                 self._viewport.width, self._viewport.height = glfw.get_window_size(self._window)
@@ -789,6 +809,10 @@ class MujocoViewer:
 
         """
         mujoco.mjr_uploadHField(model, self._context, hfield_id)
+
+    @property
+    def user_scene(self):
+        return self._user_scene
 
     @property
     def video_file_path(self):

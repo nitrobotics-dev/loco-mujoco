@@ -166,6 +166,28 @@ def calculate_relative_rotation_matrices(main_rot, other_rots, backend):
     return relative_rots
 
 
+def calculate_global_rotation_matrices(main_rot, relative_rots, backend):
+    """
+    Calculate the global rotation matrices of N bodies in the world frame given a main rotation matrix.
+
+    Args:
+        main_rot (array): Rotation matrix of the main body in world frame. Shape (3, 3).
+        relative_rots (array): Relative rotation matrices of other bodies with respect to the main body. Shape (N, 3, 3).
+        backend: Backend to use (either np or jnp).
+
+    Returns:
+        array: Global rotation matrices of other bodies in the world frame. Shape (N, 3, 3).
+    """
+    # Ensure main_rot is a 2D array and relative_rots is at least 3D
+    main_rot = backend.atleast_2d(main_rot)  # Shape: (3, 3)
+    relative_rots = backend.atleast_3d(relative_rots)  # Shape: (N, 3, 3)
+
+    # Calculate global rotation matrices
+    global_rots = backend.einsum('ij,njk->nik', main_rot, relative_rots)  # Shape: (N, 3, 3)
+
+    return global_rots
+
+
 def calculate_relative_velocity_in_local_frame(vel_a, vel_b, rot_mat_w_a, rot_mat_a_b, backend):
     """
     Calculate the relative velocity vel_a-vel_b expressed in the local frame of vel_a.

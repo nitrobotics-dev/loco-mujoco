@@ -229,6 +229,10 @@ class Mujoco:
             del self._viewer
             self._viewer = None
 
+    @property
+    def viewer(self):
+        return self._viewer
+
     @partial(jax.jit, static_argnums=(0,))
     def sample_action_space(self, key):
         action_dim = self.info.action_space.shape[0]
