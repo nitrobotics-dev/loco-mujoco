@@ -332,10 +332,10 @@ class MimicReward(TrajectoryBasedReward):
         # calculate costs
         # out of bounds action cost
         if self._action_out_of_bounds_coeff > 0.0:
-            action_cost = out_of_bounds_action_cost(action, lower_bound=env.mdp_info.action_space.low,
-                                                    upper_bound=env.mdp_info.action_space.high, backend=backend)
+            out_of_bound_reward = -out_of_bounds_action_cost(action, lower_bound=env.mdp_info.action_space.low,
+                                                             upper_bound=env.mdp_info.action_space.high, backend=backend)
         else:
-            action_cost = 0.0
+            out_of_bound_reward = 0.0
 
         # joint acceleration reward
         if self._joint_acc_coeff > 0.0:
@@ -360,16 +360,18 @@ class MimicReward(TrajectoryBasedReward):
         else:
             action_rate_reward = 0.0
 
-        # total costs
-        total_cost = (self._action_out_of_bounds_coeff * action_cost + self._joint_acc_coeff * acceleration_reward +
-                      self._joint_torque_coeff * torque_reward + self._action_rate_coeff * action_rate_reward)
-        total_cost = backend.maximum(total_cost, -1.0)
+        # total penality rewards
+        total_penalities = (self._action_out_of_bounds_coeff * out_of_bound_reward
+                            + self._joint_acc_coeff * acceleration_reward
+                            + self._joint_torque_coeff * torque_reward
+                            + self._action_rate_coeff * action_rate_reward)
+        total_penalities = backend.maximum(total_penalities, -1.0)
 
         # calculate total reward
         total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward
                         + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
                         + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
-                        - total_cost)
+                        + total_penalities)
 
         # clip to positive values
         total_reward = backend.maximum(total_reward, 0.0)
