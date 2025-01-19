@@ -1,4 +1,6 @@
 from typing import Union, List, Optional
+from omegaconf import ListConfig
+
 from .base import TaskFactory
 from loco_mujoco.environments.base import LocoEnv
 from loco_mujoco.smpl.retargeting import load_retargeted_amass_trajectory
@@ -65,7 +67,7 @@ class AMASSImitationFactory(TaskFactory):
             else:
                 raise ValueError(f"Unknown dataset group: {dataset_group}")
         else:
-            dataset_paths = rel_dataset_path if isinstance(rel_dataset_path, list) else [rel_dataset_path]
+            dataset_paths = rel_dataset_path if isinstance(rel_dataset_path, (ListConfig, list)) else [rel_dataset_path]
 
         # Load AMASS Trajectory
         traj = load_retargeted_amass_trajectory(env_name, dataset_paths)

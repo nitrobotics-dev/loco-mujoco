@@ -1,4 +1,6 @@
 from typing import Union, List, Optional
+from omegaconf import ListConfig
+
 from .base import TaskFactory
 from loco_mujoco.environments.base import LocoEnv
 from loco_mujoco.datasets.humanoids.LAFAN1 import load_lafan1_trajectory
@@ -70,7 +72,7 @@ class LAFAN1ImitationFactory(TaskFactory):
             else:
                 raise ValueError(f"Unknown dataset group: {dataset_group}")
         else:
-            dataset_paths = dataset_name if isinstance(dataset_name, list) else [dataset_name]
+            dataset_paths = dataset_name if isinstance(dataset_name, (ListConfig, list)) else [dataset_name]
 
         # Load LAFAN1 Trajectory
         traj = load_lafan1_trajectory(env_name, dataset_paths)
