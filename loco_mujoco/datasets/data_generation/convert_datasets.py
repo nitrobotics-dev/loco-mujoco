@@ -141,7 +141,7 @@ def convert_single_dataset_of_env(env_name, file_path):
     env_cls = registered_envs[env_name]
 
     # create environment instance and run it on the trajectories frequency
-    env = env_cls(**robot_conf["env_params"], random_start=False, fixed_start_conf=(0, 0))
+    env = env_cls(**robot_conf["env_params"], th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
     # interpolate trajectory to environment frequency
     traj_data, traj_info = interpolate_trajectories(traj_data, traj_info, 1.0 / env.dt)
