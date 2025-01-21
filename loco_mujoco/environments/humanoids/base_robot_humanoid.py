@@ -19,3 +19,7 @@ class BaseRobotHumanoid(LocoEnv):
     @info_property
     def root_body_name(self):
         return "pelvis"
+
+    @info_property
+    def goal_visualization_arrow_offset(self):
+        return [0, 0, 0.6]

@@ -10,7 +10,7 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 
-from loco_mujoco.core.utils import Box, MDPInfo, MujocoViewer, info_property
+from loco_mujoco.core.utils import Box, MDPInfo, info_property
 from loco_mujoco.core.reward.base import Reward
 from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
 from loco_mujoco.core.control_functions import ControlFunction
@@ -18,6 +18,9 @@ from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
 from loco_mujoco.core.initial_state_handler import InitialStateHandler
 from loco_mujoco.core.terminal_state_handler.base import TerminalStateHandler
+from loco_mujoco.core.stateful_object import StatefulObject
+from loco_mujoco.core.visuals import MjvScene, MujocoViewer
+
 
 
 @struct.dataclass
@@ -33,6 +36,7 @@ class AdditionalCarry:
     init_state_handler_state: Union[np.ndarray, jax.Array]
     terminal_state_handler_state: Union[np.ndarray, jax.Array]
     control_func_state: Union[np.ndarray, jax.Array]
+    user_scene: MjvScene
 
 
 class Mujoco:
@@ -139,6 +143,8 @@ class Mujoco:
 
         # path to the video file if one is recorded
         self._video_file_path = None
+        self._added_carry_visual_to_user_scene = False
+        self._added_carry_visual_start_idx = None
 
         atexit.register(self.stop)
 
@@ -212,6 +218,7 @@ class Mujoco:
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
 
+
         if self._terrain.is_dynamic:
             terrain_state = self._additional_carry.terrain_state
             assert hasattr(terrain_state, "height_field_raw"), "Terrain state does not have height_field_raw."
@@ -221,7 +228,7 @@ class Mujoco:
             self._model.hfield_data = hfield_data
             self._viewer.upload_hfield(self._model, hfield_id=self._terrain.hfield_id)
 
-        return self._viewer.render(self._data, record)
+        return self._viewer.render(self._data, self._additional_carry, record)
 
     def stop(self):
         if self._viewer is not None:
@@ -549,8 +556,8 @@ class Mujoco:
             terrain_state=self._terrain.init_state(self, _k4, model, data, backend),
             init_state_handler_state=self._init_state_handler.init_state(self, _k5, model, data, backend),
             control_func_state=self._control_func.init_state(self, _k6, model, data, backend),
-            terminal_state_handler_state=self._terminal_state_handler.init_state(self, _k7, model,
-                                                                                 data, backend))
+            terminal_state_handler_state=self._terminal_state_handler.init_state(self, _k7, model, data, backend),
+            user_scene=MjvScene.init_for_all_stateful_objects(backend))
 
         return carry
 

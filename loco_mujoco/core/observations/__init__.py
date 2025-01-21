@@ -4,5 +4,5 @@ from .goals import *
 # register all goals
 NoGoal.register()
 GoalRandomRootVelocity.register()
-GoalTrajArrow.register()
+GoalTrajRootVelocity.register()
 GoalTrajMimic.register()

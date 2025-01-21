@@ -1,7 +1,5 @@
 from .backend import *
 from .env import MDPInfo, Box
-from .viewer import MujocoViewer
-from .video_recorder import VideoRecorder
 from .mujoco import *
 from .decorators import info_property
 from ..reward.default import NoReward, TargetXVelocityReward, TargetVelocityGoalReward, LocomotionReward

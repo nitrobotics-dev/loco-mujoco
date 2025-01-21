@@ -20,7 +20,7 @@ from scipy.spatial.transform import Rotation as np_R
 import loco_mujoco
 from loco_mujoco.core.stateful_object import EmptyState
 from loco_mujoco.core.mujoco_mjx import Mjx, MjxAdditionalCarry
-from loco_mujoco.core.utils import VideoRecorder
+from loco_mujoco.core.visuals import VideoRecorder
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils import info_property
 from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
@@ -206,6 +206,8 @@ class LocoEnv(Mjx):
             reached_end_of_traj = jax.lax.cond(jnp.greater_equal(traj_state.subtraj_step_no, len_traj - 1),
                                                lambda: True, lambda: False)
             done = jnp.logical_or(done, reached_end_of_traj)
+            # goals can terminate an episode
+            done = jnp.logical_or(done, self._goal.mjx_is_done(self, self._model, data, carry, jnp))
 
         return done
 
@@ -220,6 +222,9 @@ class LocoEnv(Mjx):
                 done != True
             else:
                 done != False
+
+            # goals can terminate an episode
+            done != self._goal.is_done(self, self._model, data, carry, np)
 
         return done
 
@@ -754,6 +759,14 @@ class LocoEnv(Mjx):
         """
         # todo: raise NotImplementedError, once added to all envs
         return []
+
+    @info_property
+    def goal_visualization_arrow_offset(self):
+        """
+        Returns the offset of the goal visualization arrow.
+
+        """
+        return [0, 0, 0.0]
 
     @staticmethod
     def _get_observation_specification(spec: MjSpec):

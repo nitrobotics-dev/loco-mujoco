@@ -8,15 +8,17 @@ from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
 from flax import struct
 
-from loco_mujoco.core.observations.base import StatefulObservation, ObservationType
+from loco_mujoco.core.observations.base import StatefulObservation, ObservationType, Observation
+from loco_mujoco.core.observations.visualizer import RootVelocityArrowVisualizer
+from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.core.utils.math import (calculate_relative_site_quatities, quat_scalarfirst2scalarlast,
                                          quat_scalarlast2scalarfirst)
-from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid
+from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid, mj_jntname2qposid, mj_jntname2qvelid
 
 
 class Goal(StatefulObservation):
 
-    def __init__(self, info_props, visualize_goal=False):
+    def __init__(self, info_props, visualize_goal=False, n_visual_geoms=0):
 
         self._initialized_from_traj = False
         self._info_props = info_props
@@ -24,7 +26,8 @@ class Goal(StatefulObservation):
             assert self.has_visual, (f"{self.__class__.__name__} does not support visualization. "
                                      f"Please set visualize_goal to False.")
         self.visualize_goal = visualize_goal
-        super().__init__(obs_name=self.__class__.__name__)
+        Observation.__init__(self, obs_name=self.__class__.__name__)
+        StatefulObject.__init__(self, n_visual_geoms)
 
     @property
     def has_visual(self):
@@ -45,6 +48,12 @@ class Goal(StatefulObservation):
     def set_data(self, env, model, data, carry, backend):
         assert self.initialized
         return data
+
+    def is_done(self, env, model, data, carry, backend):
+        return False
+
+    def mjx_is_done(self, env, model, data, carry, backend):
+        return False
 
     def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
         """
@@ -138,13 +147,7 @@ class GoalRandomRootVelocityState:
     goal_vel_yaw: float
 
 
-class GoalRandomRootVelocity(Goal):
-
-    _site_name_keypoint_1 = "goal_visual_k1"
-    _site_name_keypoint_2 = "goal_visual_k2"
-    _site_name_capsule = "goal_visual_cap"
-    _name_goal_dict = "VEL_2D"
-    _arrow_to_goal_ratio = 0.3
+class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
 
     def __init__(self, info_props, max_x_vel=1.0, max_y_vel=1.0, max_yaw_vel=1.0, **kwargs):
         self._traj_goal_ind = None
@@ -153,26 +156,26 @@ class GoalRandomRootVelocity(Goal):
         self.max_yaw_vel = max_yaw_vel
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
         self.free_jnt_name = info_props["root_free_joint_xml_name"]
-        self._z_offset = np.array([0.0, 0.0, 0.3])
 
         # to be initialized from mj
         self._root_body_id = None
-        self._keypoint_1_id = None
-        self._keypoint_2_id = None
         self._root_jnt_qpos_start_id = None
 
-        super().__init__(info_props, **kwargs)
+        # call visualizer init
+        RootVelocityArrowVisualizer.__init__(self, info_props)
+
+        # call goal init
+        n_visual_geoms = self._arrow_n_visual_geoms \
+            if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
+        super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
-        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
+        self._free_jnt_qpos_id = np.array(mj_jntname2qposid(self.free_jnt_name, model))
         self._initialized_from_mj = True
-
-        root_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, self.free_jnt_name)
-        assert root_jnt_id != -1, f"Joint {self.free_jnt_name} not found in the model."
-        self._root_jnt_qpos_start_id = model.jnt_qposadr[root_jnt_id]
+        self._initialized_from_traj = True
 
     @property
     def has_visual(self):
@@ -202,100 +205,129 @@ class GoalRandomRootVelocity(Goal):
         goal_vel_x = getattr(carry.observation_states, self.name).goal_vel_x
         goal_vel_y = getattr(carry.observation_states, self.name).goal_vel_y
         goal_vel_yaw = getattr(carry.observation_states, self.name).goal_vel_yaw
-        return backend.array([goal_vel_x, goal_vel_y, goal_vel_yaw]), carry
-
-    def set_data(self, env,  model, data, carry, backend):
-        goal_vel_x = getattr(carry.observation_states, self.name).goal_vel_x
-        goal_vel_y = getattr(carry.observation_states, self.name).goal_vel_y
-        goal_vel = backend.array([goal_vel_x, goal_vel_y])
-        # set the visual data
+        goal = backend.array([goal_vel_x, goal_vel_y, goal_vel_yaw])
+        goal_visual = backend.array([goal_vel_x, goal_vel_y, 0.0, 0.0, 0.0, goal_vel_yaw])
         if self.visualize_goal:
-            # todo: add the goal_vel_yaw to the visualization
-            data = self.set_visual_data(goal_vel, data, backend)
-        return data
-
-    def set_visual_data(self, goal_vel, data, backend):
-
-        goal_vel = backend.concatenate([goal_vel, np.array([0.0])])
-
-        if backend == np:
-            R = np_R
-        else:
-            R = jnp_R
-
-        # get root orientation
-        root_qpos = backend.squeeze(data.qpos[self._root_jnt_qpos_start_id:self._root_jnt_qpos_start_id+7])
-        root_quat = R.from_quat(quat_scalarfirst2scalarlast(root_qpos[3:7]))
-
-        # goal vel in local
-        goal_vel_local = root_quat.as_matrix() @ goal_vel
-
-        # get root pos
-        root_pos = data.xpos[self._root_body_id]
-
-        # calculate the desired position of the arrow
-        target_pos_k1 = root_pos + self._z_offset
-        target_pos_k2 = root_pos + self._z_offset + goal_vel_local * self._arrow_to_goal_ratio
-
-        # set the absolute position of the arrow
-        data = self.set_attr_compat(data, backend, "mocap_pos", target_pos_k1, self._keypoint_1_id)
-        data = self.set_attr_compat(data, backend, "mocap_pos", target_pos_k2, self._keypoint_2_id)
-
-        return data
-
-    def apply_spec_modifications(self, spec, info_props):
-        root_body_name = info_props["root_body_name"]
-        # optionally add sites for visualization
-        if self.visualize_goal:
-            wb = spec.worldbody
-            # add sites for visualization
-            root_body_name = self.upper_body_xml_name
-            root = spec.find_body(root_body_name)
-            # use two spheres to represent an arrow
-            point_properties = dict(type=mujoco.mjtGeom.mjGEOM_SPHERE, group=0, rgba=[1.0, 0.0, 0.0, 1.0])
-            k1_pos = k2_pos = root.pos + self._z_offset
-            k1 = wb.add_body(name=self._site_name_keypoint_1, pos=k1_pos, mocap=True)
-            k1.add_site(name=self._site_name_keypoint_1+"_site", size=[0.05, 0.0, 0.0], **point_properties)
-            k2 = wb.add_body(name=self._site_name_keypoint_2, pos=k2_pos, mocap=True)
-            k2.add_site(name=self._site_name_keypoint_2+"_site", size=[0.03, 0.0, 0.0], **point_properties)
-            self._keypoint_1_id = 0
-            self._keypoint_2_id = 1
-        return spec
+            carry = self.set_visuals(goal_visual, env, model, data, carry, self._root_body_id,
+                    self._free_jnt_qpos_id, self.visual_geoms_idx,  backend)
+        return goal, carry
 
     @property
     def dim(self):
         return 3
 
 
-class GoalTrajArrow(Goal):
-    # todo: update this class to work with new traj_data!
+@struct.dataclass
+class GoalTrajRootVelocityState:
+    goal_vel: Union[np.ndarray, jnp.ndarray]
 
-    _site_name_keypoint_1 = "goal_visual_k1"
-    _site_name_keypoint_2 = "goal_visual_k2"
-    _site_name_capsule = "goal_visual_cap"
-    _name_goal_dict = "VEL_2D"
-    _arrow_to_goal_ratio = 0.3
 
-    def __init__(self, info_props, **kwargs):
+class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
+
+    def __init__(self, info_props, n_steps_average=3, **kwargs):
         self._traj_goal_ind = None
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
+        self.free_jnt_name = info_props["root_free_joint_xml_name"]
 
-        super().__init__(info_props, **kwargs)
+        # to be initialized from mj
+        self._root_body_id = None
+        self._root_jnt_qpos_start_id = None
+        self._free_jnt_qvelid = None
+        self._free_jnt_qposid = None
+
+        # number of future steps in the trajectory to average the goal over
+        self._n_steps_average = n_steps_average
+
+        # call visualizer init
+        RootVelocityArrowVisualizer.__init__(self, info_props)
+
+        # call goal init
+        n_visual_geoms = self._arrow_n_visual_geoms \
+            if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
+
+        super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
-        # todo: This will only work if userdata contains only a single goal and no other info.
-        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._initialized_from_mj = True
+        self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
+        self._free_jnt_qposid = np.array(mj_jntname2qposid(self.free_jnt_name, model))
+        self._free_jnt_qvelid = np.array(mj_jntname2qvelid(self.free_jnt_name, model))
 
     def init_from_traj(self, traj_handler):
         assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
         self._initialized_from_traj = True
 
+    def init_state(self, env, key, model, data, backend):
+        return GoalTrajRootVelocityState(backend.zeros(self.dim))
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+
+        if backend == np:
+            R = np_R
+        else:
+            R = jnp_R
+
+        # get trajectory data and state
+        traj_data = env.th.traj.data
+        traj_state = carry.traj_state
+
+        # get a slice of the trajectory data
+        traj_qpos = backend.atleast_2d(traj_data.get_qpos_slice(traj_state.traj_no, traj_state.subtraj_step_no,
+                                                                self._n_steps_average, backend))
+        traj_qvel = backend.atleast_2d(traj_data.get_qvel_slice(traj_state.traj_no, traj_state.subtraj_step_no,
+                                                                self._n_steps_average, backend))
+
+        # get the average goal over the slice
+        traj_free_jnt_qpos = traj_qpos[0, self._free_jnt_qposid]
+        traj_free_jnt_qvel = traj_qvel[:, self._free_jnt_qvelid]
+        traj_free_jnt_lin_vel = backend.mean(traj_free_jnt_qvel[:, :3], axis=0)
+        traj_free_jnt_rot_vel = backend.mean(traj_free_jnt_qvel[:, 3:], axis=0)
+        traj_free_jnt_quat = traj_free_jnt_qpos[3:]
+        traj_free_jnt_mat = R.from_quat(quat_scalarfirst2scalarlast(traj_free_jnt_quat)).as_matrix()
+
+        # transform lin and rot vel to local frame
+        traj_free_jnt_lin_vel = traj_free_jnt_mat.T @ traj_free_jnt_lin_vel
+        traj_free_jnt_rot_vel = traj_free_jnt_mat.T @ traj_free_jnt_rot_vel
+
+        goal = backend.concatenate([traj_free_jnt_lin_vel, traj_free_jnt_rot_vel])
+
+        if self.visualize_goal:
+            carry = self.set_visuals(goal, env, model, data, carry, self._root_body_id,
+                    self._free_jnt_qposid, self.visual_geoms_idx,  backend)
+
+        return goal, carry
+
+
+    def is_done(self, env, model, data, carry, backend):
+        """ Terminates the episode if the number of steps till the end of the trajectory is
+        less than the number of steps to average over. """
+        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
+        if steps_till_end < self._n_steps_average:
+            return True
+        else:
+            return False
+
+    def mjx_is_done(self, env, model, data, carry, backend):
+        """ Terminates the episode if the number of steps till the end of the trajectory is
+        less than the number of steps to average over. """
+        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
+        return jax.lax.cond(steps_till_end < self._n_steps_average, lambda: True, lambda : False)
+
+    def _steps_till_end(self, traj_data, traj_state):
+        """
+        Calculates the number of steps till the end of the trajectory.
+        """
+        traj_no = traj_state.traj_no
+        subtraj_step_no = traj_state.subtraj_step_no
+        current_idx = traj_data.split_points[traj_no] + subtraj_step_no
+        idx_of_next_traj = traj_data.split_points[traj_no + 1]
+        return idx_of_next_traj - current_idx
+
     @classmethod
     def get_all_obs_of_type(cls, model, data, ind, backend):
-        return backend.ravel(data.userdata[ind.GoalTrajArrow])
+        return backend.ravel(data.userdata[ind.GoalTrajRootVelocity])
 
     @property
     def has_visual(self):
@@ -304,23 +336,6 @@ class GoalTrajArrow(Goal):
     @property
     def requires_trajectory(self):
         return True
-
-    def reset(self, env, model, data, carry, backend):
-        return self.set_data(data, backend, traj_handler, traj_state)
-
-    def set_data(self, data, backend, traj_handler=None, traj_state=None):
-        # get trajectory data
-        traj_data = traj_handler.traj.data
-
-        assert self._traj_goal_ind is not None
-        # get the goal from the trajectory
-        traj_goal = traj_data[self._traj_goal_ind, traj_state.traj_no, traj_state.subtraj_step_no]
-        # set the goal in the userdata
-        data = self.set_attr_compat(data, backend, "userdata", traj_goal, self.data_type_ind)
-        # set the visual data
-        if self.visualize_goal:
-            data = self.set_visual_data(data, backend, traj_goal)
-        return data
 
     def set_visual_data(self, data, backend, traj_goal):
         # get the relative desired position of the arrow (keypoint 2) and scale it by the ratio (for visual purposes)
@@ -331,25 +346,10 @@ class GoalTrajArrow(Goal):
         data.site(self._site_name_keypoint_2).xpos = abs_target_arrow_pos
         return data
 
-    def apply_spec_modifications(self, spec, info_props):
-        root_body_name = info_props["root_body_name"]
-        # apply the default modifications needed to store the goal in data
-        self.allocate_user_data(spec)
-        # optionally add sites for visualization
-        if self.visualize_goal:
-            # add sites for visualization
-            root_body_name = self.upper_body_xml_name
-            root = spec.find("body", root_body_name)
-            # use two spheres to represent an arrow
-            point_properties = dict(type="sphere", group=0, rgba=[1.0, 0.0, 0.0, 1.0])
-            k1_pos, k2_pos = [0.0, 0.0, 1], [0.5, 0.0, 1]
-            root.add("site", name=self._site_name_keypoint_1, pos=k1_pos, size=[0.05], **point_properties)
-            root.add("site", name=self._site_name_keypoint_2, pos=k2_pos, size=[0.03], **point_properties)
-        return spec
-
     @property
-    def size_user_data(self):
-        return 2
+    def dim(self):
+        return 6
+
 
 
 class GoalTrajMimic(Goal):
@@ -366,7 +366,9 @@ class GoalTrajMimic(Goal):
 
         # todo: implement n_step_lookahead (requires dynamic slicing in jax)
         self.n_step_lookahead = 1
-        super().__init__(info_props, **kwargs)
+        n_visual_geoms = len(info_props["sites_for_mimic"]) if ("visualize_goal" in kwargs.keys() and
+                                                                kwargs["visualize_goal"]) else 0
+        super().__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
 
         # get main body name of the environment
         self.main_body_name = self._info_props["upper_body_xml_name"]
@@ -411,10 +413,6 @@ class GoalTrajMimic(Goal):
         root_body_name = info_props["root_body_name"]
         joints = spec.joints
         n_joints = len(joints)
-        # for j in joints:
-        #     body = j.parent
-        #     if body.name not in self._relevant_body_names and body.name != self.main_body_name:
-        #         self._relevant_body_names.append(body.name)
         for body in spec.bodies:
             if body.name not in self._relevant_body_names and body.name != self.main_body_name and body.name != "world":
                 self._relevant_body_names.append(body.name)
@@ -424,22 +422,6 @@ class GoalTrajMimic(Goal):
         size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
         self._dim = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
         self._size_additional_observation = size_for_sites
-        if self.visualize_goal:
-            wb = spec.worldbody
-            mimic_site_defaults = None
-            # visualize mimic sites todo: the red sites of the robot should also be visible
-            for site in spec.sites:
-                if "mimic" in site.name:
-                    site.group = 0
-                    if mimic_site_defaults is None:
-                        mimic_site_defaults = site.default()
-
-            for body_name in self._info_props["sites_for_mimic"]:
-                name = "visual_goal_" + body_name
-                visual_goal = wb.add_body(name=name, mocap=True)
-                visual_goal.set_default(mimic_site_defaults)
-                visual_goal.add_site(name=name, rgba=[0.0, 1.0, 0.0, 0.5], group=0)
-
         return spec
 
     def init_from_traj(self, traj_handler):
@@ -473,6 +455,9 @@ class GoalTrajMimic(Goal):
                                              backend.ravel(site_rangles),
                                              backend.ravel(site_rvel)])
 
+        if self.visualize_goal:
+            carry = self.set_visuals(env, model, data, carry, backend)
+
         # add site information of the current time step to the observation (usually not part of observation spec)
         if len(self._rel_site_ids) > 0:
 
@@ -500,58 +485,49 @@ class GoalTrajMimic(Goal):
     def requires_trajectory(self):
         return True
 
-    def set_data(self, env, model, data, carry, backend):
-
-        # # get trajectory data
-        # traj_data = traj_handler.traj.data
-        #
-        # # get traj_data for current time step
-        # traj_data_single = traj_data.get(traj_state.traj_no, traj_state.subtraj_step_no, backend)
-        #
-        # # get joint positions and velocities
-        # qpos_traj = traj_data_single.qpos
-        # qvel_traj = traj_data_single.qvel
-        #
-        # # get relative site quantities
-        # rel_site_ids = self._rel_site_ids
-        # rel_body_ids = self._site_bodyid[rel_site_ids]
-        # site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(traj_data_single, rel_site_ids, rel_body_ids,
-        #                                                                        self._body_rootid, backend)
-        #
-        # # setup goal observation
-        # goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
-        #                                 qvel_traj[self._qvel_ind],
-        #                                 backend.ravel(site_rpos),
-        #                                 backend.ravel(site_rangles),
-        #                                 backend.ravel(site_rvel)])
-
-        # set the goal in the userdata
-        # data = self.set_attr_compat(data, backend, "userdata", goal_obs, self.data_type_ind)
-        if self.visualize_goal:
-            data = self.set_visual_data(data, backend, env.th.traj.data, carry.traj_state)
-        return data
-
-    def set_visual_data(self, data, backend, traj_data, traj_state):
+    def set_visuals(self, env, model, data, carry, backend):
 
         if backend == np:
             R = np_R
         else:
             R = jnp_R
 
-        qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
+        traj_data = env.th.traj.data
+        traj_state = carry.traj_state
+        user_scene = carry.user_scene
+        goal_geoms = user_scene.geoms
+
         site_xpos = traj_data.get_site_xpos(traj_state.traj_no, traj_state.subtraj_step_no, backend)
         site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no, backend)
-        site_xquat = R.from_matrix(site_xmat.reshape(-1, 3, 3)).as_quat()
-        site_xquat = quat_scalarlast2scalarfirst(site_xquat)
         s_ids = jnp.array(self._rel_site_ids)
-        if backend == jnp:
-            site_xpos = site_xpos.at[:, :2].add(-qpos_init[:2]) # reset to the initial position
-        else:
-            site_xpos[:, :2] -= qpos_init[:2]
-        data = self.set_attr_compat(data, backend, "mocap_pos", site_xpos[s_ids], jnp.arange(len(s_ids)))
-        data = self.set_attr_compat(data, backend, "mocap_quat", site_xquat[s_ids], jnp.arange(len(s_ids)))
 
-        return data
+        # set the data
+        qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
+        type = backend.full(self.n_visual_geoms, int(mujoco.mjtGeom.mjGEOM_BOX), dtype=backend.int32).reshape((-1, 1))
+        size = backend.tile(backend.array([0.075, 0.05, 0.025]), (self.n_visual_geoms, 1))
+        if backend == jnp:
+            geom_pos = user_scene.geoms.pos.at[self.visual_geoms_idx].set(site_xpos[s_ids])
+            geom_mat = user_scene.geoms.mat.at[self.visual_geoms_idx].set(site_xmat[s_ids])
+            geom_type = user_scene.geoms.type.at[self.visual_geoms_idx].set(type)
+            geom_size = user_scene.geoms.size.at[self.visual_geoms_idx].set(size)
+            geom_pos = geom_pos.at[:, :2].add(-qpos_init[:2])  # reset to the initial position
+        else:
+            user_scene.geoms.pos[self.visual_geoms_idx] = site_xpos[s_ids]
+            user_scene.geoms.mat[self.visual_geoms_idx] = site_xmat[s_ids]
+            user_scene.geoms.type[self.visual_geoms_idx] = type
+            user_scene.geoms.size[self.visual_geoms_idx] = size
+            geom_pos = user_scene.geoms.pos[self.visual_geoms_idx]
+            geom_mat = user_scene.geoms.mat[self.visual_geoms_idx]
+            geom_type = user_scene.geoms.type[self.visual_geoms_idx]
+            geom_size = user_scene.geoms.size[self.visual_geoms_idx]
+            geom_pos[:, :2] -= qpos_init[:2]
+
+        # update carry
+        new_user_scene = user_scene.replace(geoms=user_scene.geoms.replace(
+            pos=geom_pos, mat=geom_mat, size=geom_size, type=geom_type))
+        carry = carry.replace(user_scene=new_user_scene)
+
+        return carry
 
     @property
     def dim(self):

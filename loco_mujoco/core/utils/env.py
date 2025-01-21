@@ -73,7 +73,7 @@ class MDPInfo:
     This class is used to store the information of the environment.
 
     """
-    def __init__(self, observation_space, action_space, gamma, horizon, mjx_env=False, n_envs=1, dt=1e-1):
+    def __init__(self, observation_space, action_space, gamma, horizon, n_envs=1, dt=1e-1):
         """
         Constructor.
 
@@ -90,7 +90,6 @@ class MDPInfo:
         self.action_space = action_space
         self.gamma = gamma
         self.horizon = horizon
-        self.mjx_env = mjx_env
         self.n_envs = n_envs
         self.dt = dt
 

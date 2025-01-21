@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 
 from loco_mujoco.core.mujoco_base import Mujoco, ObservationType, AdditionalCarry
-from loco_mujoco.core.utils import MujocoViewer
+from loco_mujoco.core.visuals import MujocoViewer
 
 
 @struct.dataclass

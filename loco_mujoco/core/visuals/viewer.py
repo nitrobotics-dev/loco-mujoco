@@ -8,7 +8,7 @@ import collections
 from itertools import cycle
 import numpy as np
 
-from loco_mujoco.core.utils.video_recorder import VideoRecorder
+from loco_mujoco.core.visuals.video_recorder import VideoRecorder
 
 
 def _import_egl(width, height):
@@ -158,6 +158,7 @@ class MujocoViewer:
         self._offsets_for_parallel_render = None
         self._datas_for_parallel_render = None
         self._datas_for_parallel_render = None
+        self._visual_geom_offsets = None
 
         if record:
             if recorder_params is None:
@@ -353,7 +354,6 @@ class MujocoViewer:
     def _add_user_scene_geoms(self):
         for i in range(self._user_scene.ngeom):
             j = self._scene.ngeom
-            #self._scene.geoms[j] = self._user_scene.geoms[i]
             # Copy all attributes from obj1 to obj2
             mujoco.mjv_initGeom(self._scene.geoms[j],
                                 self._user_scene.geoms[i].type,
@@ -367,12 +367,13 @@ class MujocoViewer:
                     'Ran out of geoms. maxgeom: %d' %
                     self._scene.ngeom.maxgeom)
 
-    def render(self, data, record):
+    def render(self, data, carry, record):
         """
         Main rendering function.
 
         Args:
             data: Mujoco data structure.
+            carry: Carry object.
             record (bool): If true, frames are returned during rendering.
 
         Returns:
@@ -390,6 +391,21 @@ class MujocoViewer:
             mujoco.mjv_updateScene(self._model, data, self._scene_option, None, self._camera,
                                    mujoco.mjtCatBit.mjCAT_ALL,
                                    self._scene)
+
+            # add visual geoms
+            carry_visual_start_idx = self._scene.ngeom
+            for j in range(carry.user_scene.ngeoms):
+                if self._scene.ngeom > self._scene.maxgeom:
+                    raise RuntimeError(
+                        'Ran out of geoms. maxgeom: %d' %
+                        self._scene.ngeom.maxgeom)
+                mujoco.mjv_initGeom(self._scene.geoms[carry_visual_start_idx + j],
+                                    carry.user_scene.geoms.type[j],
+                                    carry.user_scene.geoms.size[j],
+                                    carry.user_scene.geoms.pos[j],
+                                    carry.user_scene.geoms.mat[j],
+                                    carry.user_scene.geoms.rgba[j])
+                self._scene.ngeom += 1
 
             self._add_user_scene_geoms()
 
@@ -482,8 +498,18 @@ class MujocoViewer:
         n_envs = mjx_state.data.qpos.shape[0]
         if self._offsets_for_parallel_render is None or n_envs > len(self._offsets_for_parallel_render):
             self._offsets_for_parallel_render = generate_square_positions(0.0, 0.0, n_envs, offset)
+            self._visual_geom_offsets = np.array(self._offsets_for_parallel_render)[:, np.newaxis, :]
         if self._datas_for_parallel_render is None or n_envs > len(self._datas_for_parallel_render):
             self._datas_for_parallel_render = [mujoco.MjData(self._model) for i in range(n_envs)]
+
+        # get visual geoms
+        visual_geoms_type = np.array(mjx_state.additional_carry.user_scene.geoms.type)
+        visual_geoms_size = np.array(mjx_state.additional_carry.user_scene.geoms.size)
+        visual_geoms_pos = np.array(mjx_state.additional_carry.user_scene.geoms.pos)
+        visual_geoms_pos[..., :2] += self._visual_geom_offsets
+        visual_geoms_mat = np.array(mjx_state.additional_carry.user_scene.geoms.mat)
+        visual_geoms_rgba = np.array(mjx_state.additional_carry.user_scene.geoms.rgba)
+        n_visual_geoms = mjx_state.additional_carry.user_scene.ngeoms[0]
 
         def render_all_inner_loop(self):
 
@@ -510,6 +536,23 @@ class MujocoViewer:
                 else:
                     mujoco.mjv_addGeoms(self._model, data, self._scene_option, mujoco.MjvPerturb(),
                                         mujoco.mjtCatBit.mjCAT_DYNAMIC, self._scene)
+
+                # add visual geoms
+                carry_visual_start_idx = self._scene.ngeom
+                for j in range(n_visual_geoms):
+                    if self._scene.ngeom > self._scene.maxgeom:
+                        raise RuntimeError(
+                            'Ran out of geoms. maxgeom: %d' %
+                            self._scene.ngeom.maxgeom)
+                    mujoco.mjv_initGeom(self._scene.geoms[carry_visual_start_idx + j],
+                                        visual_geoms_type[i, j],
+                                        visual_geoms_size[i, j],
+                                        visual_geoms_pos[i, j],
+                                        visual_geoms_mat[i, j],
+                                        visual_geoms_rgba[i, j])
+                    self._scene.ngeom += 1
+
+            self._add_user_scene_geoms()
 
             if not self._headless:
                 self._viewport.width, self._viewport.height = glfw.get_window_size(self._window)
