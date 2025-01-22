@@ -5,6 +5,7 @@ import mujoco
 from mujoco import MjModel, MjData
 
 from loco_mujoco.trajectory import (
+    Trajectory,
     TrajectoryInfo,
     TrajectoryModel,
     TrajectoryData,
@@ -16,7 +17,7 @@ from loco_mujoco.trajectory import (
 def input_trajectory_info_data() -> TrajectoryInfo:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_datasets/humanoid_test.xml"
+        model_path = "test_conf/humanoid_test.xml"
         mujoco_model = MjModel.from_xml_path(model_path)
 
         njnt = mujoco_model.njnt
@@ -146,7 +147,7 @@ def input_trajectory_info_field_names():
 def input_trajectory_data() -> TrajectoryData:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_datasets/humanoid_test.xml"
+        model_path = "test_conf/humanoid_test.xml"
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
@@ -199,7 +200,7 @@ def input_trajectory_data() -> TrajectoryData:
 def input_trajectory_data_2() -> TrajectoryData:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_datasets/humanoid_test.xml"
+        model_path = "test_conf/humanoid_test.xml"
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
@@ -273,5 +274,22 @@ def input_trajectory_transitions() -> TrajectoryTransitions:
             actions=actions,
             rewards=rewards,
         )
+
+    return factory
+
+@pytest.fixture
+def input_trajectory(input_trajectory_info_data, input_trajectory_data) -> Trajectory:
+    def factory(backend):
+        # Get the TrajectoryInfo and TrajectoryData using their factory methods
+        trajectory_info = input_trajectory_info_data(backend)
+        trajectory_data = input_trajectory_data(backend)
+
+        # Combine them into a Trajectory object
+        trajectory = Trajectory(
+            info=trajectory_info,
+            data=trajectory_data,
+        )
+
+        return trajectory
 
     return factory

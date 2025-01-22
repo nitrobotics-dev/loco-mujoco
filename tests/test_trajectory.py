@@ -15,7 +15,7 @@ from loco_mujoco.trajectory import (
     TrajectoryData,
 )
 
-from conftest import *
+from test_conf import *
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
