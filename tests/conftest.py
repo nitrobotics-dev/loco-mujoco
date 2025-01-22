@@ -196,7 +196,65 @@ def input_trajectory_data() -> TrajectoryData:
 
 
 @pytest.fixture
-def input_trajectory_transitions():
+def input_trajectory_data_2() -> TrajectoryData:
+    def factory(backend):
+        backend_type = jnp if backend == "jax" else np
+        model_path = "test_datasets/humanoid_test.xml"
+        mujoco_model = MjModel.from_xml_path(model_path)
+
+        data = MjData(mujoco_model)
+        N_steps = 1000
+
+        # Generate data for trajectory 1
+        qpos_1 = backend_type.tile(data.qpos, (N_steps, 1))
+        qvel_1 = backend_type.tile(data.qvel, (N_steps, 1))
+        cvel_1 = backend_type.tile(data.cvel, (N_steps, 1, 1))
+        xpos_1 = backend_type.tile(data.xpos, (N_steps, 1, 1))
+        xquat_1 = backend_type.tile(data.xquat, (N_steps, 1, 1))
+        subtree_com_1 = backend_type.tile(data.subtree_com, (N_steps, 1, 1))
+        site_xpos_1 = backend_type.tile(data.site_xpos, (N_steps, 1, 1))
+        site_xmat_1 = backend_type.tile(data.site_xmat, (N_steps, 1, 1))
+
+        # Generate data for trajectory 2 (same as trajectory 1 for simplicity)
+        qpos_2 = qpos_1.copy()
+        qvel_2 = qvel_1.copy()
+        cvel_2 = cvel_1.copy()
+        xpos_2 = xpos_1.copy()
+        xquat_2 = xquat_1.copy()
+        subtree_com_2 = subtree_com_1.copy()
+        site_xpos_2 = site_xpos_1.copy()
+        site_xmat_2 = site_xmat_1.copy()
+
+        qpos = backend_type.concatenate([qpos_1, qpos_2], axis=0)
+        qvel = backend_type.concatenate([qvel_1, qvel_2], axis=0)
+        cvel = backend_type.concatenate([cvel_1, cvel_2], axis=0)
+        xpos = backend_type.concatenate([xpos_1, xpos_2], axis=0)
+        xquat = backend_type.concatenate([xquat_1, xquat_2], axis=0)
+        subtree_com = backend_type.concatenate([subtree_com_1, subtree_com_2], axis=0)
+        site_xpos = backend_type.concatenate([site_xpos_1, site_xpos_2], axis=0)
+        site_xmat = backend_type.concatenate([site_xmat_1, site_xmat_2], axis=0)
+
+        split_points = backend_type.array([0, N_steps, 2 * N_steps])
+
+        trajectory_data = TrajectoryData(
+            qpos=qpos,
+            qvel=qvel,
+            xpos=xpos,
+            xquat=xquat,
+            cvel=cvel,
+            subtree_com=subtree_com,
+            site_xpos=site_xpos,
+            site_xmat=site_xmat,
+            split_points=split_points,
+        )
+
+        return trajectory_data
+
+    return factory
+
+
+@pytest.fixture
+def input_trajectory_transitions() -> TrajectoryTransitions:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
 

@@ -19,53 +19,79 @@ from conftest import *
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
-def test_save(
+def test_trajectory_info_save_and_load(
     backend,
     input_trajectory_info_data,
     input_trajectory_data,
     input_trajectory_transitions,
     tmp_path,
 ):
-    # todo: combine load and save to a single function, and then iterate over all different attributes in the dataclasses
     path = tmp_path / "test.npz"
-    info = input_trajectory_info_data(backend)
-    data = input_trajectory_data(backend)
-    transitions = input_trajectory_transitions(backend)
+    info: TrajectoryInfo = input_trajectory_info_data(backend)
+    data: TrajectoryData = input_trajectory_data(backend)
+    transitions: TrajectoryTransitions = input_trajectory_transitions(backend)
     object_test = Trajectory(info, data, transitions)
     object_test.save(path)
 
     assert path.exists(), "File was not created"
 
-    loaded = np.load(path, allow_pickle=True)
-    for key in ["qpos", "qvel"]:
-        np.testing.assert_array_equal(loaded[key], getattr(data, key))
-
-
-@pytest.mark.parametrize("backend", ["jax", "numpy"])
-def test_load(
-    backend,
-    input_trajectory_info_data,
-    input_trajectory_data,
-    input_trajectory_transitions,
-    tmp_path,
-):
-    path = tmp_path / "test.npz"
-    info = input_trajectory_info_data(backend)
-    data = input_trajectory_data(backend)
-    transitions = input_trajectory_transitions(backend)
-
-    object_test = Trajectory(info, data, transitions)
-    object_test.save(path)
     trajectory = Trajectory.load(path)
 
+    # info test
     assert trajectory.info.joint_names == info.joint_names
     assert trajectory.info.frequency == info.frequency
     assert trajectory.info.metadata == info.metadata
     assert trajectory.info.site_names == info.site_names
     assert trajectory.info.body_names == info.body_names
+    assert trajectory.info.model.njnt == info.model.njnt
+    assert trajectory.info.model.nbody == info.model.nbody
+    assert trajectory.info.model.nsite == info.model.nsite
 
+    np.testing.assert_allclose(
+        trajectory.info.model.jnt_type, info.model.jnt_type, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_rootid, info.model.body_rootid
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_weldid, info.model.body_weldid
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_mocapid, info.model.body_mocapid
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.site_bodyid, info.model.site_bodyid
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_pos, info.model.body_pos, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_quat, info.model.body_quat, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_ipos, info.model.body_ipos, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.body_iquat, info.model.body_iquat, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.site_pos, info.model.site_pos, atol=1e-7
+    )
+    np.testing.assert_allclose(
+        trajectory.info.model.site_quat, info.model.site_quat, atol=1e-7
+    )
+
+    # data test
     np.testing.assert_allclose(trajectory.data.qpos, data.qpos, atol=1e-7)
     np.testing.assert_allclose(trajectory.data.qvel, data.qvel, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.xpos, data.xpos, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.xquat, data.xquat, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.cvel, data.cvel, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.subtree_com, data.subtree_com, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.site_xpos, data.site_xpos, atol=1e-7)
+    np.testing.assert_allclose(trajectory.data.site_xmat, data.site_xmat, atol=1e-7)
+
+    # transition tests
     np.testing.assert_allclose(
         trajectory.transitions.observations, transitions.observations, atol=1e-7
     )
@@ -89,6 +115,24 @@ def test_load(
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
+def test_trajectory_info__eq__(input_trajectory_info_data, backend):
+    trajectoryInfo: TrajectoryInfo = input_trajectory_info_data(backend)
+    trajectoryInfo_2: TrajectoryInfo = input_trajectory_info_data(backend)
+    trajectoryInfo_3: TrajectoryInfo = input_trajectory_info_data(backend)
+
+    backend_type = jnp if backend == "jax" else np
+
+    assert (
+        trajectoryInfo.__eq__(trajectoryInfo_2) == True
+    ), "These objects are not equal!"
+
+    last_joint = trajectoryInfo.joint_names[-1]
+    trajectoryInfo_3 = trajectoryInfo_3.remove_joints([last_joint], backend_type)
+
+    assert trajectoryInfo.__eq__(trajectoryInfo_3) == False
+
+
+@pytest.mark.parametrize("backend", ["jax", "numpy"])
 def test_trajectory_info__post_init__(
     backend,
     input_trajectory_info_data,
@@ -104,7 +148,7 @@ def test_trajectory_info__post_init__(
 
     # Validate joint name to index mapping
     for key, expected_value in expected_joint_name2ind_qpos.items():
-        np.testing.assert_array_equal(
+        np.testing.assert_allclose(
             expected_value,
             trajectoryInfo.joint_name2ind_qpos[key],
             err_msg=f"Mismatch for joint '{key}' in backend {backend}",
@@ -112,7 +156,7 @@ def test_trajectory_info__post_init__(
 
     # Validate body name to index mapping
     for key, expected_value in expected_body_name2ind.items():
-        np.testing.assert_array_equal(
+        np.testing.assert_allclose(
             expected_value,
             trajectoryInfo.body_name2ind[key],
             err_msg=f"Mismatch for body '{key}' in backend {backend}",
@@ -120,7 +164,7 @@ def test_trajectory_info__post_init__(
 
     # Validate site name to index mapping
     for key, expected_value in expected_site_name2ind.items():
-        np.testing.assert_array_equal(
+        np.testing.assert_allclose(
             expected_value,
             trajectoryInfo.site_name2ind[key],
             err_msg=f"Mismatch for site '{key}' in backend {backend}",
@@ -150,14 +194,14 @@ def test_trajectory_info_add_joint(backend, input_trajectory_info_data):
 
     assert trajectoryInfo.joint_names == jnt_names
 
-    np.testing.assert_array_equal(trajectoryInfo.model.jnt_type, jnt_type)
+    np.testing.assert_allclose(trajectoryInfo.model.jnt_type, jnt_type)
 
     trajectoryInfo = trajectoryInfo.add_joint("joint2", 0)
     jnt_names.append("joint2")
     jnt_type = backend_type.append(jnt_type, 0)
 
     assert trajectoryInfo.joint_names == jnt_names
-    np.testing.assert_array_equal(trajectoryInfo.model.jnt_type, jnt_type)
+    np.testing.assert_allclose(trajectoryInfo.model.jnt_type, jnt_type)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -200,13 +244,13 @@ def test_trajectory_info_add_body(backend, input_trajectory_info_data):
     body_iquat = backend_type.vstack([body_iquat, new_row])
 
     assert trajectoryInfo.model.nbody == nbody + 1
-    np.testing.assert_array_equal(trajectoryInfo.model.body_rootid, body_rootid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_weldid, body_weldid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_mocapid, body_mocapid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_pos, body_pos)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_quat, body_quat)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_ipos, body_ipos)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_iquat, body_iquat)
+    np.testing.assert_allclose(trajectoryInfo.model.body_rootid, body_rootid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_weldid, body_weldid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_mocapid, body_mocapid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_pos, body_pos)
+    np.testing.assert_allclose(trajectoryInfo.model.body_quat, body_quat)
+    np.testing.assert_allclose(trajectoryInfo.model.body_ipos, body_ipos)
+    np.testing.assert_allclose(trajectoryInfo.model.body_iquat, body_iquat)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -236,9 +280,9 @@ def test_trajectory_info_add_site(backend, input_trajectory_info_data):
     site_quat = backend_type.vstack([site_quat, new_row])
 
     assert trajectoryInfo.site_names == site_names
-    np.testing.assert_array_equal(trajectoryInfo.model.site_bodyid, site_bodyid)
-    np.testing.assert_array_equal(trajectoryInfo.model.site_pos, site_pos)
-    np.testing.assert_array_equal(trajectoryInfo.model.site_quat, site_quat)
+    np.testing.assert_allclose(trajectoryInfo.model.site_bodyid, site_bodyid)
+    np.testing.assert_allclose(trajectoryInfo.model.site_pos, site_pos)
+    np.testing.assert_allclose(trajectoryInfo.model.site_quat, site_quat)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -256,7 +300,7 @@ def test_trajectory_info_remove_joints(backend, input_trajectory_info_data):
 
     assert trajectoryInfo.joint_names == joint_names
     assert trajectoryInfo.model.njnt == njnt - 1
-    np.testing.assert_array_equal(trajectoryInfo.model.jnt_type, jnt_type)
+    np.testing.assert_allclose(trajectoryInfo.model.jnt_type, jnt_type)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -278,13 +322,13 @@ def test_trajectory_info_remove_bodies(backend, input_trajectory_info_data):
 
     assert trajectoryInfo.body_names == body_names
     assert trajectoryInfo.model.nbody == nbody
-    np.testing.assert_array_equal(trajectoryInfo.model.body_rootid, body_rootid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_weldid, body_weldid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_mocapid, body_mocapid)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_pos, body_pos)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_quat, body_quat)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_ipos, body_ipos)
-    np.testing.assert_array_equal(trajectoryInfo.model.body_iquat, body_iquat)
+    np.testing.assert_allclose(trajectoryInfo.model.body_rootid, body_rootid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_weldid, body_weldid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_mocapid, body_mocapid)
+    np.testing.assert_allclose(trajectoryInfo.model.body_pos, body_pos)
+    np.testing.assert_allclose(trajectoryInfo.model.body_quat, body_quat)
+    np.testing.assert_allclose(trajectoryInfo.model.body_ipos, body_ipos)
+    np.testing.assert_allclose(trajectoryInfo.model.body_iquat, body_iquat)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -302,9 +346,9 @@ def test_trajectory_info_remove_sites(backend, input_trajectory_info_data):
 
     assert trajectoryInfo.site_names == site_names
     assert trajectoryInfo.model.nsite == nsite
-    np.testing.assert_array_equal(trajectoryInfo.model.site_bodyid, site_bodyid)
-    np.testing.assert_array_equal(trajectoryInfo.model.site_pos, site_pos)
-    np.testing.assert_array_equal(trajectoryInfo.model.site_quat, site_quat)
+    np.testing.assert_allclose(trajectoryInfo.model.site_bodyid, site_bodyid)
+    np.testing.assert_allclose(trajectoryInfo.model.site_pos, site_pos)
+    np.testing.assert_allclose(trajectoryInfo.model.site_quat, site_quat)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -332,7 +376,7 @@ def test_trajectory_info_reorder_joints(backend, input_trajectory_info_data):
         "left_knee",
     ]
 
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.jnt_type,
         backend_type.array([3, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]),
     )
@@ -352,19 +396,22 @@ def test_trajectory_info_reorder_bodies(backend, input_trajectory_info_data):
     )
 
     assert trajectoryInfo.body_names == body_names
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_rootid,
         backend_type.array([1, 0, 1, 1, 1, 1, 1, 1, 1, 1]),
+        atol=1e-7,
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_weldid,
         backend_type.array([1, 0, 2, 3, 4, 5, 5, 7, 8, 8]),
+        atol=1e-7,
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_mocapid,
         backend_type.array([-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]),
+        atol=1e-7,
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_pos,
         backend_type.array(
             [
@@ -380,8 +427,9 @@ def test_trajectory_info_reorder_bodies(backend, input_trajectory_info_data):
                 [0.0, 0.0, -0.45],
             ]
         ),
+        atol=1e-7,
     )
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_quat,
         backend_type.array(
             [
@@ -394,16 +442,17 @@ def test_trajectory_info_reorder_bodies(backend, input_trajectory_info_data):
                 [1.0, 0.0, 0.0, 0.0],
                 [0.999998, 0.0, -0.002, 0.0],
                 [0.999998, 0.0, -0.002, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
+                [0.99503719, 0, -0.09950372, 0.0],
+                [0.98893635, 0, -0.14834045, 0.0],
+                [0.87621591, 0, -0.48191875, 0.0],
+                [0.97455519, 0, -0.22414769, 0.0],
+                [0.8872168, 0, -0.46135274, 0.0],
+                [0.83076998, 0, -0.55661589, 0.0],
             ]
         ),
+        atol=1e-7,
     )
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_ipos,
         backend_type.array(
             [
@@ -419,8 +468,9 @@ def test_trajectory_info_reorder_bodies(backend, input_trajectory_info_data):
                 [0.0, 0.0, 0.1],
             ]
         ),
+        atol=1e-7,
     )
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.body_iquat,
         backend_type.array(
             [
@@ -436,6 +486,7 @@ def test_trajectory_info_reorder_bodies(backend, input_trajectory_info_data):
                 [1.0, 0.0, 0.0, 0.0],
             ]
         ),
+        atol=1e-7,
     )
 
 
@@ -451,11 +502,11 @@ def test_trajectory_info_reorder_sites(backend, input_trajectory_info_data):
     trajectoryInfo = trajectoryInfo.reorder_sites([0, 1, 2, 3, 5, 4], backend_type)
 
     assert trajectoryInfo.site_names == site_names
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.site_bodyid,
         backend_type.array([1, 3, 4, 6, 9, 7]),
     )
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.site_pos,
         backend_type.array(
             [
@@ -467,21 +518,38 @@ def test_trajectory_info_reorder_sites(backend, input_trajectory_info_data):
                 [0.0, 0.0, 0.1],
             ]
         ),
+        atol=1e-7,
     )
-    # todo: add different quat values to make this test useful
-    np.testing.assert_array_equal(
+    np.testing.assert_allclose(
         trajectoryInfo.model.site_quat,
         backend_type.array(
             [
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
+                [0.995037, 0.09950372, 0.0, 0],
+                [0.980581, 0.19611613, 0.0, 0],
+                [0.980581, 0.19611613, 0.0, 0],
+                [0.980581, 0.19611613, 0.0, 0],
+                [0.928477, 0.37139067, 0.0, 0],
+                [0.957826, 0.28734789, 0.0, 0],
             ]
         ),
+        atol=1e-5,
     )
+
+
+@pytest.mark.parametrize("backend", ["jax", "numpy"])
+def test_trajectory_model__eq__(input_trajectory_info_data, backend):
+    trajectoryInfo: TrajectoryInfo = input_trajectory_info_data(backend)
+    trajectoryInfo_2: TrajectoryInfo = input_trajectory_info_data(backend)
+    trajectoryInfo_3: TrajectoryInfo = input_trajectory_info_data(backend)
+
+    backend_type = jnp if backend == "jax" else np
+
+    assert (
+        trajectoryInfo.model.__eq__(trajectoryInfo_2.model) == True
+    ), "These objects are not equal!"
+
+    trajectoryInfo_3 = trajectoryInfo_3.add_joint("test", 0, backend_type)
+    assert trajectoryInfo.model.__eq__(trajectoryInfo_3.model) == False
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -547,70 +615,86 @@ def test_trajectory_model_to_jax(backend, input_trajectory_info_data):
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
-@pytest.mark.parametrize(
-    "traj_index, sub_traj_index", [(0, 0), (0, 1)]
-)  # todo: add more test cases
-def test_trajectory_data_get(
-    backend, traj_index, sub_traj_index, input_trajectory_data
-):
+def test_trajectory_data__eq__(input_trajectory_data, input_trajectory_data_2, backend):
     trajectory_data: TrajectoryData = input_trajectory_data(backend)
+    trajectory_data_2: TrajectoryData = input_trajectory_data(backend)
+    trajectory_data_3: TrajectoryData = input_trajectory_data_2(backend)
+
+    assert (
+        trajectory_data.__eq__(trajectory_data_2) == True
+    ), "These objects are not equal!"
+    assert trajectory_data.__eq__(trajectory_data_3) == False
+
+
+@pytest.mark.parametrize("backend", ["jax", "numpy"])
+@pytest.mark.parametrize(
+    "traj_index, sub_traj_index", [(0, 0), (0, 1), (0, 999), (1, 0), (1, 999)]
+)
+def test_trajectory_data_get(
+    backend, traj_index, sub_traj_index, input_trajectory_data_2
+):
+    trajectory_data: TrajectoryData = input_trajectory_data_2(backend)
 
     backend_type = jnp if backend == "jax" else np
 
     data = trajectory_data.get(traj_index, sub_traj_index, backend_type)
-    # todo: this test is wrong and will fail for N_trajs > 1. Checkout the get method to see how the actual index is calculated.
-    expected_qpos = trajectory_data.qpos[traj_index + sub_traj_index]
-    expected_qvel = trajectory_data.qvel[traj_index + sub_traj_index]
+    start_idx = trajectory_data.split_points[traj_index]
+    ind = start_idx + sub_traj_index
+
+    expected_qpos = trajectory_data.qpos[ind]
+    expected_qvel = trajectory_data.qvel[ind]
     expected_xpos = (
-        trajectory_data.xpos[traj_index + sub_traj_index]
+        trajectory_data.xpos[ind]
         if trajectory_data.xpos.size > 0
         else backend_type.empty(0)
     )
     expected_xquat = (
-        trajectory_data.xquat[traj_index + sub_traj_index]
+        trajectory_data.xquat[ind]
         if trajectory_data.xquat.size > 0
         else backend_type.empty(0)
     )
     expected_cvel = (
-        trajectory_data.cvel[traj_index + sub_traj_index]
+        trajectory_data.cvel[ind]
         if trajectory_data.cvel.size > 0
         else backend_type.empty(0)
     )
     expected_subtree_com = (
-        trajectory_data.subtree_com[traj_index + sub_traj_index]
+        trajectory_data.subtree_com[ind]
         if trajectory_data.subtree_com.size > 0
         else backend_type.empty(0)
     )
     expected_site_xpos = (
-        trajectory_data.site_xpos[traj_index + sub_traj_index]
+        trajectory_data.site_xpos[ind]
         if trajectory_data.site_xpos.size > 0
         else backend_type.empty(0)
     )
     expected_site_xmat = (
-        trajectory_data.site_xmat[traj_index + sub_traj_index]
+        trajectory_data.site_xmat[ind]
         if trajectory_data.site_xmat.size > 0
         else backend_type.empty(0)
     )
 
-    assert np.allclose(data.qpos, expected_qpos)
-    assert np.allclose(data.qvel, expected_qvel)
-    assert np.allclose(data.xpos, expected_xpos)
-    assert np.allclose(data.xquat, expected_xquat)
-    assert np.allclose(data.cvel, expected_cvel)
-    assert np.allclose(data.subtree_com, expected_subtree_com)
-    assert np.allclose(data.site_xpos, expected_site_xpos)
-    assert np.allclose(data.site_xmat, expected_site_xmat)
+    np.testing.assert_allclose(data.qpos, expected_qpos, atol=1e-7)
+    np.testing.assert_allclose(data.qvel, expected_qvel, atol=1e-7)
+    np.testing.assert_allclose(data.xpos, expected_xpos, atol=1e-7)
+    np.testing.assert_allclose(data.xquat, expected_xquat, atol=1e-7)
+    np.testing.assert_allclose(data.cvel, expected_cvel, atol=1e-7)
+    np.testing.assert_allclose(data.subtree_com, expected_subtree_com, atol=1e-7)
+    np.testing.assert_allclose(data.site_xpos, expected_site_xpos, atol=1e-7)
+    np.testing.assert_allclose(data.site_xmat, expected_site_xmat, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
-def test_dynamic_slice_in_dim(backend, input_trajectory_data):
+@pytest.mark.parametrize(
+    "traj_index, sub_traj_start_index, slice_length", [(0, 0, 2), (1, 0, 1000)]
+)
+def test_dynamic_slice_in_dim(
+    backend, traj_index, sub_traj_start_index, slice_length, input_trajectory_data_2
+):
 
-    trajectory_data: TrajectoryData = input_trajectory_data(backend)
+    trajectory_data: TrajectoryData = input_trajectory_data_2(backend)
 
     backend_type = jnp if backend == "jax" else np
-    traj_index = 0
-    sub_traj_start_index = 0
-    slice_length = 2
 
     sliced_data = TrajectoryData.dynamic_slice_in_dim(
         trajectory_data,
@@ -623,12 +707,12 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
     expected_qpos = backend_type.squeeze(
         trajectory_data.qpos[sub_traj_start_index : sub_traj_start_index + slice_length]
     )
-    assert np.allclose(sliced_data.qpos, expected_qpos)
+    np.testing.assert_allclose(sliced_data.qpos, expected_qpos, atol=1e-7)
 
     expected_qvel = backend_type.squeeze(
         trajectory_data.qvel[sub_traj_start_index : sub_traj_start_index + slice_length]
     )
-    assert np.allclose(sliced_data.qvel, expected_qvel)
+    np.testing.assert_allclose(sliced_data.qvel, expected_qvel, atol=1e-7)
 
     if trajectory_data.xpos.size > 0:
         expected_xpos = backend_type.squeeze(
@@ -636,7 +720,7 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.xpos, expected_xpos)
+        np.testing.assert_allclose(sliced_data.xpos, expected_xpos, atol=1e-7)
 
     if trajectory_data.xquat.size > 0:
         expected_xquat = backend_type.squeeze(
@@ -644,7 +728,7 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.xquat, expected_xquat)
+        np.testing.assert_allclose(sliced_data.xquat, expected_xquat, atol=1e-7)
 
     if trajectory_data.cvel.size > 0:
         expected_cvel = backend_type.squeeze(
@@ -652,7 +736,7 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.cvel, expected_cvel)
+        np.testing.assert_allclose(sliced_data.cvel, expected_cvel, atol=1e-7)
 
     if trajectory_data.subtree_com.size > 0:
         expected_subtree_com = backend_type.squeeze(
@@ -660,7 +744,9 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.subtree_com, expected_subtree_com)
+        np.testing.assert_allclose(
+            sliced_data.subtree_com, expected_subtree_com, atol=1e-7
+        )
 
     if trajectory_data.site_xpos.size > 0:
         expected_site_xpos = backend_type.squeeze(
@@ -668,7 +754,7 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.site_xpos, expected_site_xpos)
+        np.testing.assert_allclose(sliced_data.site_xpos, expected_site_xpos, atol=1e-7)
 
     if trajectory_data.site_xmat.size > 0:
         expected_site_xmat = backend_type.squeeze(
@@ -676,7 +762,7 @@ def test_dynamic_slice_in_dim(backend, input_trajectory_data):
                 sub_traj_start_index : sub_traj_start_index + slice_length
             ]
         )
-        assert np.allclose(sliced_data.site_xmat, expected_site_xmat)
+        np.testing.assert_allclose(sliced_data.site_xmat, expected_site_xmat, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -697,9 +783,7 @@ def test_dynamic_slice_in_dim_compat(backend, input_trajectory_data):
     else:
         expected_slice = trajectory_data.qpos[start : start + length].copy()
 
-    assert np.allclose(
-        sliced_data, expected_slice
-    ), f"Failed for backend {backend_type}. Sliced data: {sliced_data}, Expected: {expected_slice}"
+    np.testing.assert_allclose(sliced_data, expected_slice, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -720,9 +804,7 @@ def test_get_single_attribute(backend, input_trajectory_data):
     start_idx = split_points[traj_index] + sub_traj_index
     expected_value = backend_type.squeeze(attribute[start_idx].copy())
 
-    assert np.allclose(
-        result, expected_value
-    ), f"Expected {expected_value} but got {result}"
+    np.testing.assert_allclose(result, expected_value)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -752,9 +834,7 @@ def test_dynamic_slice_in_dim_single(backend, input_trajectory_data):
             slice_start : slice_start + slice_length
         ].copy()
 
-    assert np.allclose(
-        slice, expected_slice
-    ), f"Failed for backend {backend_type}. Sliced data: {slice}, Expected: {expected_slice}"
+    np.testing.assert_allclose(slice, expected_slice, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
@@ -779,11 +859,12 @@ def test_trajectory_data_add_joint(backend, input_trajectory_data):
     assert updated_qvel_shape == (original_qvel_shape[0], original_qvel_shape[1] + 1)
 
     # Check that the last column contains the new values
-    assert np.allclose(
+    np.testing.assert_allclose(
         updated_trajectory_data.qpos[:, -1],
         backend_type.full((original_qpos_shape[0],), new_qpos_value),
+        atol=1e-7,
     )
-    assert np.allclose(
+    np.testing.assert_allclose(
         updated_trajectory_data.qvel[:, -1],
         backend_type.full((original_qvel_shape[0],), new_qvel_value),
     )
@@ -834,19 +915,21 @@ def test_trajectory_data_add_body(backend, input_trajectory_data):
         original_subtree_com_shape[2],
     )
 
-    assert np.allclose(
+    # Check values for the added body
+    np.testing.assert_allclose(
         updated_trajectory_data.xpos[:, -1, :],
-        backend_type.full((original_xpos_shape[0], 1, 3), new_xpos_value),
+        backend_type.full((original_xpos_shape[0], 3), new_xpos_value),
+        atol=1e-7,
     )
-
-    assert np.allclose(
+    np.testing.assert_allclose(
         updated_trajectory_data.cvel[:, -1, :],
-        backend_type.full((original_cvel_shape[0], 1, 6), new_cvel_value),
+        backend_type.full((original_cvel_shape[0], 6), new_cvel_value),
+        atol=1e-7,
     )
-
-    assert np.allclose(
+    np.testing.assert_allclose(
         updated_trajectory_data.subtree_com[:, -1, :],
-        backend_type.full((original_subtree_com_shape[0], 1, 3), new_subtree_com_value),
+        backend_type.full((original_subtree_com_shape[0], 3), new_subtree_com_value),
+        atol=1e-7,
     )
 
 
@@ -879,9 +962,10 @@ def test_trajectory_data_add_site(backend, input_trajectory_data):
         original_site_xmat_shape[2],
     )
 
-    assert np.allclose(
+    np.testing.assert_allclose(
         updated_trajectory_data.site_xpos[:, -1, :],
-        backend_type.full((original_site_xpos_shape[0], 1, 3), new_site_xpos_value),
+        backend_type.full((original_site_xpos_shape[0], 3), new_site_xpos_value),
+        atol=1e-7,
     )
 
 
@@ -941,15 +1025,6 @@ def test_trajectory_data_remove_body(backend, input_trajectory_data):
     original_xquat_shape = trajectory_data.xquat.shape
     original_cvel_shape = trajectory_data.cvel.shape
     original_subtree_com_shape = trajectory_data.subtree_com.shape
-
-    # todo: this statement is not needed, we should not skip.
-    if (
-        original_xpos_shape[1] < 1
-        or original_xquat_shape[1] < 1
-        or original_cvel_shape[1] < 1
-        or original_subtree_com_shape[1] < 1
-    ):
-        pytest.skip("Not enough bodies to remove")
 
     body_ids = backend_type.array([original_xpos_shape[1] - 1])
 
@@ -1091,17 +1166,21 @@ def test_trajectory_data_reorder_joints(backend, input_trajectory_data):
     new_order_qpos = backend_type.array(list(reversed(range(original_qpos_shape[1]))))
     new_order_qvel = backend_type.array(list(reversed(range(original_qvel_shape[1]))))
 
-    updated_trajectory_data = trajectory_data.reorder_joints(
+    updated_trajectory_data: TrajectoryData = trajectory_data.reorder_joints(
         new_order_qpos, new_order_qvel
     )
 
     qpos_ind = np.arange(original_qpos_shape[1])
     qvel_ind = np.arange(original_qvel_shape[1])
-    assert np.array_equal(
-        updated_trajectory_data.qpos[:, qpos_ind], trajectory_data.qpos[:, new_order_qpos[qpos_ind]]
+    np.testing.assert_allclose(
+        updated_trajectory_data.qpos[:, qpos_ind],
+        trajectory_data.qpos[:, new_order_qpos[qpos_ind]],
+        atol=1e-7,
     )
-    assert np.array_equal(
-        updated_trajectory_data.qpos[:, qvel_ind], trajectory_data.qpos[:, new_order_qpos[qvel_ind]]
+    np.testing.assert_allclose(
+        updated_trajectory_data.qvel[:, qvel_ind],
+        trajectory_data.qvel[:, new_order_qvel[qvel_ind]],
+        atol=1e-7,
     )
 
 
@@ -1116,18 +1195,25 @@ def test_trajectory_data_reorder_bodies(backend, input_trajectory_data):
     updated_trajectory_data = trajectory_data.reorder_bodies(new_order)
 
     body_ind = np.arange(original_xpos_shape[1])
-    assert np.array_equal(
-        updated_trajectory_data.xpos[:, body_ind], trajectory_data.xpos[:, new_order[body_ind]]
+    np.testing.assert_allclose(
+        updated_trajectory_data.xpos[:, body_ind],
+        trajectory_data.xpos[:, new_order[body_ind]],
+        atol=1e-7,
     )
-    assert np.array_equal(
-        updated_trajectory_data.xquat[:, body_ind], trajectory_data.xquat[:, new_order[body_ind]]
+    np.testing.assert_allclose(
+        updated_trajectory_data.xquat[:, body_ind],
+        trajectory_data.xquat[:, new_order[body_ind]],
+        atol=1e-7,
     )
-    assert np.array_equal(
-        updated_trajectory_data.cvel[:, body_ind], trajectory_data.cvel[:, new_order[body_ind]]
+    np.testing.assert_allclose(
+        updated_trajectory_data.cvel[:, body_ind],
+        trajectory_data.cvel[:, new_order[body_ind]],
+        atol=1e-7,
     )
-    assert np.array_equal(
+    np.testing.assert_allclose(
         updated_trajectory_data.subtree_com[:, body_ind],
         trajectory_data.subtree_com[:, new_order[body_ind]],
+        atol=1e-7,
     )
 
 
@@ -1143,31 +1229,17 @@ def test_trajectory_data_reorder_sites(backend, input_trajectory_data):
 
     updated_trajectory_data = trajectory_data.reorder_sites(new_order)
 
-    # todo: do the same update as done for body and joint
-    assert np.array_equal(
-        updated_trajectory_data.site_xpos[:, 0],
-        trajectory_data.site_xpos[:, new_order[0]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.site_xpos[:, 1],
-        trajectory_data.site_xpos[:, new_order[1]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.site_xpos[:, -1],
-        trajectory_data.site_xpos[:, new_order[-1]],
+    site_ind = np.arange(original_site_xpos_shape[1])
+    np.testing.assert_allclose(
+        updated_trajectory_data.site_xpos[:, site_ind],
+        trajectory_data.site_xpos[:, new_order[site_ind]],
+        atol=1e-7,
     )
 
-    assert np.array_equal(
-        updated_trajectory_data.site_xmat[:, 0],
-        trajectory_data.site_xmat[:, new_order[0]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.site_xmat[:, 1],
-        trajectory_data.site_xmat[:, new_order[1]],
-    )
-    assert np.array_equal(
-        updated_trajectory_data.site_xmat[:, -1],
-        trajectory_data.site_xmat[:, new_order[-1]],
+    np.testing.assert_allclose(
+        updated_trajectory_data.site_xmat[:, site_ind],
+        trajectory_data.site_xmat[:, new_order[site_ind]],
+        atol=1e-7,
     )
 
 
@@ -1245,35 +1317,17 @@ def test_trajectory_data_concatenate(
 def test_trajectory_data_len_trajectory(backend, input_trajectory_data):
     trajectory_data: TrajectoryData = input_trajectory_data(backend)
 
-    # todo: this and the next test should be done by also adapting the data in traj data. There will be a checking for
-    # split points implemented soon, and this will throw and error.
-
-    backend_type = jnp if backend == "jax" else np
-
-    split_points = backend_type.array([0, 100, 300, 600])
-    trajectory_data = trajectory_data.replace(split_points=split_points)
-
     traj_len_0 = trajectory_data.len_trajectory(0)
-    assert traj_len_0 == 100, f"Expected 100, got {traj_len_0}"
-
-    traj_len_1 = trajectory_data.len_trajectory(1)
-    assert traj_len_1 == 200, f"Expected 200, got {traj_len_1}"
-
-    traj_len_2 = trajectory_data.len_trajectory(2)
-    assert traj_len_2 == 300, f"Expected 300, got {traj_len_2}"
+    assert traj_len_0 == 1000, f"Expected 1000, got {traj_len_0}"
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
 def test_trajectory_data_n_samples(backend, input_trajectory_data):
     trajectory_data: TrajectoryData = input_trajectory_data(backend)
 
-    backend_type = jnp if backend == "jax" else np
-
-    split_points = backend_type.array([0, 100, 300, 600])
-    trajectory_data = trajectory_data.replace(split_points=split_points)
-
     n_samples = trajectory_data.n_samples
-    assert n_samples == 600, f"Expected 600, got {n_samples}"
+
+    assert n_samples == 1000, f"Expected 1000, got {n_samples}"
 
 
 def test_trajectory_data_get_attribute_names():
@@ -1359,7 +1413,7 @@ def test_interpolate_trajectories_quaternions(
     )
 
     norms = backend_type.linalg.norm(new_traj_data.xquat, axis=-1)
-    assert np.allclose(
+    np.testing.assert_allclose(
         norms, 1.0, atol=1e-6
     ), "Interpolated quaternions are not normalized"
 
