@@ -12,10 +12,9 @@ import flax
 import flax.linen as nn
 import optax
 
-from loco_mujoco.algorithms import (JaxRLAlgorithmBase, AgentConfBase, AgentStateBase,
-                                    ActorCritic, FullyConnectedNet, Transition, TrainState,
-                                    BestTrainStates, TrainStateBuffer, MetricHandlerTransition)
-from loco_mujoco.core.wrappers import LogWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
+from loco_mujoco.algorithms import (JaxRLAlgorithmBase, AgentConfBase, AgentStateBase, ActorCritic,
+                                    Transition, TrainState, TrainStateBuffer, MetricHandlerTransition)
+from loco_mujoco.core.wrappers import LogWrapper, NStepWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
 from loco_mujoco.utils import MetricsHandler, ValidationSummary
 
 
@@ -120,6 +119,8 @@ class PPOJax(JaxRLAlgorithmBase):
         config, network, tx =\
             (agent_conf.config.experiment, agent_conf.network, agent_conf.tx)
 
+        env = cls._wrap_env(env, config)
+
         # extract current agent state
         if agent_state is not None:
             train_state = agent_state.train_state
@@ -142,8 +143,6 @@ class PPOJax(JaxRLAlgorithmBase):
             run_stats=network_params["run_stats"] if train_state is None else train_state.run_stats,
             tx=tx,
         )
-
-        env = cls._wrap_env(env, config)
 
         # INIT ENV
         rng, _rng = jax.random.split(rng)
@@ -463,6 +462,8 @@ class PPOJax(JaxRLAlgorithmBase):
     @staticmethod
     def _wrap_env(env, config):
 
+        if "len_obs_history" in config and config.obs_concat_last_n > 1:
+            env = NStepWrapper(env, config.obs_concat_last_n)
         env = LogWrapper(env)
         env = VecEnv(env)
         if config.normalize_env:

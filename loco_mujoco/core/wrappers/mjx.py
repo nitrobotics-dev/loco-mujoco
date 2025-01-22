@@ -1,11 +1,14 @@
+from copy import deepcopy
 from functools import partial
 from typing import Optional, Tuple, Union, Any
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from flax import struct
 
 from loco_mujoco.core import MjxState, Mjx
+from loco_mujoco.core.utils.env import Box
 
 
 class LocoMjxWrapper:
@@ -139,6 +142,50 @@ class LogWrapper(BaseWrapper):
                 timestep=state.metrics.timestep + 1,
                 done=done,),
         )
+        return next_observation, reward, absorbing, done, info, state
+
+
+@struct.dataclass
+class NStepWrapperState(BaseWrapperState):
+    env_state: MjxState
+    observation_buffer: jnp.ndarray
+
+
+class NStepWrapper(BaseWrapper):
+
+    def __init__(self, env, n_steps):
+        super().__init__(env)
+        self.n_steps = n_steps
+        self.info = self.update_info(env.info)
+
+    def update_info(self, info):
+        new_info = deepcopy(info)
+        high = np.tile(info.observation_space.high, self.n_steps)
+        low = np.tile(info.observation_space.low, self.n_steps)
+        observation_space = Box(low, high)
+        new_info.observation_space = observation_space
+        return new_info
+
+    def reset(self, rng_key):
+        obs, env_state = self.env.reset(rng_key)
+        observation_buffer = jnp.tile(jnp.zeros_like(obs), (self.n_steps, 1))
+        observation_buffer = observation_buffer.at[-1].set(obs)
+        state = NStepWrapperState(env_state, observation_buffer)
+        obs = jnp.reshape(observation_buffer, (-1,))
+        return obs, state
+
+    def step(self, state: NStepWrapperState, action: Union[int, float]):
+
+        # make a step
+        next_observation, reward, absorbing, done, info, env_state = self.env.step(state.env_state, action)
+
+        # add observation to the buffer
+        observation_buffer = state.observation_buffer
+        observation_buffer = jnp.roll(observation_buffer, shift=-1, axis=0)
+        observation_buffer = observation_buffer.at[-1].set(next_observation)
+        state = NStepWrapperState(env_state, observation_buffer)
+        next_observation = jnp.reshape(observation_buffer, (-1,))
+
         return next_observation, reward, absorbing, done, info, state
 
 

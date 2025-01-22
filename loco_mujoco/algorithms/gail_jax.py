@@ -14,8 +14,8 @@ import optax
 
 from loco_mujoco.algorithms import (JaxRLAlgorithmBase, AgentConfBase, AgentStateBase,
                                     ActorCritic, FullyConnectedNet, Transition, TrainState,
-                                    BestTrainStates, TrainStateBuffer, MetricHandlerTransition)
-from loco_mujoco.core.wrappers import LogWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
+                                    TrainStateBuffer, MetricHandlerTransition)
+from loco_mujoco.core.wrappers import LogWrapper, NStepWrapper, LogEnvState, VecEnv, NormalizeVecReward, SummaryMetrics
 from loco_mujoco.utils import MetricsHandler, ValidationSummary
 from loco_mujoco.trajectory import TrajectoryTransitions
 
@@ -603,6 +603,9 @@ class GAILJax(JaxRLAlgorithmBase):
 
     @staticmethod
     def _wrap_env(env, config):
+
+        if "len_obs_history" in config and config.obs_concat_last_n > 1:
+            env = NStepWrapper(env, config.obs_concat_last_n)
 
         env = LogWrapper(env)
         env = VecEnv(env)
