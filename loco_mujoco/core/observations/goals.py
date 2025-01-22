@@ -422,6 +422,11 @@ class GoalTrajMimic(Goal):
         size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
         self._dim = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
         self._size_additional_observation = size_for_sites
+        if self.visualize_goal:
+            # make all mimic sites visible by default
+            for site in spec.sites:
+                if "mimic" in site.name:
+                    site.group = 0
         return spec
 
     def init_from_traj(self, traj_handler):
@@ -505,26 +510,30 @@ class GoalTrajMimic(Goal):
         qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
         type = backend.full(self.n_visual_geoms, int(mujoco.mjtGeom.mjGEOM_BOX), dtype=backend.int32).reshape((-1, 1))
         size = backend.tile(backend.array([0.075, 0.05, 0.025]), (self.n_visual_geoms, 1))
+        color = backend.tile(backend.array([0.0, 1.0, 0.0, 1.0]), (self.n_visual_geoms, 1))
         if backend == jnp:
             geom_pos = user_scene.geoms.pos.at[self.visual_geoms_idx].set(site_xpos[s_ids])
             geom_mat = user_scene.geoms.mat.at[self.visual_geoms_idx].set(site_xmat[s_ids])
             geom_type = user_scene.geoms.type.at[self.visual_geoms_idx].set(type)
             geom_size = user_scene.geoms.size.at[self.visual_geoms_idx].set(size)
+            geom_rgba = user_scene.geoms.rgba.at[self.visual_geoms_idx].set(color)
             geom_pos = geom_pos.at[:, :2].add(-qpos_init[:2])  # reset to the initial position
         else:
             user_scene.geoms.pos[self.visual_geoms_idx] = site_xpos[s_ids]
             user_scene.geoms.mat[self.visual_geoms_idx] = site_xmat[s_ids]
             user_scene.geoms.type[self.visual_geoms_idx] = type
             user_scene.geoms.size[self.visual_geoms_idx] = size
+            user_scene.geoms.rgba[self.visual_geoms_idx] = color
             geom_pos = user_scene.geoms.pos[self.visual_geoms_idx]
             geom_mat = user_scene.geoms.mat[self.visual_geoms_idx]
             geom_type = user_scene.geoms.type[self.visual_geoms_idx]
+            geom_rgba = user_scene.geoms.rgba[self.visual_geoms_idx]
             geom_size = user_scene.geoms.size[self.visual_geoms_idx]
             geom_pos[:, :2] -= qpos_init[:2]
 
         # update carry
         new_user_scene = user_scene.replace(geoms=user_scene.geoms.replace(
-            pos=geom_pos, mat=geom_mat, size=geom_size, type=geom_type))
+            pos=geom_pos, mat=geom_mat, size=geom_size, type=geom_type, rgba=geom_rgba))
         carry = carry.replace(user_scene=new_user_scene)
 
         return carry
