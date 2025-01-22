@@ -4,6 +4,17 @@ import jax
 import jax.numpy as jnp
 
 
+def mj_jnt_name2id(name, model):
+    """
+    Get the joint ID (in the Mujoco datastructure) from the joint name.
+    """
+    for i in range(model.njnt):
+        j = model.joint(i)
+        if j.name == name:
+            return i
+    raise ValueError(f"Joint name {name} not found in model!")
+
+
 def mj_jntname2qposid(j_name, model):
     """
     Get qpos index of a joint in mujoco data structure.

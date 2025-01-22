@@ -12,19 +12,9 @@ from scipy.spatial.transform import Rotation as np_R
 from jax.scipy.spatial.transform import Rotation as jnp_R
 
 from loco_mujoco.core.stateful_object import StatefulObject
-from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid, mj_jntid2qposid, mj_jntid2qvelid
+from loco_mujoco.core.utils.mujoco import (mj_jnt_name2id, mj_jntname2qposid, mj_jntname2qvelid,
+                                           mj_jntid2qposid, mj_jntid2qvelid)
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
-
-
-def jnt_name2id(name, model):
-    """
-    Get the joint ID (in the Mujoco datastructure) from the joint name.
-    """
-    for i in range(model.njnt):
-        j = model.joint(i)
-        if j.name == name:
-            return i
-    raise ValueError(f"Joint name {name} not found in model!")
 
 
 class ObservationIndexContainer:
@@ -523,7 +513,7 @@ class JointPos(SimpleObs):
     def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qpos)
         assert dim == self.dim
-        jh = model.joint(jnt_name2id(self.xml_name, model))
+        jh = model.joint(mj_jnt_name2id(self.xml_name, model))
         if jh.limited:
             self.min, self.max = [jh.range[0]], [jh.range[1]]
         else:
@@ -555,7 +545,7 @@ class JointPosArray(Observation):
         self.min, self.max, self.data_type_ind, self.obs_ind = [], [], [], []
         for name in self._xml_names:
             sdim = len(data.joint(name).qpos)
-            jh = model.joint(jnt_name2id(name, model))
+            jh = model.joint(mj_jnt_name2id(name, model))
             if jh.limited:
                 min, max = [jh.range[0]] * sdim, [jh.range[1]] * sdim
             else:
@@ -666,7 +656,7 @@ class JointVelArray(Observation):
         self.min, self.max, self.data_type_ind, self.obs_ind = [], [], [], []
         for name in self._xml_names:
             sdim = len(data.joint(name).qvel)
-            jh = model.joint(jnt_name2id(name, model))
+            jh = model.joint(mj_jnt_name2id(name, model))
             min, max = [-np.inf] * sdim, [np.inf] * sdim
             self.min.extend(min)
             self.max.extend(max)
