@@ -37,7 +37,7 @@ def test_RootPoseTrajTerminalStateHandler(input_trajectory, backend):
 
 
     # do the same testing for Mujoco function
-    mjx_env.th.to_jax()
+    mjx_env.th.to_numpy()
 
     # reset the environment in Mujoco
     obs = mjx_env.reset(key)
