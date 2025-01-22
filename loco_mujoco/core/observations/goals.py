@@ -1,88 +1,163 @@
-from typing import Union
+from typing import Union, Any, Tuple, Dict, List
+from types import ModuleType
 import numpy as np
 import jax
 import jax.numpy as jnp
 import mujoco
-from mujoco import MjSpec
+from mujoco import MjSpec, MjModel, MjData
+from mujoco.mjx import Model, Data
 from jax.scipy.spatial.transform import Rotation as jnp_R
 from scipy.spatial.transform import Rotation as np_R
 from flax import struct
 
-from loco_mujoco.core.observations.base import StatefulObservation, ObservationType, Observation
+from loco_mujoco.core.observations.base import StatefulObservation, Observation
 from loco_mujoco.core.observations.visualizer import RootVelocityArrowVisualizer
 from loco_mujoco.core.stateful_object import StatefulObject
-from loco_mujoco.core.utils.math import (calculate_relative_site_quatities, quat_scalarfirst2scalarlast,
-                                         quat_scalarlast2scalarfirst)
-from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid, mj_jntname2qposid, mj_jntname2qvelid
+from loco_mujoco.core.utils.math import (
+    calculate_relative_site_quatities,
+    quat_scalarfirst2scalarlast,
+    quat_scalarlast2scalarfirst
+)
+from loco_mujoco.core.utils.mujoco import (
+    mj_jntid2qposid, mj_jntid2qvelid,
+    mj_jntname2qposid, mj_jntname2qvelid
+)
 
 
 class Goal(StatefulObservation):
+    """
+    Base class representing a goal in the environment.
 
-    def __init__(self, info_props, visualize_goal=False, n_visual_geoms=0):
+    Args:
+        info_props (Dict): Information properties required for initialization.
+        visualize_goal (bool): Whether to visualize the goal.
+        n_visual_geoms (int): Number of visual geometries for visualization.
+    """
 
+    def __init__(self, info_props: Dict, visualize_goal: bool = False, n_visual_geoms: int = 0):
         self._initialized_from_traj = False
         self._info_props = info_props
         if visualize_goal:
-            assert self.has_visual, (f"{self.__class__.__name__} does not support visualization. "
-                                     f"Please set visualize_goal to False.")
+            assert self.has_visual, (
+                f"{self.__class__.__name__} does not support visualization. "
+                f"Please set visualize_goal to False."
+            )
         self.visualize_goal = visualize_goal
         Observation.__init__(self, obs_name=self.__class__.__name__)
         StatefulObject.__init__(self, n_visual_geoms)
 
     @property
-    def has_visual(self):
+    def has_visual(self) -> bool:
+        """Check if the goal supports visualization. Needs to be implemented in subclasses."""
         raise NotImplementedError
 
     @property
-    def requires_trajectory(self):
+    def requires_trajectory(self) -> bool:
+        """Check if the goal requires a trajectory."""
         return False
 
     @classmethod
-    def data_type(cls):
+    def data_type(cls) -> Any:
+        """Return the data type used by this goal."""
         return None
 
-    def reset_state(self, env, model, data, carry, backend):
+    def reset_state(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> Tuple[Union[MjData, Any], Any]:
+        """
+        Reset the state of the goal.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[MjData, Any], Any]: Updated data and carry.
+        """
         assert self.initialized
         return data, carry
 
-    def set_data(self, env, model, data, carry, backend):
-        assert self.initialized
-        return data
+    def is_done(self,
+                env: Any,
+                model: Union[MjModel, Model],
+                data: Union[MjData, Data],
+                carry: Any,
+                backend: ModuleType) -> bool:
+        """
+        Check if the goal is completed.
 
-    def is_done(self, env, model, data, carry, backend):
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            bool: Whether the goal is done.
+        """
         return False
 
-    def mjx_is_done(self, env, model, data, carry, backend):
+    def mjx_is_done(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> bool:
+        """
+        Check if the goal is done (jax-compatible version).
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            bool: Whether the goal is done.
+        """
         return False
 
-    def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
+    def apply_spec_modifications(self,
+                                 spec: MjSpec,
+                                 info_props: Dict) -> MjSpec:
         """
         Apply modifications to the Mujoco XML specification to include the goal.
 
         Args:
             spec (MjSpec): Mujoco specification.
-            info_props (dict): Information properties.
+            info_props (Dict): Information properties.
 
         Returns:
             MjSpec: Modified Mujoco specification.
         """
         return spec
 
-    def set_attr_compat(self, data, backend, attr, arr, ind=None):
+    def set_attr_compat(self,
+                        data: Union[MjData, Data],
+                        backend: ModuleType,
+                        attr: str,
+                        arr: Union[np.ndarray, jnp.ndarray],
+                        ind: Union[np.ndarray, jnp.ndarray, None] = None) -> Union[MjData, Any]:
         """
-        Setter for different attributes in a dataclass that is compatible with numpy and jax.numpy.
+        Set attributes in a backend-compatible manner.
 
         Args:
-            data: The data structure to modify.
-            backend: The backend to use for the modification (either np or jnp).
-            attr (str): The attribute to modify.
-            arr: The array to set.
-            ind (list(ind)): The index to set. If None, the whole array is set.
-
+            data (Union[MjData, Data]): Data object to modify.
+            backend (ModuleType): Backend to use (numpy or jax).
+            attr (str): Attribute name to modify.
+            arr (Union[np.ndarray, jnp.ndarray]): Array to set.
+            ind (Union[np.ndarray, jnp.ndarray, None]): Indices to modify.
 
         Returns:
-            The modified data structure.
-
+            Union[MjData, Any]: Modified data.
         """
         if ind is None:
             ind = backend.arange(len(arr))
@@ -96,60 +171,120 @@ class Goal(StatefulObservation):
         return data
 
     @property
-    def initialized(self):
-        return self._initialized_from_mj and self._initialized_from_traj
+    def initialized(self) -> bool:
+        """Check if the goal is initialized."""
+        init_from_traj = True if not self.requires_trajectory else self._initialized_from_traj
+        return self._initialized_from_mj and init_from_traj
 
     @property
-    def spec(self):
-        return []
-
-    @property
-    def dim(self):
+    def dim(self) -> int:
+        """Get the dimension of the goal."""
         raise NotImplementedError
 
     @property
-    def requires_spec_modification(self):
+    def requires_spec_modification(self) -> bool:
+        """Check if the goal requires specification modification."""
         return self.__class__.apply_spec_modifications != Goal.apply_spec_modifications
 
     @classmethod
-    def list_goals(cls):
+    def list_goals(cls) -> list:
+        """List all subclasses of Goal."""
         return [goal for goal in Goal.__subclasses__()]
 
 
 class NoGoal(Goal):
+    """
+    Empty goal class.
+    """
 
-    def _init_from_mj(self, env, model, data, current_obs_size):
-        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+    def _init_from_mj(self,
+                      env: Any,
+                      model: Union[MjModel, Any],
+                      data: Union[MjData, Any],
+                      current_obs_size: int):
+        """
+        Initialize the class from Mujoco model and data.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            current_obs_size (int): Current observation size.
+        """
+        self.min = [-np.inf] * self.dim
+        self.max = [np.inf] * self.dim
         self.data_type_ind = np.array([])
         self.obs_ind = np.array([])
         self._initialized_from_mj = True
-        self._initialized_from_traj = True
 
-    def init_from_traj(self, traj_handler):
-        pass
+    def get_obs_and_update_state(self,
+                                 env: Any,
+                                 model: Union[MjModel, Model],
+                                 data: Union[MjData, Data],
+                                 carry: Any,
+                                 backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+        Get the observation and update the state. Always returns an empty array for NoGoal.
 
-    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: Empty observation and unchanged carry.
+        """
         return backend.array([]), carry
 
     @property
-    def has_visual(self):
+    def has_visual(self) -> bool:
+        """Check if the goal supports visualization. Always False for NoGoal."""
         return False
 
     @property
-    def dim(self):
+    def dim(self) -> int:
+        """Get the dimension of the goal. Always 0 for NoGoal."""
         return 0
 
 
 @struct.dataclass
 class GoalRandomRootVelocityState:
+    """
+    State class for random root velocity goal.
+
+    Attributes:
+        goal_vel_x (float): Goal velocity in the x direction.
+        goal_vel_y (float): Goal velocity in the y direction.
+        goal_vel_yaw (float): Goal yaw velocity.
+    """
     goal_vel_x: float
     goal_vel_y: float
     goal_vel_yaw: float
 
 
 class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
+    """
+    A class representing a random root velocity goal.
 
-    def __init__(self, info_props, max_x_vel=1.0, max_y_vel=1.0, max_yaw_vel=1.0, **kwargs):
+    This class defines a goal that specifies random velocities for the root body in
+    the x, y, and yaw directions.
+
+    Args:
+        info_props (Dict): Information properties required for initialization.
+        max_x_vel (float): Maximum velocity in the x direction.
+        max_y_vel (float): Maximum velocity in the y direction.
+        max_yaw_vel (float): Maximum yaw velocity.
+        **kwargs: Additional keyword arguments.
+    """
+
+    def __init__(self,
+                 info_props: Dict,
+                 max_x_vel: float = 1.0,
+                 max_y_vel: float = 1.0,
+                 max_yaw_vel: float = 1.0, **kwargs):
+
         self._traj_goal_ind = None
         self.max_x_vel = max_x_vel
         self.max_y_vel = max_y_vel
@@ -157,7 +292,7 @@ class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
         self.free_jnt_name = info_props["root_free_joint_xml_name"]
 
-        # to be initialized from mj
+        # To be initialized from Mujoco
         self._root_body_id = None
         self._root_jnt_qpos_start_id = None
 
@@ -169,117 +304,267 @@ class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
             if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
         super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
 
-    def _init_from_mj(self, env, model, data, current_obs_size):
-        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+    def _init_from_mj(self,
+                      env: Any,
+                      model: Union[MjModel, Model],
+                      data: Union[MjData, Data],
+                      current_obs_size: int):
+        """
+        Initialize the goal from Mujoco model and data.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            current_obs_size (int): Current observation size.
+        """
+        self.min = [-np.inf] * self.dim
+        self.max = [np.inf] * self.dim
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
         self._free_jnt_qpos_id = np.array(mj_jntname2qposid(self.free_jnt_name, model))
         self._initialized_from_mj = True
-        self._initialized_from_traj = True
 
     @property
-    def has_visual(self):
+    def has_visual(self) -> bool:
+        """Check if the goal supports visualization."""
         return True
 
-    def init_state(self, env, key, model, data, backend):
+    def init_state(self,
+                   env: Any,
+                   key: jax.random.PRNGKey,
+                   model: Union[MjModel, Model],
+                   data: Union[MjData, Data],
+                   backend: ModuleType) -> GoalRandomRootVelocityState:
+        """
+        Initialize the goal state.
+
+        Args:
+            env (Any): The environment instance.
+            key (jax.random.PRNGKey): Random key for sampling.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            GoalRandomRootVelocityState: Initialized state.
+        """
         return GoalRandomRootVelocityState(0.0, 0.0, 0.0)
 
-    def reset_state(self, env, model, data, carry, backend):
+    def reset_state(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> Tuple[Union[MjData, Any], Any]:
+        """
+        Reset the goal state with random velocities.
 
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[MjData, Any], Any]: Updated data and carry.
+        """
         key = carry.key
         if backend == np:
-            # sample random goal velocity
-            goal_vel = np.random.uniform([-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel],
-                                         [self.max_x_vel, self.max_y_vel, self.max_yaw_vel])
+            goal_vel = np.random.uniform(
+                [-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel],
+                [self.max_x_vel, self.max_y_vel, self.max_yaw_vel]
+            )
         else:
-            key, _k = jax.random.split(key)
-            goal_vel = jax.random.uniform(_k, shape=(3,),
-                                          minval=jnp.array([-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel]),
-                                          maxval=jnp.array([self.max_x_vel, self.max_y_vel, self.max_yaw_vel]))
+            key, subkey = jax.random.split(key)
+            goal_vel = jax.random.uniform(
+                subkey,
+                shape=(3,),
+                minval=jnp.array([-self.max_x_vel, -self.max_y_vel, -self.max_yaw_vel]),
+                maxval=jnp.array([self.max_x_vel, self.max_y_vel, self.max_yaw_vel])
+            )
 
         goal_state = GoalRandomRootVelocityState(goal_vel[0], goal_vel[1], goal_vel[2])
         observation_states = carry.observation_states.replace(**{self.name: goal_state})
         return data, carry.replace(key=key, observation_states=observation_states)
 
-    def get_obs_and_update_state(self, env, model, data, carry, backend):
+    def get_obs_and_update_state(self,
+                                 env: Any,
+                                 model: Union[MjModel, Model],
+                                 data: Union[MjData, Data],
+                                 carry: Any,
+                                 backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+        Get the current goal observation and update the state.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: Goal observation and updated carry.
+        """
         goal_vel_x = getattr(carry.observation_states, self.name).goal_vel_x
         goal_vel_y = getattr(carry.observation_states, self.name).goal_vel_y
         goal_vel_yaw = getattr(carry.observation_states, self.name).goal_vel_yaw
         goal = backend.array([goal_vel_x, goal_vel_y, goal_vel_yaw])
         goal_visual = backend.array([goal_vel_x, goal_vel_y, 0.0, 0.0, 0.0, goal_vel_yaw])
+
         if self.visualize_goal:
-            carry = self.set_visuals(goal_visual, env, model, data, carry, self._root_body_id,
-                    self._free_jnt_qpos_id, self.visual_geoms_idx,  backend)
+            carry = self.set_visuals(
+                goal_visual, env, model, data, carry, self._root_body_id, self._free_jnt_qpos_id, self.visual_geoms_idx, backend
+            )
+
         return goal, carry
 
     @property
-    def dim(self):
+    def dim(self) -> int:
+        """Get the dimension of the goal."""
         return 3
 
 
 @struct.dataclass
 class GoalTrajRootVelocityState:
+    """
+    State class for trajectory root velocity goal.
+
+    Attributes:
+        goal_vel (Union[np.ndarray, jnp.ndarray]): Velocity goal for the root.
+    """
     goal_vel: Union[np.ndarray, jnp.ndarray]
 
 
 class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
+    """
+    A class representing a trajectory-based root velocity goal.
 
-    def __init__(self, info_props, n_steps_average=3, **kwargs):
+    This class defines a goal that computes the root velocity based on trajectory data
+    and averages over a specified number of future steps.
+
+    Args:
+        info_props (Dict): Information properties required for initialization.
+        n_steps_average (int): Number of future steps to average over for the velocity goal.
+        **kwargs: Additional keyword arguments.
+    """
+
+    def __init__(self,
+                 info_props: Dict,
+                 n_steps_average: int = 3,
+                 **kwargs):
         self._traj_goal_ind = None
         self.upper_body_xml_name = info_props["upper_body_xml_name"]
         self.free_jnt_name = info_props["root_free_joint_xml_name"]
 
-        # to be initialized from mj
+        # To be initialized from Mujoco
         self._root_body_id = None
         self._root_jnt_qpos_start_id = None
         self._free_jnt_qvelid = None
         self._free_jnt_qposid = None
 
-        # number of future steps in the trajectory to average the goal over
+        # Number of future steps in the trajectory to average the goal over
         self._n_steps_average = n_steps_average
 
-        # call visualizer init
+        # Call visualizer initialization (if applicable)
         RootVelocityArrowVisualizer.__init__(self, info_props)
 
-        # call goal init
+        # Call goal initialization
         n_visual_geoms = self._arrow_n_visual_geoms \
             if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
 
         super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
 
-    def _init_from_mj(self, env, model, data, current_obs_size):
-        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+    def _init_from_mj(self,
+                      env: Any,
+                      model: Union[MjModel, Model],
+                      data: Union[MjData, Data],
+                      current_obs_size: int):
+        """
+        Initialize the goal from Mujoco model and data.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            current_obs_size (int): Current observation size.
+        """
+        self.min = [-np.inf] * self.dim
+        self.max = [np.inf] * self.dim
         self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
         self._initialized_from_mj = True
         self._root_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.upper_body_xml_name)
         self._free_jnt_qposid = np.array(mj_jntname2qposid(self.free_jnt_name, model))
         self._free_jnt_qvelid = np.array(mj_jntname2qvelid(self.free_jnt_name, model))
 
-    def init_from_traj(self, traj_handler):
+    def init_from_traj(self, traj_handler: Any):
+        """
+        Initialize from a trajectory handler.
+
+        Args:
+            traj_handler (Any): The trajectory handler.
+        """
         assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
         self._initialized_from_traj = True
 
-    def init_state(self, env, key, model, data, backend):
+    def init_state(self,
+                   env: Any,
+                   key: jax.random.PRNGKey,
+                   model: Union[MjModel, Any],
+                   data: Union[MjData, Any],
+                   backend: ModuleType) -> GoalTrajRootVelocityState:
+        """
+        Initialize the goal state.
+
+        Args:
+            env (Any): The environment instance.
+            key (jax.random.PRNGKey): Random key for sampling.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            GoalTrajRootVelocityState: Initialized state with zero velocity.
+        """
         return GoalTrajRootVelocityState(backend.zeros(self.dim))
 
-    def get_obs_and_update_state(self, env, model, data, carry, backend):
+    def get_obs_and_update_state(self,
+                                 env: Any,
+                                 model: Union[MjModel, Model],
+                                 data: Union[MjData, Data],
+                                 carry: Any,
+                                 backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+        Get the current goal observation and update the state.
 
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: Goal observation and updated carry.
+        """
         if backend == np:
             R = np_R
         else:
             R = jnp_R
 
-        # get trajectory data and state
+        # Get trajectory data and state
         traj_data = env.th.traj.data
         traj_state = carry.traj_state
 
-        # get a slice of the trajectory data
+        # Get a slice of the trajectory data
         traj_qpos = backend.atleast_2d(traj_data.get_qpos_slice(traj_state.traj_no, traj_state.subtraj_step_no,
                                                                 self._n_steps_average, backend))
         traj_qvel = backend.atleast_2d(traj_data.get_qvel_slice(traj_state.traj_no, traj_state.subtraj_step_no,
                                                                 self._n_steps_average, backend))
 
-        # get the average goal over the slice
+        # Get the average goal over the slice
         traj_free_jnt_qpos = traj_qpos[0, self._free_jnt_qposid]
         traj_free_jnt_qvel = traj_qvel[:, self._free_jnt_qvelid]
         traj_free_jnt_lin_vel = backend.mean(traj_free_jnt_qvel[:, :3], axis=0)
@@ -287,7 +572,7 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
         traj_free_jnt_quat = traj_free_jnt_qpos[3:]
         traj_free_jnt_mat = R.from_quat(quat_scalarfirst2scalarlast(traj_free_jnt_quat)).as_matrix()
 
-        # transform lin and rot vel to local frame
+        # Transform lin and rot vel to local frame
         traj_free_jnt_lin_vel = traj_free_jnt_mat.T @ traj_free_jnt_lin_vel
         traj_free_jnt_rot_vel = traj_free_jnt_mat.T @ traj_free_jnt_rot_vel
 
@@ -295,29 +580,72 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
 
         if self.visualize_goal:
             carry = self.set_visuals(goal, env, model, data, carry, self._root_body_id,
-                    self._free_jnt_qposid, self.visual_geoms_idx,  backend)
+                                     self._free_jnt_qposid, self.visual_geoms_idx, backend)
 
         return goal, carry
 
-
-    def is_done(self, env, model, data, carry, backend):
-        """ Terminates the episode if the number of steps till the end of the trajectory is
-        less than the number of steps to average over. """
-        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
-        if steps_till_end < self._n_steps_average:
-            return True
-        else:
-            return False
-
-    def mjx_is_done(self, env, model, data, carry, backend):
-        """ Terminates the episode if the number of steps till the end of the trajectory is
-        less than the number of steps to average over. """
-        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
-        return jax.lax.cond(steps_till_end < self._n_steps_average, lambda: True, lambda : False)
-
-    def _steps_till_end(self, traj_data, traj_state):
+    def is_done(self,
+                env: Any,
+                model: Union[MjModel, Model],
+                data: Union[MjData, Data],
+                carry: Any,
+                backend: ModuleType) -> bool:
         """
-        Calculates the number of steps till the end of the trajectory.
+        Check if the goal is completed.
+
+        Terminates the episode if the number of steps till the end of the trajectory is
+        less than the number of steps to average over.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            bool: Whether the goal is done.
+        """
+        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
+        return steps_till_end < self._n_steps_average
+
+    def mjx_is_done(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> bool:
+        """
+        Check if the goal is done (JAX-compatible).
+
+        Terminates the episode if the number of steps till the end of the trajectory is
+        less than the number of steps to average over.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            bool: Whether the goal is done.
+        """
+        steps_till_end = self._steps_till_end(env.th.traj.data, carry.traj_state)
+        return jax.lax.cond(steps_till_end < self._n_steps_average, lambda: True, lambda: False)
+
+    def _steps_till_end(self,
+                        traj_data: Any,
+                        traj_state: Any) -> int:
+        """
+        Calculate the number of steps till the end of the trajectory.
+
+        Args:
+            traj_data (Any): Trajectory data.
+            traj_state (Any): Current trajectory state.
+
+        Returns:
+            int: Number of steps till the end of the trajectory.
         """
         traj_no = traj_state.traj_no
         subtraj_step_no = traj_state.subtraj_step_no
@@ -326,172 +654,267 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
         return idx_of_next_traj - current_idx
 
     @classmethod
-    def get_all_obs_of_type(cls, model, data, ind, backend):
+    def get_all_obs_of_type(cls,
+                            model: Union[MjModel, Model],
+                            data: Union[MjData, Data],
+                            ind: Any, backend: ModuleType) -> Any:
+        """
+        Retrieve all observations of this type.
+
+        Args:
+            model (Union[MjModel, Any]): The Mujoco model.
+            data (Union[MjData, Any]): The Mujoco data.
+            ind (Any): Index for observations.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Any: Flattened observations.
+        """
         return backend.ravel(data.userdata[ind.GoalTrajRootVelocity])
 
     @property
-    def has_visual(self):
+    def has_visual(self) -> bool:
+        """Check if the goal supports visualization."""
         return True
 
     @property
-    def requires_trajectory(self):
+    def requires_trajectory(self) -> bool:
+        """Check if the goal requires a trajectory."""
         return True
 
-    def set_visual_data(self, data, backend, traj_goal):
-        # get the relative desired position of the arrow (keypoint 2) and scale it by the ratio (for visual purposes)
+    def set_visual_data(self,
+                        data: Union[MjData, Data],
+                        backend: ModuleType,
+                        traj_goal: Union[np.ndarray, jnp.ndarray]) -> Union[MjData, Any]:
+        """
+        Set visualization data for the goal.
+
+        Args:
+            data (Union[MjData, Data]): The Mujoco data.
+            backend (ModuleType): The backend (numpy or jax).
+            traj_goal (Union[np.ndarray, jnp.ndarray]): The trajectory goal.
+
+        Returns:
+            Union[MjData, Any]: Updated Mujoco data with visualization settings.
+        """
         rel_target_arrow_pos = backend.concatenate([traj_goal * self._arrow_to_goal_ratio, jnp.ones(1)])
-        # calculate and set the absolute position of the arrow
         abs_target_arrow_pos = ((data.body(self.upper_body_xml_name).xmat.reshape(3, 3) @ rel_target_arrow_pos) +
                                 data.body(self.upper_body_xml_name).xpos)
         data.site(self._site_name_keypoint_2).xpos = abs_target_arrow_pos
         return data
 
     @property
-    def dim(self):
+    def dim(self) -> int:
+        """Get the dimension of the goal."""
         return 6
 
 
 
+
 class GoalTrajMimic(Goal):
+    """
+    A class representing a trajectory goal in keypoint space (defined by sites) and joint properties.
+    All entities are relative to the root body. This is the typical goal to be used with a DeepMimic-style reward.
 
-    main_body_id = None
-    main_site_id = None
-    _relevant_body_names = []
-    _relevant_body_ids = []
-    _rel_site_ids = []
-    _body_rootid = None
-    _site_bodyid = None
+    Args:
+        info_props (Dict): Information properties required for initialization.
+        rel_body_names (List[str]): List of relevant body names. Defaults to None.
+        **kwargs: Additional keyword arguments.
+    """
 
-    def __init__(self, info_props, **kwargs):
+    def __init__(self, info_props: Dict,
+                 rel_body_names: List[str] = None,
+                 **kwargs):
 
-        # todo: implement n_step_lookahead (requires dynamic slicing in jax)
         self.n_step_lookahead = 1
-        n_visual_geoms = len(info_props["sites_for_mimic"]) if ("visualize_goal" in kwargs.keys() and
-                                                                kwargs["visualize_goal"]) else 0
+        n_visual_geoms = len(info_props["sites_for_mimic"]) if ("visualize_goal" in kwargs.keys() and kwargs["visualize_goal"]) else 0
         super().__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
 
-        # get main body name of the environment
         self.main_body_name = self._info_props["upper_body_xml_name"]
-
-        # these will be calculated during initialization
         self._qpos_ind = None
         self._qvel_ind = None
         self._size_additional_observation = None
 
-    def _init_from_mj(self, env, model, data, current_obs_size):
-        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
-        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
-        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
-        for body_name in self._relevant_body_names:
-            body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
-            self._relevant_body_ids.append(body_id)
+        # To be initialized
+        self._relevant_body_names = [] if rel_body_names is None else rel_body_names
+        self._relevant_body_ids = []
+        self._rel_site_ids = []
+        self._body_rootid = None
+        self._site_bodyid = None
+        self._dim = None
+
+    def _init_from_mj(self,
+                      env: Any,
+                      model: Union[MjModel, Model],
+                      data: Union[MjData, Data],
+                      current_obs_size: int):
+        """
+        Initialize the goal from Mujoco model and data.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            current_obs_size (int): Current observation size.
+        """
+
+        for i in range(model.nbody):
+            body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, i)
+            if body_name in self._relevant_body_names and body_name != self.main_body_name and body_name != "world":
+                self._relevant_body_ids.append(i)
+
         for name in self._info_props["sites_for_mimic"]:
             site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
             self._rel_site_ids.append(site_id)
-        self.__class__._rel_site_ids = np.array(self._rel_site_ids)
-        self.__class__.main_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, self.main_body_name)
-        self.__class__._body_rootid = model.body_rootid
-        self.__class__._site_bodyid = model.site_bodyid
+
+        root_body_name = self._info_props["root_body_name"]
+        n_joints = model.njnt
+        n_sites = len(self._info_props["sites_for_mimic"]) - 1
+        size_for_joint_pos = (5 + (n_joints - 1)) * self.n_step_lookahead
+        size_for_joint_vel = (6 + (n_joints - 1)) * self.n_step_lookahead
+        size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead
+
+        self._dim = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
+        self._size_additional_observation = size_for_sites
+
+        self._rel_site_ids = np.array(self._rel_site_ids)
+        self._body_rootid = model.body_rootid
+        self._site_bodyid = model.site_bodyid
+
         root_free_joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, env.root_free_joint_xml_name)
         self._qpos_ind = np.concatenate(
-            [mj_jntid2qposid(i, model)[2:] for i in range(model.njnt) if i == root_free_joint_id] +     # no xy for root
-            [mj_jntid2qposid(i, model) for i in range(model.njnt) if i != root_free_joint_id])
+            [mj_jntid2qposid(i, model)[2:] for i in range(model.njnt) if i == root_free_joint_id] +
+            [mj_jntid2qposid(i, model) for i in range(model.njnt) if i != root_free_joint_id]
+        )
         self._qvel_ind = np.concatenate([mj_jntid2qvelid(i, model) for i in range(model.njnt)])
+
+        self.min = [-np.inf] * self.dim
+        self.max = [np.inf] * self.dim
+        self.data_type_ind = np.array([i for i in range(data.userdata.size)])
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+
         self._initialized_from_mj = True
 
-    def apply_spec_modifications(self, spec: MjSpec, info_props: dict):
+    def apply_spec_modifications(self,
+                                 spec: Any,
+                                 info_props: Dict):
         """
         Apply modifications to the Mujoco XML specification to include the goal.
 
         Args:
-            spec (MjSpec): Mujoco specification.
-            info_props (dict): Information properties.
+            spec (Any): Mujoco specification.
+            info_props (Dict): Information properties.
 
         Returns:
-            MjSpec: Modified Mujoco specification.
+            Any: Modified Mujoco specification.
         """
-        root_body_name = info_props["root_body_name"]
-        joints = spec.joints
-        n_joints = len(joints)
-        for body in spec.bodies:
-            if body.name not in self._relevant_body_names and body.name != self.main_body_name and body.name != "world":
-                self._relevant_body_names.append(body.name)
-        n_sites = len(self._info_props["sites_for_mimic"]) - 1   # number of sites to be considered, -1 because all quantities are relative to the main site
-        size_for_joint_pos = (5 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 7 dim -2 to not incl. x and y
-        size_for_joint_vel = (6 + (n_joints-1)) * self.n_step_lookahead     # free_joint has 6 dim
-        size_for_sites = (3 + 3 + 6) * n_sites * self.n_step_lookahead    # 3 for rpos, 3 for raxis_angle, 6 for rvel
-        self._dim = (size_for_joint_pos + size_for_joint_vel + size_for_sites) * self.n_step_lookahead
-        self._size_additional_observation = size_for_sites
+
         if self.visualize_goal:
-            # make all mimic sites visible by default
             for site in spec.sites:
                 if "mimic" in site.name:
                     site.group = 0
         return spec
 
-    def init_from_traj(self, traj_handler):
+    def init_from_traj(self, traj_handler: Any):
+        """
+        Initialize from a trajectory handler.
+
+        Args:
+            traj_handler (Any): The trajectory handler.
+        """
         assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
         self._initialized_from_traj = True
 
-    def get_obs_and_update_state(self, env, model, data, carry, backend):
+    def get_obs_and_update_state(self,
+                                 env: Any,
+                                 model: Union[MjModel, Model],
+                                 data: Union[MjData, Data],
+                                 carry: Any,
+                                 backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+        Get the current goal observation and update the state.
 
-        # get trajectory goal
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: Goal observation and updated carry.
+        """
         traj_data = env.th.traj.data
         traj_state = carry.traj_state
 
-        # get traj_data for current time step
         traj_data_single = traj_data.get(traj_state.traj_no, traj_state.subtraj_step_no, backend)
 
-        # get joint positions and velocities
         qpos_traj = traj_data_single.qpos
         qvel_traj = traj_data_single.qvel
 
-        # get relative site quantities
         rel_site_ids = self._rel_site_ids
         rel_body_ids = self._site_bodyid[rel_site_ids]
         site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(traj_data_single, rel_site_ids,
                                                                                rel_body_ids,
                                                                                self._body_rootid, backend)
 
-        # setup goal observation
-        traj_goal_obs = backend.concatenate([qpos_traj[self._qpos_ind],
-                                             qvel_traj[self._qvel_ind],
-                                             backend.ravel(site_rpos),
-                                             backend.ravel(site_rangles),
-                                             backend.ravel(site_rvel)])
+        traj_goal_obs = backend.concatenate([
+            qpos_traj[self._qpos_ind],
+            qvel_traj[self._qvel_ind],
+            backend.ravel(site_rpos),
+            backend.ravel(site_rangles),
+            backend.ravel(site_rvel)
+        ])
 
         if self.visualize_goal:
             carry = self.set_visuals(env, model, data, carry, backend)
 
-        # add site information of the current time step to the observation (usually not part of observation spec)
         if len(self._rel_site_ids) > 0:
-
-            # get relative site quantities for current data
             rel_site_ids = self._rel_site_ids
             rel_body_ids = self._site_bodyid[rel_site_ids]
             site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, rel_site_ids, rel_body_ids,
                                                                                    self._body_rootid, backend)
 
-            # concatenate all relevant information
-            goal = backend.concatenate([backend.ravel(site_rpos),
-                                        backend.ravel(site_rangles),
-                                        backend.ravel(site_rvel),
-                                        backend.ravel(traj_goal_obs)])
+            goal = backend.concatenate([
+                backend.ravel(site_rpos),
+                backend.ravel(site_rangles),
+                backend.ravel(site_rvel),
+                backend.ravel(traj_goal_obs)
+            ])
 
             return goal, carry
         else:
             return traj_goal_obs, carry
 
     @property
-    def has_visual(self):
+    def has_visual(self) -> bool:
+        """Check if the goal supports visualization."""
         return True
 
     @property
-    def requires_trajectory(self):
+    def requires_trajectory(self) -> bool:
+        """Check if the goal requires a trajectory."""
         return True
 
-    def set_visuals(self, env, model, data, carry, backend):
+    def set_visuals(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> Any:
+        """
+        Set the visualizations for the goal.
 
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Any: Updated carry with visualizations set.
+        """
         if backend == np:
             R = np_R
         else:
@@ -506,7 +929,6 @@ class GoalTrajMimic(Goal):
         site_xmat = traj_data.get_site_xmat(traj_state.traj_no, traj_state.subtraj_step_no, backend)
         s_ids = jnp.array(self._rel_site_ids)
 
-        # set the data
         qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
         type = backend.full(self.n_visual_geoms, int(mujoco.mjtGeom.mjGEOM_BOX), dtype=backend.int32).reshape((-1, 1))
         size = backend.tile(backend.array([0.075, 0.05, 0.025]), (self.n_visual_geoms, 1))
@@ -517,7 +939,7 @@ class GoalTrajMimic(Goal):
             geom_type = user_scene.geoms.type.at[self.visual_geoms_idx].set(type)
             geom_size = user_scene.geoms.size.at[self.visual_geoms_idx].set(size)
             geom_rgba = user_scene.geoms.rgba.at[self.visual_geoms_idx].set(color)
-            geom_pos = geom_pos.at[:, :2].add(-qpos_init[:2])  # reset to the initial position
+            geom_pos = geom_pos.at[:, :2].add(-qpos_init[:2])
         else:
             user_scene.geoms.pos[self.visual_geoms_idx] = site_xpos[s_ids]
             user_scene.geoms.mat[self.visual_geoms_idx] = site_xmat[s_ids]
@@ -539,5 +961,6 @@ class GoalTrajMimic(Goal):
         return carry
 
     @property
-    def dim(self):
+    def dim(self) -> int:
+        """Get the dimension of the goal."""
         return self._dim + self._size_additional_observation

@@ -230,7 +230,7 @@ class LocoEnv(Mjx):
 
     def _simulation_post_step(self, model, data, carry):
         """
-        Update trajectory state and goal in Mujoco data structure if needed.
+        Update trajectory state if needed.
 
         """
         # call parent to update domain randomization and terrain
@@ -240,14 +240,11 @@ class LocoEnv(Mjx):
         if self.th is not None:
             carry = self.th.update_state(self, model, data, carry, np)
 
-        # update goal
-        data = self._goal.set_data(self, self._model, data, carry, backend=np)
-
         return data, carry
 
     def _mjx_simulation_post_step(self, model, data, carry):
         """
-        Update trajectory state and goal in Mujoco data structure if needed.
+        Update trajectory state if needed.
 
         """
         # call parent to update domain randomization and terrain
@@ -256,9 +253,6 @@ class LocoEnv(Mjx):
         # update trajectory state
         if self.th is not None:
             carry = self.th.update_state(self, self._model, data, carry, jnp)
-
-        # update goal
-        data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
 
         return data, carry
 
@@ -604,9 +598,6 @@ class LocoEnv(Mjx):
         # call parent to apply domain randomization and terrain
         data, carry = super()._reset_init_data_and_model(model, data, carry)
 
-        # apply modification by goal if needed
-        data = self._goal.set_data(self, self._model, data, carry, backend=np)
-
         return data, carry
 
     def _mjx_reset_init_data_and_model(self, model, data, carry):
@@ -618,9 +609,6 @@ class LocoEnv(Mjx):
 
         # call parent to apply domain randomization and terrain
         data, carry = super()._mjx_reset_init_data_and_model(model, data, carry)
-
-        # apply modification by goal if needed
-        data = self._goal.set_data(self, self._model, data, carry, backend=jnp)
 
         return data, carry
 
