@@ -416,7 +416,8 @@ class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
 
         if self.visualize_goal:
             carry = self.set_visuals(
-                goal_visual, env, model, data, carry, self._root_body_id, self._free_jnt_qpos_id, self.visual_geoms_idx, backend
+                goal_visual, env, model, data, carry, self._root_body_id,
+                self._free_jnt_qpos_id, self.visual_geoms_idx, backend
             )
 
         return goal, carry
@@ -506,7 +507,8 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
         Args:
             traj_handler (Any): The trajectory handler.
         """
-        assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
+        assert traj_handler is not None, (f"Trajectory handler is None, "
+                                          f"using {__class__.__name__} requires a trajectory.")
         self._initialized_from_traj = True
 
     def init_state(self,
@@ -726,8 +728,9 @@ class GoalTrajMimic(Goal):
                  rel_body_names: List[str] = None,
                  **kwargs):
 
-        self.n_step_lookahead = 1
-        n_visual_geoms = len(info_props["sites_for_mimic"]) if ("visualize_goal" in kwargs.keys() and kwargs["visualize_goal"]) else 0
+        self.n_step_lookahead = 1   # todo: implement n_step_lookahead
+        n_visual_geoms = len(info_props["sites_for_mimic"]) if \
+            ("visualize_goal" in kwargs.keys() and kwargs["visualize_goal"]) else 0
         super().__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
 
         self.main_body_name = self._info_props["upper_body_xml_name"]
@@ -822,7 +825,8 @@ class GoalTrajMimic(Goal):
         Args:
             traj_handler (Any): The trajectory handler.
         """
-        assert traj_handler is not None, f"Trajectory handler is None, using {__class__.__name__} requires a trajectory."
+        assert traj_handler is not None, (f"Trajectory handler is None, "
+                                          f"using {__class__.__name__} requires a trajectory.")
         self._initialized_from_traj = True
 
     def get_obs_and_update_state(self,
