@@ -462,7 +462,7 @@ class PPOJax(JaxRLAlgorithmBase):
     @staticmethod
     def _wrap_env(env, config):
 
-        if "len_obs_history" in config and config.obs_concat_last_n > 1:
+        if "len_obs_history" in config and config.len_obs_history > 1:
             env = NStepWrapper(env, config.obs_concat_last_n)
         env = LogWrapper(env)
         env = VecEnv(env)
