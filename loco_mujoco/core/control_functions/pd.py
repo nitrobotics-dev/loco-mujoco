@@ -38,6 +38,7 @@ class PDControl(ControlFunction):
                  p_gain: Union[float, np.ndarray],
                  d_gain: Union[float, np.ndarray],
                  nominal_joint_positions: np.ndarray = None,
+                 scale_action_to_jnt_limits: bool = True,
                  **kwargs: Any):
         """
         Initialize the PDControl class.
@@ -47,6 +48,7 @@ class PDControl(ControlFunction):
             p_gain (Union[float, np.ndarray]): Proportional gain for the PD controller.
             d_gain (Union[float, np.ndarray]): Derivative gain for the PD controller.
             nominal_joint_positions (np.ndarray, optional): Default joint positions. If not provided, uses qpos0.
+            scale_action_to_jnt_limits (bool): If true, the actions are scaled to the joint limits.
             **kwargs (Any): Additional keyword arguments for the parent class.
         """
         self._init_p_gain = np.array(p_gain)
@@ -54,6 +56,7 @@ class PDControl(ControlFunction):
         self._ctrl_ranges = []
         self._jnt_ranges = []
         self._jnt_names = []
+        self._scale_action_to_jnt_limits = scale_action_to_jnt_limits
         for actuator in env.mjspec.actuators:
             jnt_name = actuator.target
             ctrl_range = actuator.ctrlrange if actuator.ctrllimited else np.array([-np.inf, np.inf])
@@ -145,7 +148,10 @@ class PDControl(ControlFunction):
         """
         assert_backend_is_supported(backend)
 
-        unnormalized_action = self._unnormalize_action(action)
+        if self._scale_action_to_jnt_limits:
+            unnormalized_action = self._unnormalize_action(action)
+        else:
+            unnormalized_action = action
 
         pd_state = carry.control_func_state
 
