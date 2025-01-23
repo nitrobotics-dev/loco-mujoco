@@ -61,6 +61,7 @@ experiment:
   max_grad_norm: 0.5
   activation: tanh
   anneal_lr: false
+  weight_decay: 0.0
   normalize_env: true
   debug: false
   n_seeds: 1  # while automatically take seeds from 1 to n_seeds

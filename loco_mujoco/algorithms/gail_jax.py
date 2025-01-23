@@ -128,19 +128,20 @@ class GAILJax(JaxRLAlgorithmBase):
         if config.experiment.anneal_lr:
             tx = optax.chain(
                 optax.clip_by_global_norm(config.experiment.max_grad_norm),
-                optax.adam(learning_rate=lambda count: cls._linear_lr_schedule(count, config.experiment.num_minibatches,
-                                                                               config.experiment.update_epochs, config.lr,
-                                                                               config.experiment.num_updates), eps=1e-5),
+                optax.adamw(weight_decay=config.experiment.weight_decay, eps=1e-5,
+                            learning_rate=lambda count: cls._linear_lr_schedule(count, config.experiment.num_minibatches,
+                                                                                config.experiment.update_epochs, config.lr,
+                                                                                config.experiment.num_updates))
             )
         else:
             tx = optax.chain(
                 optax.clip_by_global_norm(config.experiment.max_grad_norm),
-                optax.adam(config.experiment.lr, eps=1e-5),
+                optax.adamw(config.experiment.lr, weight_decay=config.experiment.weight_decay, eps=1e-5),
             )
 
         disc_tx = optax.chain(
             optax.clip_by_global_norm(config.experiment.lr),
-            optax.adam(config.experiment.disc_lr, eps=1e-5),
+            optax.adamw(config.experiment.disc_lr, weight_decay=config.experiment.weight_decay, eps=1e-5),
         )
 
         return tx, disc_tx

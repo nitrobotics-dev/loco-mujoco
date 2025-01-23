@@ -17,6 +17,7 @@ def experiment(config: DictConfig):
         os.environ['XLA_FLAGS'] = (
             '--xla_gpu_triton_gemm_any=True ')
 
+        config.experiment.env_params["headless"] = False
         env = LocoEnv.make(goal_params=dict(visualize_goal=True), **config.experiment.env_params)
 
         # load train state

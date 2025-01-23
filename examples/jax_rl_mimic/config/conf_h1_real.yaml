@@ -15,47 +15,51 @@ hydra:
 #      experiment.update_epochs: 4
 #      experiment.clip_eps: 0.2, 0.05
       # env_params
-      experiment.env_params.reward_params.air_time_coeff: 0.25, 0.1
-      experiment.env_params.reward_params.joint_acc_coeff: 2e-7, 3e-7
-      experiment.env_params.reward_params.air_time_max: 0.1, 0.5
-      experiment.env_params.reward_params.joint_torque_coeff: 5e-6, 2e-5
-      experiment.env_params.reward_params.joint_position_limit_coeff: 1.0, 5.0
-      experiment.env_params.reward_params.action_rate_coeff: 1e-2, 1e-3
+      experiment.total_timesteps: 50e7, 100e7
+      experiment.hidden_layers: \[1024\, 512\, 1256\], \[8421\, 45\]
 
 wandb:
-  project: "unitreeH1_PD"
+  project: "real_unitreeh1_lafan1"
 
 experiment:
   task_factory:
-    name: RLFactory
-    params: {}
+    name: LAFAN1ImitationFactory
+    params:
+      dataset_name:
+      #- walk1_subject1
+      - walk1_subject2
+      #- walk1_subject5
+      #- walk2_subject4
+      #- walk3_subject2
   env_params:
     env_name: MjxUnitreeH1
     headless: True
     horizon: 1000
-    terminal_state_type: HeightBasedTerminalStateHandler
-    goal_type: GoalRandomRootVelocity
-    reward_type: LocomotionReward
+    goal_type: GoalTrajMimic
+    goal_params:
+      visualize_goal: true
+    reward_type: MimicReward
     reward_params:
-      tracking_w_exp_xy: 4.0
-      tracking_w_exp_yaw: 4.0
-      tracking_w_sum_xy: 2.0
-      tracking_w_sum_yaw: 1.0
-      nominal_joint_pos_coeff: 0.2
-      joint_torque_coeff: 5e-6
-      air_time_coeff: 0.0
+      action_out_of_bounds_coeff: 0.01
       joint_acc_coeff: 2e-7
-      air_time_max: 0.5
-      joint_position_limit_coeff: 5.0
-      action_rate_coeff: 0.01
-      nominal_joint_pos_names: [back_bkz, l_arm_shy, l_arm_shx, l_arm_shz, left_elbow,
-                                r_arm_shy, r_arm_shx, r_arm_shz, right_elbow]
+      joint_torque_coeff: 2e-5
+      action_rate_coeff: 5e-2
+      qpos_w_sum: 0.4
+      qvel_w_sum: 0.2
+      rpos_w_sum: 0.5
+      rquat_w_sum: 0.3
+      rvel_w_sum: 0.1
+      sites_for_mimic:
+        - upper_body_mimic
+        - left_hand_mimic
+        - left_foot_mimic
+        - right_hand_mimic
+        - right_foot_mimic
     #terrain_type: RoughTerrain
-    init_state_type: DefaultInitialStateHandler
     domain_randomization_type: DefaultRandomizer
     domain_randomization_params: ${domain_randomization}
-    timestep: 0.004 # 250 Hz
-    n_substeps: 5   # 50 Hz
+    #timestep: 0.004 # 250 Hz
+    #n_substeps: 5   # 50 Hz
     observation_spec:
       - type: ProjectedGravityVector
         obs_name: q_root
@@ -82,6 +86,9 @@ experiment:
           - hip_rotation_l
           - knee_angle_l
           - ankle_angle_l
+      - type: FreeJointVel
+        obs_name: dq_root
+        xml_name: root
       - type: JointVelArray
         obs_name: joint_velocities
         xml_names:
@@ -130,9 +137,10 @@ experiment:
     control_params: ${control_config.position_control.control_params}
   hidden_layers: [512, 256]
   lr: 1e-4
+  len_obs_history: 5
   num_envs: 2048
   num_steps: 20
-  total_timesteps: 50e7
+  total_timesteps: 5e6
   update_epochs: 4
   num_minibatches: 32
   gamma: 0.99
@@ -151,10 +159,34 @@ experiment:
   n_seeds: 1  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
-    active: false
+    active: true
     num_steps: 100
     num_envs: 100
     num: 10 # set to 0 to disable validation
+    # if none of the following is set, only the mean reward and episode length is logged
+    quantities: # quantities to be used for the distance measures below
+      - JointPosition
+      - JointVelocity
+      - RelSitePosition
+      - RelSiteVelocity
+      - RelSiteOrientation
+    measures:
+      - EuclideanDistance
+      - DynamicTimeWarping
+      - DiscreteFrechetDistance
+    rel_site_names:
+      - upper_body_mimic
+      - left_hand_mimic
+      - left_foot_mimic
+      - right_hand_mimic
+      - right_foot_mimic
+    joints_to_ignore:
+      - pelvis_tx
+      - pelvis_tz
+      - pelvis_ty
+      - pelvis_tilt
+      - pelvis_list
+      - pelvis_rotation
 
 
 # Define control subconfigs

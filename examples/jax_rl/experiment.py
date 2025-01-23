@@ -7,7 +7,6 @@ from dataclasses import fields
 from loco_mujoco import TaskFactory
 from loco_mujoco.algorithms import PPOJax
 from loco_mujoco.utils.metrics import QuantityContainer
-from loco_mujoco.utils import MetricsHandler
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
@@ -97,6 +96,12 @@ def experiment(config: DictConfig):
                             step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
+
+        # run the environment with the trained agent to record video
+        PPOJax.play_policy(env, agent_conf, agent_state, deterministic=True, n_steps=200, n_envs=20, record=True,
+                           train_state_seed=0)
+        video_file = env.video_file_path
+        run.log({"Agent Video": wandb.Video(video_file)})
 
         wandb.finish()
 

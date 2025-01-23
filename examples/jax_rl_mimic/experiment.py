@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 import traceback
 
 
-@hydra.main(version_base=None, config_path="./", config_name="conf")
+@hydra.main(version_base=None, config_path="./config", config_name="conf_h1_real")
 def experiment(config: DictConfig):
     try:
 
@@ -100,6 +100,12 @@ def experiment(config: DictConfig):
                             step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
+
+        # run the environment with the trained agent to record video
+        PPOJax.play_policy(env, agent_conf, agent_state, deterministic=True, n_steps=200, n_envs=20, record=True,
+                           train_state_seed=0)
+        video_file = env.video_file_path
+        run.log({"Agent Video": wandb.Video(video_file)})
 
     except Exception:
         traceback.print_exc(file=sys.stderr)
