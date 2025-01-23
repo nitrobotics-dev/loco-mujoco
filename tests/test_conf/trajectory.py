@@ -1,4 +1,5 @@
 import pytest
+import jax
 import jax.numpy as jnp
 import numpy as np
 import mujoco
@@ -11,6 +12,10 @@ from loco_mujoco.trajectory import (
     TrajectoryData,
     TrajectoryTransitions,
 )
+
+from .test_humanoid_env import TestHumamoidEnv
+
+DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 
 
 @pytest.fixture
@@ -277,6 +282,7 @@ def input_trajectory_transitions() -> TrajectoryTransitions:
 
     return factory
 
+
 @pytest.fixture
 def input_trajectory(input_trajectory_info_data, input_trajectory_data) -> Trajectory:
     def factory(backend):
@@ -293,3 +299,89 @@ def input_trajectory(input_trajectory_info_data, input_trajectory_data) -> Traje
         return trajectory
 
     return factory
+
+
+@pytest.fixture
+def standing_trajectory() -> Trajectory:
+
+    N_steps = 1000
+
+    # define a simple Mjx environment
+    mjx_env = TestHumamoidEnv(enable_mjx=False,
+                              terminal_state_type="RootPoseTrajTerminalStateHandler",
+                              **DEFAULTS)
+
+    # reset the env
+    key = jax.random.PRNGKey(0)
+    mjx_env.reset(key)
+
+    # get the model and data of the environment
+    model = mjx_env.get_model()
+    data = mjx_env.get_data()
+
+    # get the initial qpos and qvel of the environment
+    qpos = data.qpos
+    qvel = data.qvel
+
+    # stack qpos and qvel to a trajectory
+    qpos = np.tile(qpos, (N_steps, 1))
+    qvel = np.tile(qvel, (N_steps, 1))
+
+    # create a trajectory info -- this stores basic information about the trajectory
+    njnt = model.njnt
+    jnt_type = model.jnt_type
+    jnt_names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)]
+    traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / mjx_env.dt)
+
+    # create a trajectory data -- this stores the actual trajectory data
+    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), split_points=jnp.array([0, N_steps]))
+
+    # combine them to a trajectory
+    traj = Trajectory(traj_info, traj_data)
+
+    return traj
+
+
+@pytest.fixture
+def falling_trajectory() -> Trajectory:
+
+    N_steps = 1000
+
+    # define a simple Mujoco environment
+    mjx_env = TestHumamoidEnv(enable_mjx=False,
+                              **DEFAULTS)
+
+    # reset the env
+    key = jax.random.PRNGKey(0)
+    mjx_env.reset(key)
+    action_dim = mjx_env.info.action_space.shape[0]
+
+    qpos = []
+    qvel = []
+    for i in range(N_steps):
+        action = np.zeros(action_dim)
+        mjx_env.step(action)
+        data = mjx_env.get_data()
+        qpos.append(data.qpos)
+        qvel.append(data.qvel)
+
+    # get the model and data of the environment
+    model = mjx_env.get_model()
+
+    # get the initial qpos and qvel of the environment
+    qpos = np.stack(qpos)
+    qvel = np.stack(qvel)
+
+    # create a trajectory info -- this stores basic information about the trajectory
+    njnt = model.njnt
+    jnt_type = model.jnt_type
+    jnt_names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)]
+    traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / mjx_env.dt)
+
+    # create a trajectory data -- this stores the actual trajectory data
+    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), split_points=jnp.array([0, N_steps]))
+
+    # combine them to a trajectory
+    traj = Trajectory(traj_info, traj_data)
+
+    return traj
