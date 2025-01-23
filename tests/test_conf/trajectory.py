@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import mujoco
 from mujoco import MjModel, MjData
+from pathlib import Path
 
 from loco_mujoco.trajectory import (
     Trajectory,
@@ -22,7 +23,7 @@ DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 def input_trajectory_info_data() -> TrajectoryInfo:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_conf/humanoid_test.xml"
+        model_path = (Path(__file__).resolve().parent / "humanoid_test.xml").as_posix()
         mujoco_model = MjModel.from_xml_path(model_path)
 
         njnt = mujoco_model.njnt
@@ -152,7 +153,7 @@ def input_trajectory_info_field_names():
 def input_trajectory_data() -> TrajectoryData:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_conf/humanoid_test.xml"
+        model_path = (Path(__file__).resolve().parent / "humanoid_test.xml").as_posix()
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
@@ -205,7 +206,7 @@ def input_trajectory_data() -> TrajectoryData:
 def input_trajectory_data_2() -> TrajectoryData:
     def factory(backend):
         backend_type = jnp if backend == "jax" else np
-        model_path = "test_conf/humanoid_test.xml"
+        model_path = (Path(__file__).resolve().parent / "humanoid_test.xml").as_posix()
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
