@@ -302,7 +302,7 @@ class GoalRandomRootVelocity(Goal, RootVelocityArrowVisualizer):
         # call goal init
         n_visual_geoms = self._arrow_n_visual_geoms \
             if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
-        super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
+        super().__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
 
     def _init_from_mj(self,
                       env: Any,
@@ -476,7 +476,7 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
         n_visual_geoms = self._arrow_n_visual_geoms \
             if "visualize_goal" in kwargs.keys() and kwargs["visualize_goal"] else 0
 
-        super().__init__(info_props, n_visual_geoms=self._arrow_n_visual_geoms, **kwargs)
+        super().__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
 
     def _init_from_mj(self,
                       env: Any,
