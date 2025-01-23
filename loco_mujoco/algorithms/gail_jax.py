@@ -552,7 +552,8 @@ class GAILJax(JaxRLAlgorithmBase):
                     agent_conf: GAILAgentConf,
                     agent_state: GAILAgentState,
                     n_envs: int, n_steps=None, render=True,
-                    record=False, rng=None, train_state_seed=None):
+                    record=False, rng=None, deterministic=False,
+                    train_state_seed=None):
 
         def sample_actions(ts, obs, _rng):
             y, updates = agent_conf.network.apply({'params': ts.params,
@@ -565,6 +566,9 @@ class GAILJax(JaxRLAlgorithmBase):
 
         config = agent_conf.config.experiment
         train_state = agent_state.train_state
+
+        if deterministic:
+            train_state.params["log_std"] = np.ones_like(train_state.params["log_std"]) * -np.inf
 
         if config.n_seeds > 1:
             assert train_state_seed is not None, ("Loaded train state has multiple seeds. Please specify "
@@ -598,6 +602,7 @@ class GAILJax(JaxRLAlgorithmBase):
             # SAMPLE ACTION
             rng, _rng = jax.random.split(rng)
             action, train_state = plcy_call(train_state, obs, _rng)
+            action = jnp.atleast_2d(action)
 
             # STEP ENV
             obs, reward, absorbing, done, info, env_state = env.step(env_state, action)
