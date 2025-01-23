@@ -311,7 +311,7 @@ class UnitreeA1(BaseRobotQuadruped):
 
     @info_property
     def upper_body_xml_name(self):
-        return "trunk"
+        return self.root_body_name
 
     @info_property
     def root_free_joint_xml_name(self):

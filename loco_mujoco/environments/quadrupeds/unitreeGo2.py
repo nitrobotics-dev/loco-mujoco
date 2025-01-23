@@ -177,6 +177,10 @@ class UnitreeGo2(BaseRobotQuadruped):
 
     @info_property
     def upper_body_xml_name(self):
+        return self.root_body_name
+
+    @info_property
+    def root_body_name(self):
         return "base"
 
     @info_property
