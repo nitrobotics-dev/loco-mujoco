@@ -1,15 +1,15 @@
+import ast
 from omegaconf import open_dict
 import warnings
 from dataclasses import dataclass
 from typing import Any
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, ListConfig
 
 import numpy as np
 import jax
 import jax.numpy as jnp
 from flax import struct
 import flax
-import flax.linen as nn
 import optax
 
 from loco_mujoco.algorithms import (JaxRLAlgorithmBase, AgentConfBase, AgentStateBase, ActorCritic,
@@ -77,12 +77,15 @@ class PPOJax(JaxRLAlgorithmBase):
                 config.experiment.num_updates // config.experiment.validation_interval)
 
         # INIT NETWORK
+        hidden_layers = config.experiment.hidden_layers \
+            if isinstance(config.experiment.hidden_layers, (list, ListConfig)) \
+            else ast.literal_eval(config.experiment.hidden_layers)
         network = ActorCritic(
             env.info.action_space.shape[0],
             activation=config.experiment.activation,
             init_std=config.experiment.init_std,
             learnable_std=config.experiment.learnable_std,
-            hidden_layer_dims=config.experiment.hidden_layers
+            hidden_layer_dims=hidden_layers
         )
 
         # set up optimizers

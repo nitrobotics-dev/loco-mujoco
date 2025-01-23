@@ -1,8 +1,9 @@
+import ast
 from omegaconf import open_dict
 import warnings
 from dataclasses import dataclass, replace
 from typing import Any
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, ListConfig
 
 import numpy as np
 import jax
@@ -51,6 +52,7 @@ class GAILAgentConf(AgentConfBase):
                 "discriminator": flax.serialization.to_state_dict(self.discriminator),
                 "expert_dataset": None} # never save dataset
         return _all
+
     @classmethod
     def from_dict(cls, d):
         config = OmegaConf.create(d["config"])
@@ -99,12 +101,15 @@ class GAILJax(JaxRLAlgorithmBase):
                 config.experiment.num_updates // config.experiment.validation_interval)
 
         # INIT NETWORK
+        hidden_layers = config.experiment.hidden_layers \
+            if isinstance(config.experiment.hidden_layers, (list, ListConfig)) \
+            else ast.literal_eval(config.experiment.hidden_layers)
         network = ActorCritic(
             env.info.action_space.shape[0],
             activation=config.experiment.activation,
             init_std=config.experiment.init_std,
             learnable_std=config.experiment.learnable_std,
-            hidden_layer_dims=config.experiment.hidden_layers
+            hidden_layer_dims=hidden_layers
         )
         discriminator = FullyConnectedNet(activation=config.experiment.activation,
                                           hidden_layer_dims=config.experiment.hidden_layers,
