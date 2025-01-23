@@ -122,6 +122,9 @@ class TargetVelocityTrajReward(TrajectoryBasedReward):
         # calculate tracking reward
         tracking_reward = backend.exp(-self._w_exp*backend.mean(backend.square(vel_local - traj_vel_local)))
 
+        # set nan values to 0
+        tracking_reward = backend.nan_to_num(tracking_reward, nan=0.0)
+
         return tracking_reward, carry
 
 
