@@ -6,7 +6,7 @@ from mujoco import MjSpec
 from loco_mujoco.core.observations import ObservationType
 from loco_mujoco.environments import LocoEnv
 
-from test_conf import TestHumamoidEnv
+from test_conf import DummyHumamoidEnv
 
 
 DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs":1}
@@ -27,10 +27,10 @@ def test_BodyPos():
     action_spec = ["abdomen_y"]  # --> use more motors if needed
 
     # define a simple Mjx environment
-    mjx_env = TestHumamoidEnv(enable_mjx=True,
-                              actuation_spec=action_spec,
-                              observation_spec=observation_spec,
-                              **DEFAULTS)
+    mjx_env = DummyHumamoidEnv(enable_mjx=True,
+                               actuation_spec=action_spec,
+                               observation_spec=observation_spec,
+                               **DEFAULTS)
 
     # reset the environment in Mujoco
     obs = mjx_env.reset(key)

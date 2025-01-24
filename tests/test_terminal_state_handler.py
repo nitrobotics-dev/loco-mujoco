@@ -20,9 +20,9 @@ def test_RootPoseTrajTerminalStateHandler(standing_trajectory, falling_trajector
     key = jax.random.PRNGKey(seed)
 
     # define a simple Mjx environment
-    mjx_env = TestHumamoidEnv(enable_mjx=backend=="jax",
-                              terminal_state_type="RootPoseTrajTerminalStateHandler",
-                              **DEFAULTS)
+    mjx_env = DummyHumamoidEnv(enable_mjx=backend == "jax",
+                               terminal_state_type="RootPoseTrajTerminalStateHandler",
+                               **DEFAULTS)
 
     # load trajectory to env
     expert_traj: Trajectory = standing_trajectory
@@ -35,6 +35,10 @@ def test_RootPoseTrajTerminalStateHandler(standing_trajectory, falling_trajector
     mjx_env.load_trajectory(expert_traj)
 
     # Create dataset of transitions using the nominal trajectory
-    transitions = mjx_env.generate_trajectory_from_nominal(falling_trajectory)
+    if backend == "numpy":
+        transitions = mjx_env.generate_trajectory_from_nominal(falling_trajectory)
+    else:
+        transitions = mjx_env.mjx_generate_trajectory_from_nominal(falling_trajectory)
+
     print(len(transitions.absorbings))
     print(np.argwhere(transitions.absorbings))

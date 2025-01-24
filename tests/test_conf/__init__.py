@@ -1,2 +1,2 @@
-from .test_humanoid_env import TestHumamoidEnv
+from .dummy_humanoid_env import DummyHumamoidEnv
 from .trajectory import *
