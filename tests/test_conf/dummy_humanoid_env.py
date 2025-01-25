@@ -282,7 +282,7 @@ nominal_traj          `reset()` and `step()` methods.
 
 
             # setup containers for the dataset
-            all_observations, all_next_observations, all_dones = [], [], []
+            all_observations, all_next_observations, all_absorbing, all_dones = [], [], [], []
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -311,6 +311,8 @@ nominal_traj          `reset()` and `step()` methods.
 
                 # initiate obs container
                 observations = [obs]
+                absorbing_flags = []
+
                 for j in range(1, nominal_traj.data.len_trajectory(i)):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, jnp)  # get next sample
@@ -325,10 +327,12 @@ nominal_traj          `reset()` and `step()` methods.
 
                     # check if the current state is an absorbing state
                     is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
+                    absorbing_flags.append(is_absorbing)
 
                 observations = jnp.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
+                all_absorbing.append(absorbing_flags)
                 dones = jnp.zeros(observations.shape[0]-1)
                 x = x.at[-1].set(1)
                 all_dones.append(dones)
@@ -336,7 +340,7 @@ nominal_traj          `reset()` and `step()` methods.
             all_observations = jnp.concatenate(all_observations).astype(np.float32)
             all_next_observations = jnp.concatenate(all_next_observations).astype(np.float32)
             all_dones = jnp.concatenate(all_dones).astype(np.float32)
-            all_absorbing = jnp.zeros_like(all_dones).astype(np.float32)    # assume no absorbing states
+            all_absorbing = jnp.concatenate(all_absorbing).astype(np.float32)
 
             transitions = TrajectoryTransitions(jnp.array(all_observations),
                                                 jnp.array(all_next_observations),
