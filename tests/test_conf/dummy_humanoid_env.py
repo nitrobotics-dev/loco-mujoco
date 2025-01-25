@@ -327,7 +327,7 @@ nominal_traj          `reset()` and `step()` methods.
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
                 dones = jnp.zeros(observations.shape[0]-1)
-                dones[-1] = 1
+                x = x.at[-1].set(1)
                 all_dones.append(dones)
 
             all_observations = jnp.concatenate(all_observations).astype(np.float32)
