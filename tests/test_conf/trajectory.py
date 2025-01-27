@@ -14,7 +14,7 @@ from loco_mujoco.trajectory import (
     TrajectoryTransitions,
 )
 
-from .test_humanoid_env import TestHumamoidEnv
+from .dummy_humanoid_env import DummyHumamoidEnv
 
 DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 
@@ -308,9 +308,9 @@ def standing_trajectory() -> Trajectory:
     N_steps = 1000
 
     # define a simple Mjx environment
-    mjx_env = TestHumamoidEnv(enable_mjx=False,
-                              terminal_state_type="RootPoseTrajTerminalStateHandler",
-                              **DEFAULTS)
+    mjx_env = DummyHumamoidEnv(enable_mjx=False,
+                               terminal_state_type="RootPoseTrajTerminalStateHandler",
+                               **DEFAULTS)
 
     # reset the env
     key = jax.random.PRNGKey(0)
@@ -349,8 +349,8 @@ def falling_trajectory() -> Trajectory:
     N_steps = 1000
 
     # define a simple Mujoco environment
-    mjx_env = TestHumamoidEnv(enable_mjx=False,
-                              **DEFAULTS)
+    mjx_env = DummyHumamoidEnv(enable_mjx=False,
+                               **DEFAULTS)
 
     # reset the env
     key = jax.random.PRNGKey(0)
