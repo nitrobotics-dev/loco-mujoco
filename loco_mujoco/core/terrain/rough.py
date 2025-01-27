@@ -295,11 +295,12 @@ class RoughTerrain(DynamicTerrain):
         com_pos = data.qpos[self._free_jnt_qpos_id][:2]
         reached_edge = backend.array(((min_edge < backend.abs(com_pos[0])) & (backend.abs(com_pos[0]) < max_edge)) | (
                     (min_edge < backend.abs(com_pos[1])) & (backend.abs(com_pos[1]) < max_edge)))
+        free_jnt_xy = self._free_jnt_qpos_id[:2]
         if backend == jnp:
-            init_data = data.replace(qpos=data.qpos.at[self._free_jnt_qpos_id].set(0.0))
+            init_data = data.replace(qpos=data.qpos.at[free_jnt_xy].set(0.0))
             data = jax.lax.cond(reached_edge, lambda _: init_data, lambda _: data, None)
         else:
             if reached_edge:
-                data.qpos[self._free_jnt_qpos_id] = 0.0
+                data.qpos[free_jnt_xy] = 0.0
 
         return data
