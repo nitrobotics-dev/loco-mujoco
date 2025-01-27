@@ -66,5 +66,9 @@ class MjxUnitreeH1(UnitreeH1):
         spec.add_pair(geomname1="floor", geomname2="right_foot2")
         spec.add_pair(geomname1="floor", geomname2="left_foot1")
         spec.add_pair(geomname1="floor", geomname2="left_foot2")
+        spec.add_pair(geomname1="right_foot1", geomname2="left_foot1")
+        spec.add_pair(geomname1="right_foot1", geomname2="left_foot2")
+        spec.add_pair(geomname1="right_foot2", geomname2="left_foot1")
+        spec.add_pair(geomname1="right_foot2", geomname2="left_foot2")
 
         return spec
