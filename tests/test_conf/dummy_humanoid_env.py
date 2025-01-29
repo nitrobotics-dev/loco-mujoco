@@ -159,7 +159,7 @@ nominal_traj          `reset()` and `step()` methods.
             mujoco.mj_resetData(model, data)
 
             # setup containers for the dataset
-            all_observations, all_next_observations, all_absorbing, all_dones = [], [], [], []
+            all_observations, all_next_observations, all_rewards, all_absorbing, all_dones = [], [], [], [], []
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -185,9 +185,11 @@ nominal_traj          `reset()` and `step()` methods.
                 obs, carry = self._create_observation(model, data, carry)
                 info = self._reset_info_dictionary(obs, data, subkey)
 
-                # initiate obs container
+                # initiate episode containers
                 observations = [obs]
+                rewards = []
                 absorbing_flags = []
+
                 for j in range(1, nominal_traj.data.len_trajectory(i)):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, np)  # get next sample
@@ -204,9 +206,16 @@ nominal_traj          `reset()` and `step()` methods.
                     is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
                     absorbing_flags.append(is_absorbing)
 
+                    # compute reward
+                    action = np.zeros(1)
+                    reward, carry = self._reward(self._obs, action, obs, is_absorbing, info, self._model,
+                                                 self._data, carry)
+                    rewards.append(reward)
+
                 observations = np.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
+                all_rewards.append(rewards)
                 all_absorbing.append(absorbing_flags)
                 dones = np.zeros(observations.shape[0]-1)
                 dones[-1] = 1
@@ -214,13 +223,16 @@ nominal_traj          `reset()` and `step()` methods.
 
             all_observations = np.concatenate(all_observations).astype(np.float32)
             all_next_observations = np.concatenate(all_next_observations).astype(np.float32)
+            all_rewards = np.concatenate(all_rewards).astype(np.float32)
             all_dones = np.concatenate(all_dones).astype(np.float32)
             all_absorbing = np.concatenate(all_absorbing).astype(np.float32)
 
             transitions = TrajectoryTransitions(np.array(all_observations),
                                                 np.array(all_next_observations),
                                                 np.array(all_absorbing),
-                                                np.array(all_dones))
+                                                np.array(all_dones),
+                                                rewards=all_rewards
+                                                )
 
             self.th = orig_th
             self.th.traj = replace(self.th.traj, transitions=transitions)
@@ -282,7 +294,7 @@ nominal_traj          `reset()` and `step()` methods.
 
 
             # setup containers for the dataset
-            all_observations, all_next_observations, all_absorbing, all_dones = [], [], [], []
+            all_observations, all_next_observations, all_rewards, all_absorbing, all_dones = [], [], [], [], []
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -309,8 +321,9 @@ nominal_traj          `reset()` and `step()` methods.
                 obs, carry = self._mjx_create_observation(model, data, carry)
                 info = self._reset_info_dictionary(obs, data, subkey)
 
-                # initiate obs container
+                # initiate episode containers
                 observations = [obs]
+                rewards = []
                 absorbing_flags = []
 
                 for j in range(1, nominal_traj.data.len_trajectory(i)):
@@ -329,9 +342,16 @@ nominal_traj          `reset()` and `step()` methods.
                     is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
                     absorbing_flags.append(is_absorbing)
 
+                    # compute reward
+                    action = jnp.zeros(1)
+                    reward, carry = self._reward(self._obs, action, obs, is_absorbing, info, self._model,
+                                                 self._data, carry)
+                    rewards.append(reward)
+
                 observations = jnp.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
+                all_rewards.append(rewards)
                 all_absorbing.append(absorbing_flags)
                 dones = jnp.zeros(observations.shape[0]-1)
                 x = x.at[-1].set(1)
@@ -339,13 +359,16 @@ nominal_traj          `reset()` and `step()` methods.
 
             all_observations = jnp.concatenate(all_observations).astype(np.float32)
             all_next_observations = jnp.concatenate(all_next_observations).astype(np.float32)
+            all_rewards = jnp.concatenate(all_rewards).astype(np.float32)
             all_dones = jnp.concatenate(all_dones).astype(np.float32)
             all_absorbing = jnp.concatenate(all_absorbing).astype(np.float32)
 
             transitions = TrajectoryTransitions(jnp.array(all_observations),
                                                 jnp.array(all_next_observations),
                                                 jnp.array(all_absorbing),
-                                                jnp.array(all_dones))
+                                                jnp.array(all_dones),
+                                                rewards=all_rewards
+                                                )
 
             self.th = orig_th
             self.th.traj = replace(self.th.traj, transitions=transitions)
