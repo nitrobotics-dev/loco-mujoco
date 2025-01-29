@@ -323,10 +323,22 @@ def standing_trajectory() -> Trajectory:
     # get the initial qpos and qvel of the environment
     qpos = data.qpos
     qvel = data.qvel
+    xpos = data.xpos
+    xquat = data.xquat
+    cvel = data.cvel
+    subtree_com = data.subtree_com
+    site_xpos = data.site_xpos
+    site_xmat = data.site_xmat
 
     # stack qpos and qvel to a trajectory
     qpos = np.tile(qpos, (N_steps, 1))
     qvel = np.tile(qvel, (N_steps, 1))
+    xpos = np.tile(xpos, (N_steps, 1, 1))
+    xquat = np.tile(xquat, (N_steps, 1, 1))
+    cvel = np.tile(cvel, (N_steps, 1, 1))
+    subtree_com = np.tile(subtree_com, (N_steps, 1, 1))
+    site_xpos = np.tile(site_xpos, (N_steps, 1, 1))
+    site_xmat = np.tile(site_xmat, (N_steps, 1, 1))
 
     # create a trajectory info -- this stores basic information about the trajectory
     njnt = model.njnt
@@ -335,7 +347,9 @@ def standing_trajectory() -> Trajectory:
     traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / mjx_env.dt)
 
     # create a trajectory data -- this stores the actual trajectory data
-    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), split_points=jnp.array([0, N_steps]))
+    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), jnp.array(xpos), jnp.array(xquat), jnp.array(cvel),
+                               jnp.array(subtree_com), jnp.array(site_xpos), jnp.array(site_xmat),
+                               split_points=jnp.array([0, N_steps]))
 
     # combine them to a trajectory
     traj = Trajectory(traj_info, traj_data)
@@ -359,12 +373,24 @@ def falling_trajectory() -> Trajectory:
 
     qpos = []
     qvel = []
+    xpos = []
+    xquat = []
+    cvel = []
+    subtree_com = []
+    site_xpos = []
+    site_xmat = []
     for i in range(N_steps):
         action = np.zeros(action_dim)
         mjx_env.step(action)
         data = mjx_env.get_data()
         qpos.append(data.qpos)
         qvel.append(data.qvel)
+        xpos.append(data.xpos)
+        xquat.append(data.xquat)
+        cvel.append(data.cvel)
+        subtree_com.append(data.subtree_com)
+        site_xpos.append(data.site_xpos)
+        site_xmat.append(data.site_xmat)
 
     # get the model and data of the environment
     model = mjx_env.get_model()
@@ -372,6 +398,12 @@ def falling_trajectory() -> Trajectory:
     # get the initial qpos and qvel of the environment
     qpos = np.stack(qpos)
     qvel = np.stack(qvel)
+    xpos = np.stack(xpos)
+    xquat = np.stack(xquat)
+    cvel = np.stack(cvel)
+    subtree_com = np.stack(subtree_com)
+    site_xpos = np.stack(site_xpos)
+    site_xmat = np.stack(site_xmat)
 
     # create a trajectory info -- this stores basic information about the trajectory
     njnt = model.njnt
@@ -380,7 +412,9 @@ def falling_trajectory() -> Trajectory:
     traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / mjx_env.dt)
 
     # create a trajectory data -- this stores the actual trajectory data
-    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), split_points=jnp.array([0, N_steps]))
+    traj_data = TrajectoryData(jnp.array(qpos), jnp.array(qvel), jnp.array(xpos), jnp.array(xquat), jnp.array(cvel),
+                               jnp.array(subtree_com), jnp.array(site_xpos), jnp.array(site_xmat),
+                               split_points=jnp.array([0, N_steps]))
 
     # combine them to a trajectory
     traj = Trajectory(traj_info, traj_data)
