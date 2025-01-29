@@ -110,37 +110,7 @@ class DummyHumamoidEnv(LocoEnv):
         return (0.6, 1.5)
 
 
-    def generate_trajectory_from_nominal(self, nominal_traj, rng_key=None):
-        """
-        Generates a dataset from the specified trajectories without including actions.
-
-        Notes:
-        - Observations are created by following steps similar to the `reset()` and `step()` methods.
-        - TrajectoryData is used instead of MjData to reduce memory usage. Forward dynamics are applied
-          to compute additional entities.
-        - Since TrajectoryData only contains very few kinematic properties (to save memory), Mujoco's
-          forward dynamics are used to calculate other entities.
-        - Kinematic entities derived from mocap data are generally reliable, while dynamics-related
-          properties may be less accurate.
-        - Observations based on kinematic entities are recommended to ensure realistic datasets.
-nominal_traj          `reset()` and `step()` methods.
-
-        Args:
-        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
-        nominal_traj (Trajectory, optional): The nominal trajectory, to generate the dataset. Defaults to the trajectory
-        loaded by the environment.
-
-        Returns:
-        TrajectoryTransitions: A dictionary containing the following:
-            - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
-            - For non-mocap datasets, actions may also be included.
-
-        Raises:
-        ValueError: If no trajectory is provided to the environment.
-
-        """
+    def generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
         if self.th is None:
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
@@ -190,7 +160,12 @@ nominal_traj          `reset()` and `step()` methods.
                 rewards = []
                 absorbing_flags = []
 
-                for j in range(1, nominal_traj.data.len_trajectory(i)):
+                if horizon is None:
+                    t_max = nominal_traj.data.len_trajectory(i)
+                else:
+                    t_max = horizon
+
+                for j in range(1, t_max):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, np)  # get next sample
                     data = self.set_sim_state_from_traj_data(data, traj_data_single, carry)
@@ -207,9 +182,8 @@ nominal_traj          `reset()` and `step()` methods.
                     absorbing_flags.append(is_absorbing)
 
                     # compute reward
-                    action = np.zeros(1)
-                    reward, carry = self._reward(self._obs, action, obs, is_absorbing, info, self._model,
-                                                 self._data, carry)
+                    action = np.zeros(self.info.action_space.shape)
+                    reward, carry = self._reward(obs, action, obs, is_absorbing, info, model, data, carry)
                     rewards.append(reward)
 
                 observations = np.vstack(observations)
@@ -239,37 +213,7 @@ nominal_traj          `reset()` and `step()` methods.
 
         return self.th.traj.transitions
 
-    def mjx_generate_trajectory_from_nominal(self, nominal_traj, rng_key=None):
-        """
-        Generates a dataset from the specified trajectories without including actions.
-
-        Notes:
-        - Observations are created by following steps similar to the `reset()` and `step()` methods.
-        - TrajectoryData is used instead of MjData to reduce memory usage. Forward dynamics are applied
-          to compute additional entities.
-        - Since TrajectoryData only contains very few kinematic properties (to save memory), Mujoco's
-          forward dynamics are used to calculate other entities.
-        - Kinematic entities derived from mocap data are generally reliable, while dynamics-related
-          properties may be less accurate.
-        - Observations based on kinematic entities are recommended to ensure realistic datasets.
-nominal_traj          `reset()` and `step()` methods.
-
-        Args:
-        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
-        nominal_traj (Trajectory, optional): The nominal trajectory, to generate the dataset. Defaults to the trajectory
-        loaded by the environment.
-
-        Returns:
-        TrajectoryTransitions: A dictionary containing the following:
-            - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
-            - For non-mocap datasets, actions may also be included.
-
-        Raises:
-        ValueError: If no trajectory is provided to the environment.
-
-        """
+    def mjx_generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
         if self.th is None:
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
@@ -326,7 +270,12 @@ nominal_traj          `reset()` and `step()` methods.
                 rewards = []
                 absorbing_flags = []
 
-                for j in range(1, nominal_traj.data.len_trajectory(i)):
+                if horizon is None:
+                    t_max = nominal_traj.data.len_trajectory(i)
+                else:
+                    t_max = horizon
+
+                for j in range(1, t_max):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, jnp)  # get next sample
                     data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
@@ -343,9 +292,8 @@ nominal_traj          `reset()` and `step()` methods.
                     absorbing_flags.append(is_absorbing)
 
                     # compute reward
-                    action = jnp.zeros(1)
-                    reward, carry = self._reward(self._obs, action, obs, is_absorbing, info, self._model,
-                                                 self._data, carry)
+                    action = jnp.zeros(self.info.action_space.shape)
+                    reward, carry = self._reward(obs, action, obs, is_absorbing, info, model, data, carry)
                     rewards.append(reward)
 
                 observations = jnp.vstack(observations)

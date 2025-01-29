@@ -22,21 +22,12 @@ def test_DefaultInitialStateHandler(backend):
     seed = 0
     key = jax.random.PRNGKey(seed)
 
-    a_1 = mjx_env.reset(key)
-    a_2 = mjx_env.reset(key)
-    a_3 = mjx_env.reset(key)
-
+    state_0 = mjx_env.reset(key)
     if backend == "numpy":
-        a_1_test = np.array([ 1.4, 1., 0., 0., -0.00902001,  0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
+        state_0_test = np.array([ 1.4, 1., 0., 0., -0.00902001,  0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
                               0.9350026, 0., 0., 0., 0., 0., 0.,])
-        a_2_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
-                             0.9350026, 0., 0., 0., 0., 0., 0., ])
-        a_3_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
-                             0.9350026, 0., 0., 0., 0., 0., 0., ])
 
-        assert np.allclose(a_1, a_1_test)
-        assert np.allclose(a_2, a_2_test)
-        assert np.allclose(a_3, a_3_test)
+        assert np.allclose(state_0, state_0_test)
     else:
         pass
 
@@ -48,20 +39,20 @@ def test_TrajInitialStateHandler(standing_trajectory, backend):
     seed = 0
     key = jax.random.PRNGKey(seed)
 
-    a_1 = mjx_env.reset(key)
-    a_2 = mjx_env.reset(key)
-    a_3 = mjx_env.reset(key)
+    state_0 = mjx_env.reset(key)
+    state_1 = mjx_env.reset(key)
+    state_2 = mjx_env.reset(key)
 
     if backend == "numpy":
-        a_1_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
-                             0.9350026, 0., 0., 0., 0., 0., 0., ])
-        a_2_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
-                             0.9350026, 0., 0., 0., 0., 0., 0., ])
-        a_3_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
-                             0.9350026, 0., 0., 0., 0., 0., 0., ])
+        state_0_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
+                                 0.9350026, 0., 0., 0., 0., 0., 0., ])
+        state_1_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
+                                 0.9350026, 0., 0., 0., 0., 0., 0., ])
+        state_2_test = np.array([1.4, 1., 0., 0., -0.00902001, 0., 0.1, 0.9350026, 0., 0., 0., 0., 0., -0.00902001, 0.1,
+                                 0.9350026, 0., 0., 0., 0., 0., 0., ])
 
-        assert np.allclose(a_1, a_1_test)
-        assert np.allclose(a_2, a_2_test)
-        assert np.allclose(a_3, a_3_test)
+        assert np.allclose(state_0, state_0_test)
+        assert np.allclose(state_1, state_1_test)
+        assert np.allclose(state_2, state_2_test)
     else:
         pass
