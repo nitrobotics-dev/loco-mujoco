@@ -1,13 +1,8 @@
 import os
 import shutil
-from os.path import expanduser
 import git
-from pathlib import Path
 
-import loco_mujoco
-
-
-data_dir = Path(loco_mujoco.__file__).resolve().parent / "environments" / "data"
+from loco_mujoco import PATH_TO_MODELS
 
 
 def fetch_git(repo_url, commit_hash, clone_directory, clone_path):
@@ -46,7 +41,7 @@ def clear_myoskeleton():
     Remove cached MyoSkeleton if it exists.
     """
     print("LocoMujoco:> Clearing MyoSkeleton ...")
-    api_path = os.path.join(data_dir, 'myo_model')
+    api_path = os.path.join(PATH_TO_MODELS, 'myo_model')
     if os.path.exists(api_path):
         shutil.rmtree(api_path)
     else:
@@ -93,7 +88,6 @@ def fetch_myoskeleton():
     fetch_git(repo_url="https://github.com/myolab/myo_model.git",
               commit_hash="619b1a876113e91a302b9baeaad6c2341e12ac81",
               clone_directory="myo_model",
-              clone_path=data_dir)
+              clone_path=PATH_TO_MODELS)
 
     print("LocoMuJoCo:> Successfully initialized MyoSkeleton .")
-

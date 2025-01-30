@@ -13,8 +13,7 @@ mushroom_rl_recordings/
 LocoMuJoCo_recordings/
 record_all/
 _build/
-loco_mujoco/environments/data/myo_model_tmp/
-loco_mujoco/environments/data/myo_model/
+loco_mujoco/models/myo_model/
 wandb/
 ckpts/
 outputs/

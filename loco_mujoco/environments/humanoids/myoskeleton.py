@@ -1,16 +1,12 @@
 import os
-import warnings
-from pathlib import Path
-import numpy as np
-from dm_control import mjcf
-import xml.etree.ElementTree as ET
-from mushroom_rl.utils.mujoco import *
 
 import mujoco
-import loco_mujoco
+from mujoco import MjSpec
+from loco_mujoco.core import ObservationType
 from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
-from loco_mujoco.utils import check_validity_task_mode_dataset
+from loco_mujoco.core.utils import info_property
+from loco_mujoco import PATH_TO_MODELS
 
 
 class MyoSkeleton(LocoEnv):
@@ -1021,172 +1017,75 @@ class MyoSkeleton(LocoEnv):
 
     valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
                                      data_types=["real"])
+    mjx_enabled = False
 
-    def __init__(self, **kwargs):
+    def __init__(self, spec=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent / "data" / "myo_model" /
-                    "myoskeleton" / "myoskeleton.xml").as_posix()
+        if spec is None:
+            spec = self.get_default_xml_file_path()
 
-        # check if file exists, if not exit
-        if not os.path.exists(xml_path):
-            print("MyoSkeleton model not initialized. Please run \"loco-mujoco-myomodel-init\" to accept the license "
-                  "and download the model. Exiting...")
-            exit()
+            # check if file exists, if not exit
+            if not os.path.exists(spec):
+                print(
+                    "MyoSkeleton model not initialized. Please run \"loco-mujoco-myomodel-init\" to accept the license "
+                    "and download the model. Exiting...")
+                exit()
 
-        # create temporary xml file path
-        xml_path_tmp = (Path(__file__).resolve().parent.parent / "data" / "myo_model_tmp" /
-                        "myoskeleton" / "myoskeleton.xml").as_posix()
+        # load the model specification
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
 
-        # make changes to the xml to make it mjcf compatible
-        xml_handle = self._apply_xml_changes(xml_path, xml_path_tmp)
+        # apply changes to the MjSpec
+        spec = self._apply_spec_changes(spec)
 
-        # replace the free joint with the 6 distinct joints
-        xml_handle = self._add_root_joints(xml_handle)
-
-        # add actuators
-        xml_handle = self._add_actuators(xml_handle)
-
-        # save xml_handle
-        self._xml_handles = [xml_handle]
-
-        action_spec = self._get_action_specification()
-
-        observation_spec = self._get_observation_specification()
-
-        self._hidable_obs = ("positions", "velocities", "foot_forces", "weight")
-
-        _, _, _, collision_groups = self._get_xml_modifications()
-
-        super().__init__(xml_handle, action_spec, observation_spec, collision_groups, **kwargs)
-
-    def _get_ground_forces(self):
-        """
-        Returns the ground forces (np.array).
-
-        """
-
-        grf = np.concatenate([self._get_collision_force("floor", "right_foot1")[:3],
-                              self._get_collision_force("floor", "right_foot2")[:3],
-                              self._get_collision_force("floor", "right_foot3")[:3],
-                              self._get_collision_force("floor", "right_foot4")[:3],
-                              self._get_collision_force("floor", "right_foot5")[:3],
-                              self._get_collision_force("floor", "left_foot1")[:3],
-                              self._get_collision_force("floor", "left_foot2")[:3],
-                              self._get_collision_force("floor", "left_foot3")[:3],
-                              self._get_collision_force("floor", "left_foot4")[:3],
-                              self._get_collision_force("floor", "left_foot5")[:3]]
-                             )
-
-        return grf
-
-    def _get_xml_modifications(self):
-        """
-        Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco xml. Also the required collision
-        groups will be returned.
-
-        Returns:
-            A tuple of lists consisting of names of joints to remove, names of motors to remove,
-             names of equality constraints to remove, and names of collision groups to be used.
-
-        """
-
-        # for now, no modifications are implemented
-        joints_to_remove = []
-        motors_to_remove = []
-        equ_constr_to_remove = []
-
-        collision_groups = [("floor", ["floor"]),
-                            ("right_foot1", ["foot1_r_coll"]),
-                            ("right_foot2", ["foot2_r_coll"]),
-                            ("right_foot3", ["foot3_r_coll"]),
-                            ("right_foot4", ["bofoot1_r_coll"]),
-                            ("right_foot5", ["bofoot2_r_coll"]),
-                            ("left_foot1", ["foot1_l_coll"]),
-                            ("left_foot2", ["foot2_l_coll"]),
-                            ("left_foot3", ["foot3_l_coll"]),
-                            ("left_foot4", ["bofoot1_l_coll"]),
-                            ("left_foot5", ["bofoot2_l_coll"])]
-
-        return joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups
-
-    def _has_fallen(self, obs, return_err_msg=False):
-        """
-        Checks if a model has fallen.
-
-        Args:
-            obs (np.array): Current observation.
-            return_err_msg (bool): If True, an error message with violations is returned.
-
-        Returns:
-            True, if the model has fallen for the current observation, False otherwise.
-            Optionally an error message is returned.
-
-        """
-
-        pelvis_euler = self._get_from_obs(obs, ["q_pelvis_tilt", "q_pelvis_list", "q_pelvis_rotation"])
-
-        pelvis_height_condition = (obs[0] < -0.46) or (obs[0] > 0.1)
-        pelvis_tilt_condition = (pelvis_euler[0] < (-np.pi / 4.5)) or (pelvis_euler[0] > (np.pi / 12))
-        pelvis_list_condition = (pelvis_euler[1] < -np.pi / 12) or (pelvis_euler[1] > np.pi / 8)
-        pelvis_rotation_condition = (pelvis_euler[2] < (-np.pi / 9)) or (pelvis_euler[2] > (np.pi / 9))
-
-        pelvis_condition = (pelvis_height_condition or pelvis_tilt_condition
-                            or pelvis_list_condition or pelvis_rotation_condition)
-
-        lumbar_euler = self._get_from_obs(obs, ["q_L5_S1_Flex_Ext", "q_L5_S1_Lat_Bending", "q_L5_S1_axial_rotation"])
-
-        lumbar_extension_condition = (lumbar_euler[0] < (-np.pi / 4)) or (lumbar_euler[0] > (np.pi / 10))
-        lumbar_bending_condition = (lumbar_euler[1] < -np.pi / 10) or (lumbar_euler[1] > np.pi / 10)
-        lumbar_rotation_condition = (lumbar_euler[2] < (-np.pi / 4.5)) or (lumbar_euler[2] > (np.pi / 4.5))
-
-        lumbar_condition = (lumbar_extension_condition or lumbar_bending_condition or lumbar_rotation_condition)
-
-        if return_err_msg:
-            error_msg = ""
-            if pelvis_height_condition:
-                error_msg += "pelvis_height_condition violated.\n"
-            if pelvis_tilt_condition:
-                error_msg += "pelvis_tilt_condition violated.\n"
-            if pelvis_list_condition:
-                error_msg += "pelvis_list_condition violated.\n"
-            if pelvis_rotation_condition:
-                error_msg += "pelvis_rotation_condition violated.\n"
-            if lumbar_extension_condition:
-                error_msg += "lumbar_extension_condition violated.\n"
-            if lumbar_bending_condition:
-                error_msg += "lumbar_bending_condition violated.\n"
-            if lumbar_rotation_condition:
-                error_msg += "lumbar_rotation_condition violated.\n"
-
-            return pelvis_condition or lumbar_condition, error_msg
+        # get the observation and action specification
+        if observation_spec is None:
+            # get default
+            observation_spec = self._get_observation_specification(spec)
         else:
-            return (pelvis_condition or lumbar_condition)
+            # parse
+            observation_spec = self.parse_observation_spec(observation_spec)
+        if action_spec is None:
+            action_spec = self._get_action_specification(spec)
 
-    def _get_observation_specification(self):
+        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
+
+    def _get_observation_specification(self, spec: MjSpec):
         """
         Getter for the observation space specification. This function reads all joint names from the xml and adds
-        the prefix "q_" for the joint positions and "dq_" for the joint velocities.
+        the prefix "q_" for the joint positions and "dq_" for the joint velocities. It also adds the free joint
+        position (disregarding the x and y position) and velocity.
 
         Returns:
-            A list of tuples containing the specification of each observation
-            space entry.
+            A list of observation types.
 
         """
+        # get all joint names except the root
+        j_names = [j.name for j in spec.joints if j.name != self.root_free_joint_xml_name]
+
+        # build observation spec
         observation_spec = []
-        for prefix in ["q_", "dq_"]:
-            for j in self.xml_handle.find_all("joint"):
-                obs_type = ObservationType.JOINT_POS if prefix == "q_" else ObservationType.JOINT_VEL
-                observation_spec.append((prefix + j.name, j.name, obs_type))
+
+        # add free joint observation
+        observation_spec.append(ObservationType.FreeJointPosNoXY("q_free_joint", self.root_free_joint_xml_name))
+
+        # add all joint positions
+        observation_spec.append(ObservationType.JointPosArray("q_all_pos", j_names))
+
+        # add free joint velocities
+        observation_spec.append(ObservationType.FreeJointVel("dq_free_joint", self.root_free_joint_xml_name))
+
+        # add all joint velocities
+        observation_spec.append(ObservationType.JointVelArray("dq_all_vel", j_names))
+
         return observation_spec
 
-    def _get_action_specification(self):
+    def _get_action_specification(self, spec: MjSpec):
         """
-        Getter for the action space specification. This function add alls actuator names found in the xml, which
+        Getter for the action space specification. This function adds all actuator names found in the spec, which
         are the ones added in the _add_actuators method.
 
         Returns:
@@ -1195,217 +1094,68 @@ class MyoSkeleton(LocoEnv):
 
         """
         action_spec = []
-        actuators = self.xml_handle.find_all("actuator")
-        for actuator in actuators:
-            action_spec.append(actuator.name)
+        for a in spec.actuators:
+            action_spec.append(a.name)
         return action_spec
 
-    @staticmethod
-    def generate(task="walk", dataset_type="real", debug=False, **kwargs):
+    def _apply_spec_changes(self, spec: MjSpec):
         """
-        Returns a Full-body MyoSkeleton environment and a dataset corresponding to the specified task.
+        This function reads the original myo_model spec and applies some changes to make it align with LocoMuJoCo.
 
         Args:
-            task (str): Main task to solve. Either "walk" or "run".
-            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
-                reference trajectory. This data does not perfectly match the kinematics
-                and dynamics of this environment, hence it is more challenging. "perfect" uses
-                a perfect dataset.
-            debug (bool): If True, the smaller test datasets are used for debugging purposes.
-
+            spec (MjSpec): Mujoco specification.
 
         Returns:
-            An MDP of a Full-body MyoSkeleton Humanoid.
+            Modified Mujoco specification.
 
         """
 
-        check_validity_task_mode_dataset(MyoSkeleton.__name__, task, None, dataset_type,
-                                         *MyoSkeleton.valid_task_confs.get_all())
+        def get_attributes(obj):
+            return {attr: getattr(obj, attr) for attr in dir(obj)
+                    if not callable(getattr(obj, attr)) and not attr.startswith("__") and not attr == "alt"}
 
-        if "reward_type" in kwargs.keys():
-            reward_type = kwargs["reward_type"]
-            del kwargs["reward_type"]
-        else:
-            reward_type = "target_velocity"
+        # remove floor and add ground plane
+        for g in spec.geoms:
+            if g.name == "floor":
+                g.delete()
 
-        if task == "walk":
-            path = "datasets/humanoids/real/myosuite_humanoid_walking.npz"
-            use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
-            if debug or use_mini_dataset:
-                if use_mini_dataset:
-                    raise NotImplementedError("Mini datasets are currently not available for the MyoSkeleton.")
-                path = path.split("/")
-                path.insert(3, "mini_datasets")
-                path = "/".join(path)
-            traj_path = Path(loco_mujoco.__file__).resolve().parent / path
-            if "reward_params" in kwargs.keys():
-                reward_params = kwargs["reward_params"]
-                del kwargs["reward_params"]
-            else:
-                reward_params = dict(target_velocity=1.25)
-        elif task == "run":
-            path = "datasets/humanoids/real/myosuite_humanoid_running.npz"
-            use_mini_dataset = not os.path.exists(Path(loco_mujoco.__file__).resolve().parent / path)
-            if debug or use_mini_dataset:
-                if use_mini_dataset:
-                    raise NotImplementedError("Mini datasets are currently not available for the MyoSkeleton.")
-                path = path.split("/")
-                path.insert(3, "mini_datasets")
-                path = "/".join(path)
-            traj_path = Path(loco_mujoco.__file__).resolve().parent / path
-            if "reward_params" in kwargs.keys():
-                reward_params = kwargs["reward_params"]
-                del kwargs["reward_params"]
-            else:
-                reward_params = dict(target_velocity=2.5)
+        # load common specs
+        scene_spec = mujoco.MjSpec.from_file((PATH_TO_MODELS / "common" / "scene.xml").as_posix())
 
-        # Generate the MDP
-        mdp = MyoSkeleton(reward_type=reward_type, reward_params=reward_params, **kwargs)
+        # add all textures, materials, geoms and lights
+        for t in scene_spec.textures:
+            spec.add_texture(**get_attributes(t))
+        for m in scene_spec.materials:
+            spec.add_material(**get_attributes(m))
+        for g in scene_spec.geoms:
+            spec.worldbody.add_geom(**get_attributes(g))
+        for l in scene_spec.lights:
+            spec.worldbody.add_light(**get_attributes(l))
 
-        # Load the trajectory
-        env_freq = 1 / mdp._timestep  # hz
-        desired_contr_freq = 1 / mdp.dt  # hz
-        n_substeps = env_freq // desired_contr_freq
+        # use default scene visuals
+        spec.visual = scene_spec.visual
 
-        if dataset_type == "real":
-            traj_data_freq = 500  # hz
-            traj_params = dict(traj_path=traj_path,
-                               traj_dt=(1 / traj_data_freq),
-                               control_dt=(1 / desired_contr_freq))
-        else:
-            raise ValueError(f"currently not implemented.")
+        # add mimic sites
+        for body_name, site_name in self.body2sites_for_mimic.items():
+            b = spec.find_body(body_name)
+            # todo: can not load mimic sites attributes for now, so I add them manually
+            b.add_site(name=site_name, group=1, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
+                       rgba=[1.0, 0.0, 0.0, 0.5])
 
-        mdp.load_trajectory(traj_params, warn=False)
+        # add actuators
+        spec = self._add_actuators(spec)
 
-        return mdp
+        return spec
 
-    @staticmethod
-    def _apply_xml_changes(xml_path, xml_path_tmp):
-        """
-        This function reads the original myo_model xml and applies some changes to make it usable in LocoMuJoCo.
-        It creates a temporary xml file with the changes applied.
-
-        Args:
-            xml_path (str): Path to the original xml.
-            xml_path_tmp (str): Path to the tmp xml to be created.
-
-        Returns:
-            Modified Mujoco XML Handle.
-
-        """
-
-        # Create tmp dir if it doesn't exist yet
-        os.makedirs(os.path.dirname(xml_path_tmp), exist_ok=True)
-
-        # we load and save the model to have a single file xml
-        model = mujoco.MjModel.from_xml_path(xml_path)
-        mujoco.mj_saveLastXML(xml_path_tmp, model)
-
-        # load original xml
-        tree = ET.parse(xml_path_tmp)
-        root = tree.getroot()
-
-        def _get_parent(elem):
-            """
-            Get the parent of an XML element.
-            """
-            return next((p for p in root.iter() if elem in list(p)), None)
-
-        # rename all file paths of textures and meshes
-        assets = root.find('asset')
-        for e in assets:
-            if e.tag == "mesh" or e.tag == "texture":
-                if "file" in e.attrib.keys():
-                    test = e.attrib["file"]
-                    file_name = test.split("/")
-                    e.attrib["file"] = "/".join(file_name)
-
-        # delete original cameras, floor and lighting added to the world body.
-        wb = root.find('worldbody')
-        elems_to_delete = []
-        for e in wb:
-            if e.tag != "body":
-                elems_to_delete.append(e)
-        for e in elems_to_delete:
-            wb.remove(e)
-
-        # Find and delete all frame elements (not mjcf parseable)
-        frames_to_remove = root.findall('.//frame')
-
-        for frame in frames_to_remove:
-            # Find the parent of the frame element by iterating over the tree
-            parent = _get_parent(frame)
-            if parent is not None:
-                # Move all children of the frame to its parent
-                children = list(frame)
-                for child in children:
-                    parent.append(child)
-                # Remove the frame from its parent
-                parent.remove(frame)
-
-        # remove free joint
-        for joint in root.findall('.//joint'):
-            if "name" in joint.attrib.keys():
-                if joint.attrib["name"] == "myoskeleton_root":
-                    parent = _get_parent(joint)
-                    parent.remove(joint)
-                    break
-
-        # Add LocoMuJoCo default elements
-        # add floor
-        ET.SubElement(wb, "geom", {"name": "floor", "pos": "0 0 0", "size": "200 200 0.125", "type": "plane",
-                                   "material": "MatPlane", "condim": "3", "group": "2", "rgba": "0.8 0.9 0.8 1"})
-        # add light
-        ET.SubElement(wb, "light", {"cutoff": "100", "diffuse": "1 1 1", "dir": "-0 0 -1.3",
-                                    "directional": "true", "exponent": "1", "pos": "0 0 1.3",
-                                    "specular": ".1 .1 .1", "castshadow": "false"})
-
-        # add materials and textures
-        ET.SubElement(assets, "texture", {"name": "texplane", "type": "2d", "builtin": "checker", "rgb1": ".2 .3 .4",
-                                          "rgb2": ".1 0.15 0.2", "width": "100", "height": "100"})
-        ET.SubElement(assets, "material", {"name": "MatPlane", "reflectance": "0.5", "texture": "texplane",
-                                           "texrepeat": "1 1", "texuniform": "true"})
-        ET.SubElement(assets, "texture", {"builtin": "gradient", "height": "100", "rgb1": ".4 .5 .6", "rgb2": "0 0 0",
-                                          "type": "skybox", "width": "100"})
-
-        # write temporary xml and load xml_handle in mjcf
-        tree.write(xml_path_tmp)
-
-        # load from xml handle
-        xml_handle = mjcf.from_path(xml_path_tmp)
-
-        return xml_handle
-
-    @staticmethod
-    def _add_root_joints(xml_handle):
-        """
-        Adds 6 distinct degrees of freedom to the pelvis to  align with the
-        LocoMuJoCo root joint convention.
-
-        """
-
-        # find root and add 6 joints replacing the free joint
-        pelvis_body = xml_handle.find("body", "pelvis")
-        pelvis_body.quat = [0.7071067811865475, 0.7071067811865475, 0.0, 0.0]
-        pelvis_body.insert("joint", position=0, name="pelvis_tx", pos=[0.0, 0.0, 0.0],
-                           axis=[1, 0, 0], type="slide", range=[-500, 500])
-        pelvis_body.insert("joint", position=1, name="pelvis_tz", pos=[0.0, 0.0, 0.0],
-                           axis=[0, 0, 1], type="slide", range=[-500, 500])
-        pelvis_body.insert("joint", position=2, name="pelvis_ty", pos=[0.0, 0.0, 0.0],
-                           axis=[0, 1, 0], type="slide", range=[-100, 100])
-        pelvis_body.insert("joint", position=3, name="pelvis_tilt", pos=[0.0, 0.0, 0.0],
-                           axis=[0, 0, 1], range=[-1.5708, 1.5708])
-        pelvis_body.insert("joint", position=4, name="pelvis_list", pos=[0.0, 0.0, 0.0],
-                           axis=[1, 0, 0], range=[-1.5708, 1.5708])
-        pelvis_body.insert("joint", position=5, name="pelvis_rotation", pos=[0.0, 0.0, 0.0],
-                           axis=[0, 1, 0], range=[-1.5708, 1.5708])
-
-        return xml_handle
-
-    @staticmethod
-    def _add_actuators(xml_handle):
+    def _add_actuators(self, spec: MjSpec):
         """
         Adds a generic actuator to each joint.
+
+        Args:
+            spec (MjSpec): Mujoco specification.
+
+        Returns:
+            Modified Mujoco specification.
 
         """
         max_joint_forces = dict(L5_S1_Flex_Ext=200,
@@ -1507,20 +1257,79 @@ class MyoSkeleton(LocoEnv):
                                 mtp_angle_l=200,
                                 knee_angle_l_beta_rotation1=20)
 
-        joints = xml_handle.find_all("joint")
-        for joint in joints:
+        for joint in spec.joints:
             # add an actuator for every joint except the pelvis
-            if "pelvis" not in joint.name:
+            if self.root_free_joint_xml_name not in joint.name:
                 max_force = max_joint_forces[joint.name] if joint.name in max_joint_forces.keys() else 50
-                xml_handle.actuator.add("general", name="act_" + joint.name, joint=joint.name,
-                                        ctrlrange=[-max_force, max_force], ctrllimited=True)
-        return xml_handle
+                spec.add_actuator(name="act_" + joint.name, target=joint.name, ctrlrange=[-max_force, max_force],
+                                  trntype=mujoco.mjtTrn.mjTRN_JOINT, ctrllimited=True)
 
-    @staticmethod
-    def _get_grf_size():
+        return spec
+
+    @info_property
+    def _get_grf_size(self):
         """
         Returns the size of the ground force vector.
 
         """
 
         return 30
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (PATH_TO_MODELS / "myo_model" / "myoskeleton" / "myoskeleton.xml").as_posix()
+
+    @info_property
+    def upper_body_xml_name(self):
+        return "thoracic_spine"
+
+    @info_property
+    def root_free_joint_xml_name(self):
+        return "myoskeleton_root"
+
+    @info_property
+    def root_body_name(self):
+        return "myoskeleton_root"
+
+    @info_property
+    def root_height_healthy_range(self):
+        """
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        """
+        return (0.6, 1.5)
+
+    @info_property
+    def body2sites_for_mimic(self):
+        """
+        Returns a dictionary that maps body names to mimic site names.
+
+        Returns:
+            dict: Mapping from body names to mimic site names.
+
+        """
+        body2sitemimic = {
+            "thoracic_spine": "upper_body_mimic",
+            "skull": "head_mimic",  # Adding head mimic (likely attached to the skull)
+            "pelvis": "pelvis_mimic",
+            "humerus_l": "left_shoulder_mimic",
+            "ulna_l": "left_elbow_mimic",
+            "lunate_l": "left_hand_mimic",
+            "femur_l": "left_hip_mimic",
+            "tibia_l": "left_knee_mimic",
+            "calcn_l": "left_foot_mimic",
+            "humerus_r": "right_shoulder_mimic",
+            "ulna_r": "right_elbow_mimic",
+            "lunate_r": "right_hand_mimic",
+            "femur_r": "right_hip_mimic",
+            "tibia_r": "right_knee_mimic",
+            "calcn_r": "right_foot_mimic"
+        }
+
+        return body2sitemimic
+
+    @info_property
+    def sites_for_mimic(self):
+        return list(self.body2sites_for_mimic.values())
