@@ -131,7 +131,7 @@ class TargetVelocityTrajReward(TrajectoryBasedReward):
 @struct.dataclass
 class MimicRewardState:
     """
-    State of LocomotionReward.
+    State of MimicReward.
     """
     last_qvel: Union[np.ndarray, jnp.ndarray]
     last_action: Union[np.ndarray, jnp.ndarray]
@@ -228,7 +228,7 @@ class MimicReward(TrajectoryBasedReward):
             backend (ModuleType): Backend module used for computation (either numpy or jax.numpy).
 
         Returns:
-            LocomotionRewardState: The initialized reward state.
+            MimicRewardState: The initialized reward state.
 
         """
         return MimicRewardState(last_qvel=data.qvel, last_action=backend.zeros(env.info.action_space.shape[0]))
