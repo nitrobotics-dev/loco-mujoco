@@ -261,6 +261,8 @@ class LocomotionReward(TargetVelocityGoalReward):
         self._action_rate_coeff = kwargs.get("action_rate_coeff", 1e-2)
         self._air_time_max = kwargs.get("air_time_max", 0.0)
         self._air_time_coeff = kwargs.get("air_time_coeff", 0.0)
+        self._symmetry_air_coeff = kwargs.get("symmetry_air_coeff", 0.0)
+        self._energy_coeff = kwargs.get("energy_coeff", 0.0)
 
         # get limits and nominal joint positions
         self._limited_joints = np.array(model.jnt_limited, dtype=bool)
@@ -373,73 +375,134 @@ class LocomotionReward(TargetVelocityGoalReward):
         local_vel_root_ang = global_rot.inv().apply(global_vel_root[3:])
 
         # velocity reward
-        z_vel_reward = self._z_vel_coeff * -(backend.square(local_vel_root_lin[2]))
-        roll_pitch_vel_reward = self._roll_pitch_vel_coeff * -backend.square(local_vel_root_ang[:2]).sum()
+        if self._z_vel_coeff > 0.0:
+            z_vel_reward = self._z_vel_coeff * -(backend.square(local_vel_root_lin[2]))
+        else:
+            z_vel_reward = 0.0
+        if self._roll_pitch_vel_coeff > 0.0:
+            roll_pitch_vel_reward = self._roll_pitch_vel_coeff * -backend.square(local_vel_root_ang[:2]).sum()
+        else:
+            roll_pitch_vel_reward = 0.0
 
         # position reward
-        euler = global_rot.as_euler("xyz")
-        roll_pitch_reward = self._roll_pitch_pos_coeff * -backend.square(euler[:2]).sum()
+        if self._roll_pitch_pos_coeff > 0.0:
+            euler = global_rot.as_euler("xyz")
+            roll_pitch_reward = self._roll_pitch_pos_coeff * -backend.square(euler[:2]).sum()
+        else:
+            roll_pitch_reward = 0.0
 
         # nominal joint pos reward
-        joint_qpos_reward = (self._nominal_joint_pos_coeff *
-                             -backend.square(data.qpos[self._nominal_joint_qpos_id] -
-                                             self._nominal_joint_qpos[self._nominal_joint_qpos_id]).sum())
+        if self._nominal_joint_pos_coeff > 0.0:
+            joint_qpos_reward = (self._nominal_joint_pos_coeff *
+                                 -backend.square(data.qpos[self._nominal_joint_qpos_id] -
+                                                 self._nominal_joint_qpos[self._nominal_joint_qpos_id]).sum())
+        else:
+            joint_qpos_reward = 0.0
 
         # joint position limit reward
-        joint_positions = backend.array(data.qpos[self._limited_joints_qpos_id])
-        lower_limit_penalty = -backend.minimum(joint_positions - self._joint_ranges[:, 0], 0.0).sum()
-        upper_limit_penalty = backend.maximum(joint_positions - self._joint_ranges[:, 1], 0.0).sum()
-        joint_position_limit_reward = self._joint_position_limit_coeff * -(lower_limit_penalty + upper_limit_penalty)
+        if self._joint_position_limit_coeff > 0.0:
+            joint_positions = backend.array(data.qpos[self._limited_joints_qpos_id])
+            lower_limit_penalty = -backend.minimum(joint_positions - self._joint_ranges[:, 0], 0.0).sum()
+            upper_limit_penalty = backend.maximum(joint_positions - self._joint_ranges[:, 1], 0.0).sum()
+            joint_position_limit_reward = self._joint_position_limit_coeff * -(lower_limit_penalty + upper_limit_penalty)
+        else:
+            joint_position_limit_reward = 0.0
 
         # joint velocity reward
         joint_vel = data.qvel[~self._free_joint_qvel_mask]
-        joint_vel_reward = self._joint_vel_coeff * -backend.square(joint_vel).sum()
+        if self._joint_vel_coeff > 0.0:
+            joint_vel_reward = self._joint_vel_coeff * -backend.square(joint_vel).sum()
+        else:
+            joint_vel_reward = 0.0
 
         # joint acceleration reward
-        last_joint_vel = reward_state.last_qvel[~self._free_joint_qvel_mask]
-        joint_vel = data.qvel[~self._free_joint_qvel_mask]
-        acceleration_norm = backend.sum(backend.square(joint_vel - last_joint_vel) / env.dt)
-        acceleration_reward = self._joint_acc_coeff * -acceleration_norm
+        if self._joint_acc_coeff > 0.0:
+            last_joint_vel = reward_state.last_qvel[~self._free_joint_qvel_mask]
+            acceleration_norm = backend.sum(backend.square(joint_vel - last_joint_vel) / env.dt)
+            acceleration_reward = self._joint_acc_coeff * -acceleration_norm
+        else:
+            acceleration_reward = 0.0
 
         # joint torque reward
-        torque_norm = backend.sum(backend.square(data.qfrc_actuator[~self._free_joint_qvel_mask]))
-        torque_reward = self._joint_torque_coeff * -torque_norm
+        if self._joint_torque_coeff > 0.0:
+            torque_norm = backend.sum(backend.square(data.qfrc_actuator[~self._free_joint_qvel_mask]))
+            torque_reward = self._joint_torque_coeff * -torque_norm
+        else:
+            torque_reward = 0.0
 
         # action rate reward
-        action_rate_norm = backend.sum(backend.square(action - reward_state.last_action))
-        action_rate_reward = self._action_rate_coeff * -action_rate_norm
+        if self._action_rate_coeff > 0.0:
+            action_rate_norm = backend.sum(backend.square(action - reward_state.last_action))
+            action_rate_reward = self._action_rate_coeff * -action_rate_norm
+        else:
+            action_rate_reward = 0.0
 
         # air time reward
-        air_time_reward = 0.0
-        foots_on_ground = backend.zeros(len(self._foot_ids))
-        tslt = reward_state.time_since_last_touchdown.copy()
-        for i, f_id in enumerate(self._foot_ids):
-            foot_on_ground = mj_check_collisions(f_id, self._floor_id, data, backend)
-            if backend == np:
-                foots_on_ground[i] = foot_on_ground
-            else:
-                foots_on_ground = foots_on_ground.at[i].set(foot_on_ground)
-
-            if backend == np:
-                if foot_on_ground:
-                    air_time_reward += (tslt[i] - self._air_time_max)
-                    tslt[i] = 0.0
+        if self._air_time_coeff > 0.0 or self._symmetry_air_coeff > 0.0:
+            air_time_reward = 0.0
+            foots_on_ground = backend.zeros(len(self._foot_ids))
+            tslt = reward_state.time_since_last_touchdown.copy()
+            for i, f_id in enumerate(self._foot_ids):
+                foot_on_ground = mj_check_collisions(f_id, self._floor_id, data, backend)
+                if backend == np:
+                    foots_on_ground[i] = foot_on_ground
                 else:
-                    tslt[i] += env.dt
-            else:
-                tslt_i, air_time_reward = jax.lax.cond(foot_on_ground,
-                                                       lambda: (0.0, air_time_reward + tslt[i] - self._air_time_max),
-                                                       lambda: (tslt[i] + env.dt, air_time_reward))
-                tslt = tslt.at[i].set(tslt_i)
+                    foots_on_ground = foots_on_ground.at[i].set(foot_on_ground)
 
-        air_time_reward = self._air_time_coeff * air_time_reward
+                if backend == np:
+                    if foot_on_ground:
+                        air_time_reward += (tslt[i] - self._air_time_max)
+                        tslt[i] = 0.0
+                    else:
+                        tslt[i] += env.dt
+                else:
+                    tslt_i, air_time_reward = jax.lax.cond(foot_on_ground,
+                                                           lambda: (0.0, air_time_reward + tslt[i] - self._air_time_max),
+                                                           lambda: (tslt[i] + env.dt, air_time_reward))
+                    tslt = tslt.at[i].set(tslt_i)
+
+            air_time_reward = self._air_time_coeff * air_time_reward
+        else:
+            tslt = reward_state.time_since_last_touchdown.copy()
+            air_time_reward = 0.0
+
+        # symmetry reward
+        if self._symmetry_air_coeff > 0.0:
+            symmetry_air_violations = 0.0
+            if backend == np:
+                if (not foots_on_ground[0] and not foots_on_ground[1]):
+                    symmetry_air_violations += 1
+                if not foots_on_ground[2] and not foots_on_ground[3]:
+                    symmetry_air_violations += 1
+            else:
+                symmetry_air_violations = jax.lax.cond(jnp.logical_and(jnp.logical_not(foots_on_ground[0]),
+                                                                       jnp.logical_not(foots_on_ground[1])),
+                                                       lambda: symmetry_air_violations + 1,
+                                                       lambda: symmetry_air_violations)
+
+                symmetry_air_violations = jax.lax.cond(jnp.logical_and(jnp.logical_not(foots_on_ground[2]),
+                                                                       jnp.logical_not(foots_on_ground[3])),
+                                                       lambda: symmetry_air_violations + 1,
+                                                       lambda: symmetry_air_violations)
+
+            symmetry_air_reward = self._symmetry_air_coeff * -symmetry_air_violations
+        else:
+            symmetry_air_reward = 0.0
+
+        # energy reward
+        if self._energy_coeff > 0.0:
+            energy = backend.sum(backend.abs(joint_vel) * backend.abs(data.qfrc_actuator[~self._free_joint_qvel_mask]))
+            energy_reward = self._energy_coeff * -energy
+        else:
+            energy_reward = 0.0
 
         # total reward
         tracking_reward, _ = super().__call__(state, action, next_state, absorbing, info,
                                               env, model, data, carry, backend)
         penality_rewards = (z_vel_reward + roll_pitch_vel_reward + roll_pitch_reward + joint_qpos_reward
                             + joint_position_limit_reward + joint_vel_reward + acceleration_reward
-                            + torque_reward + action_rate_reward + air_time_reward)
+                            + torque_reward + action_rate_reward + air_time_reward
+                            + symmetry_air_reward + energy_reward)
         total_reward = tracking_reward + penality_rewards
         total_reward = backend.maximum(total_reward, 0.0)
 
