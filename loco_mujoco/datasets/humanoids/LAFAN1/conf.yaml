@@ -1,0 +1,72 @@
+UnitreeH1: &unitree_h1
+  fps: 30
+  dir_name: h1
+  jnt_names:
+    - root
+    - hip_rotation_l
+    - hip_adduction_l
+    - hip_flexion_l
+    - knee_angle_l
+    - ankle_angle_l
+    - hip_rotation_r
+    - hip_adduction_r
+    - hip_flexion_r
+    - knee_angle_r
+    - ankle_angle_r
+    - back_bkz
+    - l_arm_shy
+    - l_arm_shx
+    - l_arm_shz
+    - left_elbow
+    - r_arm_shy
+    - r_arm_shx
+    - r_arm_shz
+    - right_elbow
+  root_height_offset: 0.02
+  env_params:
+    disable_arms: false
+    disable_back_joint: false
+
+MjxUnitreeH1: *unitree_h1
+
+UnitreeG1: &unitree_g1
+  fps: 30
+  dir_name: g1
+  jnt_names:
+    - root
+    - left_hip_pitch_joint
+    - left_hip_roll_joint
+    - left_hip_yaw_joint
+    - left_knee_joint
+    - left_ankle_pitch_joint
+    - left_ankle_roll_joint
+    - right_hip_pitch_joint
+    - right_hip_roll_joint
+    - right_hip_yaw_joint
+    - right_knee_joint
+    - right_ankle_pitch_joint
+    - right_ankle_roll_joint
+    - waist_yaw_joint
+    - waist_roll_joint
+    - waist_pitch_joint
+    - left_shoulder_pitch_joint
+    - left_shoulder_roll_joint
+    - left_shoulder_yaw_joint
+    - left_elbow_joint
+    - left_wrist_roll_joint
+    - left_wrist_pitch_joint
+    - left_wrist_yaw_joint
+    - right_shoulder_pitch_joint
+    - right_shoulder_roll_joint
+    - right_shoulder_yaw_joint
+    - right_elbow_joint
+    - right_wrist_roll_joint
+    - right_wrist_pitch_joint
+    - right_wrist_yaw_joint
+
+  root_height_offset: 0.02
+  env_params:
+    disable_arms: false
+    disable_back_joint: false
+
+MjxUnitreeG1: *unitree_g1

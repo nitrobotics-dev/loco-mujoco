@@ -1,0 +1,3 @@
+discard_first: 5000
+discard_last: 10000
+frequency: 500

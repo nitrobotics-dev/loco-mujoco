@@ -1,0 +1,30 @@
+name: Stompy
+mjcf_file: loco_mujoco/environments/data/stompymini/robot.xml
+extend_config: []
+
+joint_matches:
+  - ['link_upper_half_assembly_1_torso_top_left_1', 'Pelvis']
+  - ['link_lower_half_assembly_1_hip_assembly_1_robstride_04_mock_1_rs_04_rotor_1', 'L_Hip']
+  - ['link_lower_half_assembly_1_left_leg_1_robstride_04_mock_2_rs_04_rotor_1', 'L_Knee']
+  - ['link_lower_half_assembly_1_left_leg_1_robstride_01_mock_2_rs_01_stator_1', 'L_Ankle']
+
+  - ['link_lower_half_assembly_1_hip_assembly_1_robstride_04_mock_2_rs_04_rotor_1', 'R_Hip']
+  - ['link_lower_half_assembly_1_right_leg_1_robstride_04_mock_2_rs_04_rotor_1', 'R_Knee']
+  - ['link_lower_half_assembly_1_right_leg_1_robstride_01_mock_2_rs_01_stator_1', 'R_Ankle']
+
+  - ['link_upper_half_assembly_1_robstride_04_mock_2_rs_04_rotor_1', 'L_Shoulder']
+  - ['link_upper_half_assembly_1_left_arm_1_robstride_01_mock_3_rs_01_rotor_1', 'L_Elbow']
+  - ['link_upper_half_assembly_1_right_arm_1_robstride_01_mock_4_rs_01_rotor_1', "L_Wrist"]
+
+  - ['link_upper_half_assembly_1_robstride_04_mock_1_rs_04_rotor_1', 'R_Shoulder']
+  - ['link_upper_half_assembly_1_right_arm_1_robstride_01_mock_3_rs_01_rotor_1', 'R_Elbow']
+  - ['link_upper_half_assembly_1_right_arm_1_robstride_01_mock_4_rs_01_rotor_1',"R_Wrist"]
+
+
+smpl_pose_modifier: 
+  - Pelvis: "[0, np.pi, 0]"
+
+
+env_params:
+  disable_arms: false
+  disable_back_joint: false

@@ -1,4 +1,7 @@
 import os
+import argparse
+
+import scipy.spatial.transform
 import wget
 import zipfile
 import numpy as np
@@ -7,6 +10,7 @@ from pathlib import Path
 import scipy.io as sio
 from scipy.spatial.transform import Rotation as R
 import loco_mujoco
+import yaml
 
 
 def download_all_datasets():
@@ -111,7 +115,7 @@ def download_raw_mocap_datasets():
     os.remove(file_path)
 
 
-def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_first=None, discard_last=None):
+def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_first=0, discard_last=0):
     """
     Applies a linear transformation to the joint angles and velocities of a mocap dataset to adapt to specific
     humanoid model.
@@ -166,9 +170,10 @@ def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_fir
     trajec = np.concatenate((joint_pos, joint_vel))
 
     # rename if needed
+    old_keys = deepcopy(euler_keys)
     if rename_map is not None:
         for k, v in rename_map.items():
-            i = euler_keys.index(k)
+            i = old_keys.index(k)
             euler_keys[i] = v
 
     keys = ["q_" + k for k in euler_keys ] + ["dq_" + k for k in euler_keys]
@@ -200,4 +205,83 @@ def adapt_mocap(path, joint_conf, unavailable_keys, rename_map=None, discard_fir
         val_temp = val_temp[0:-discard_last] if discard_last > 0 else val_temp
         dataset[j_name] = val_temp
 
+    # add the frequency
+    dataset["frequency"] = float(np.squeeze(data["fsKin"]))
+
     return dataset
+
+
+def set_amass_path():
+    """
+    Set the path to the AMASS dataset.
+    """
+    parser = argparse.ArgumentParser(description="Set the AMASS dataset path.")
+    parser.add_argument("--path", type=str, help="Path to the AMASS dataset.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_AMASS_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def set_smpl_model_path():
+    """
+    Set the path to the SMPL model.
+    """
+    parser = argparse.ArgumentParser(description="Set the SMPL model path.")
+    parser.add_argument("--path", type=str, help="Path to the SMPL model.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def set_converted_amass_path():
+    """
+    Set the path to which the converted AMASS dataset is stored.
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which the converted AMASS dataset is stored.")
+    parser.add_argument("--path", type=str, help="Path to which the converted AMASS dataset is stored.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_AMASS_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def set_lafan1_path():
+    """
+    Set the path to the LAFAN1 dataset.
+    """
+    parser = argparse.ArgumentParser(description="Set the LAFAN1 dataset path.")
+    parser.add_argument("--path", type=str, help="Path to the LAFAN1 dataset.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_LAFAN1_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def set_converted_lafan1_path():
+    """
+    Set the path to which the converted LAFAN1 dataset is stored.
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which the converted LAFAN1 dataset is stored.")
+    parser.add_argument("--path", type=str, help="Path to which the converted LAFAN1 dataset is stored.")
+    args = parser.parse_args()
+    _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_CONVERTED_LAFAN1_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
+def _set_path_in_yaml_conf(path: str, attr: str, path_to_conf: str):
+    """
+    Set the path in the yaml configuration file.
+    """
+
+    # create an empty yaml file if it does not exist
+    if not os.path.exists(path_to_conf):
+        with open(path_to_conf, "w") as file:
+            yaml.dump({}, file)
+
+    # load yaml file
+    with open(path_to_conf, "r") as file:
+        data = yaml.load(file, Loader=yaml.FullLoader)
+
+    # set the path
+    data[attr] = path
+
+    # save the yaml file
+    with open(path_to_conf, "w") as file:
+        yaml.dump(data, file)
+
+    print(f"Set {attr} to {path} in file {path_to_conf}.")

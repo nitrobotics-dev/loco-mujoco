@@ -1,13 +1,13 @@
-from pathlib import Path
-from copy import deepcopy
-from dm_control import mjcf
+import mujoco
+from mujoco import MjSpec
+import numpy as np
 
-from mushroom_rl.utils.running_stats import *
-from mushroom_rl.utils.mujoco import *
-
+import loco_mujoco
+from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
 from loco_mujoco.environments import ValidTaskConf
+from loco_mujoco.core. utils import info_property
 
 
 class UnitreeG1(BaseRobotHumanoid):
@@ -242,79 +242,52 @@ class UnitreeG1(BaseRobotHumanoid):
 
     valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
                                      data_types=["real"])
+    mjx_enabled = False
 
-    def __init__(self, disable_arms=False, disable_back_joint=False, **kwargs):
+    def __init__(self, disable_arms=False, disable_back_joint=False, spec=None,
+                 observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
         """
 
-        xml_path = (Path(__file__).resolve().parent.parent / "data" / "unitree_g1" / "g1.xml").as_posix()
-        xml_handle = mjcf.from_path(xml_path)
-
-        self._hold_weight = False   # no weights supported with this envs
-
-        # save xml_handle
-        self._xml_handles = [xml_handle]
-
-        action_spec = self._get_action_specification()
-
-        observation_spec = self._get_observation_specification()
-
-        collision_groups = [("floor", ["floor"]),
-                            ("right_foot_1", ["right_foot_1_col"]),
-                            ("right_foot_2", ["right_foot_2_col"]),
-                            ("right_foot_3", ["right_foot_3_col"]),
-                            ("right_foot_4", ["right_foot_4_col"]),
-                            ("left_foot_1", ["left_foot_1_col"]),
-                            ("left_foot_2", ["left_foot_2_col"]),
-                            ("left_foot_3", ["left_foot_3_col"]),
-                            ("left_foot_4", ["left_foot_4_col"])]
-
-        self._hidable_obs = ("positions", "velocities", "foot_forces", "weight")
-
-        # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._disable_arms = disable_arms
         self._disable_back_joint = disable_back_joint
 
+        if spec is None:
+            spec = self.get_default_xml_file_path()
+
+        # load the model specification
+        spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
+
+        # get the observation and action specification
+        if observation_spec is None:
+            # get default
+            observation_spec = self._get_observation_specification(spec)
+        else:
+            # parse
+            observation_spec = self.parse_observation_spec(observation_spec)
+        if action_spec is None:
+            action_spec = self._get_action_specification(spec)
+
+        # modify the specification if needed
+        if self.mjx_enabled:
+            spec = self._modify_spec_for_mjx(spec)
         if disable_arms or disable_back_joint:
             joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_xml_modifications()
             obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
-            observation_spec = [elem for elem in observation_spec if elem[0] not in obs_to_remove]
+            observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
             action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
-
-            xml_handle = self._delete_from_xml_handle(xml_handle, joints_to_remove,
-                                                      motors_to_remove, equ_constr_to_remove)
+            spec = self._delete_from_spec(spec, joints_to_remove,
+                                          motors_to_remove, equ_constr_to_remove)
             if disable_arms:
-                xml_handle = self._reorient_arms(xml_handle)
+                spec = self._reorient_arms(spec)
 
-        xml_handles = [xml_handle]
+        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
+                         **kwargs)
 
-        super().__init__(xml_handles, action_spec, observation_spec, collision_groups, **kwargs)
-
-    def _get_ground_forces(self):
-        """
-        Calculates the ground forces (np.array). Per foot, the ground reaction force (linear --> 3D) is measured at
-        4 points resulting in a 4*3*2=24 dimensional force vector.
-
-        Returns:
-            The ground forces (np.array) vector of all foots.
-
-        """
-
-        grf = np.concatenate([self._get_collision_force("floor", "right_foot_1")[:3],
-                              self._get_collision_force("floor", "right_foot_2")[:3],
-                              self._get_collision_force("floor", "right_foot_3")[:3],
-                              self._get_collision_force("floor", "right_foot_4")[:3],
-                              self._get_collision_force("floor", "left_foot_1")[:3],
-                              self._get_collision_force("floor", "left_foot_2")[:3],
-                              self._get_collision_force("floor", "left_foot_3")[:3],
-                              self._get_collision_force("floor", "left_foot_4")[:3]])
-
-        return grf
-
-    @staticmethod
-    def _get_grf_size():
+    @info_property
+    def grf_size(self):
         """
         Returns:
             The size of the ground force vector.
@@ -354,100 +327,8 @@ class UnitreeG1(BaseRobotHumanoid):
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
-    def _has_fallen(self, obs, return_err_msg=False):
-        """
-        Checks if a model has fallen.
-
-        Args:
-            obs (np.array): Current observation.
-            return_err_msg (bool): If True, an error message with violations is returned.
-
-        Returns:
-            True, if the model has fallen for the current observation, False otherwise.
-            Optionally an error message is returned.
-
-        """
-
-        pelvis_euler = self._get_from_obs(obs, ["q_pelvis_tilt", "q_pelvis_list", "q_pelvis_rotation"])
-        pelvis_y_condition = (obs[0] < -0.3) or (obs[0] > 0.1)
-        pelvis_tilt_condition = (pelvis_euler[0] < (-np.pi / 4.5)) or (pelvis_euler[0] > (np.pi / 12))
-        pelvis_list_condition = (pelvis_euler[1] < -np.pi / 12) or (pelvis_euler[1] > np.pi / 8)
-        pelvis_rotation_condition = (pelvis_euler[2] < (-np.pi / 8)) or (pelvis_euler[2] > (np.pi / 8))
-        pelvis_condition = (pelvis_y_condition or pelvis_tilt_condition or
-                            pelvis_list_condition or pelvis_rotation_condition)
-
-        if return_err_msg:
-            error_msg = ""
-            if pelvis_y_condition:
-                error_msg += "pelvis_y_condition violated.\n"
-            elif pelvis_tilt_condition:
-                error_msg += "pelvis_tilt_condition violated.\n"
-            elif pelvis_list_condition:
-                error_msg += "pelvis_list_condition violated.\n"
-            elif pelvis_rotation_condition:
-                error_msg += "pelvis_rotation_condition violated.\n"
-
-            return pelvis_condition, error_msg
-        else:
-
-            return pelvis_condition
-
     @staticmethod
-    def generate(task="walk", dataset_type="real", **kwargs):
-        """
-        Generates an environment corresponding to the specified task.
-
-        Args:
-            task (str): Main task to solve. Either "walk", "run" or "carry". The latter is walking while carrying
-                an unknown weight, which makes the task partially observable.
-            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
-                reference trajectory. This data does not perfectly match the kinematics
-                and dynamics of this environment, hence it is more challenging. "perfect" uses
-                a perfect dataset.
-
-        Returns:
-            Returns an environment corresponding to the specified task.
-
-        """
-
-        check_validity_task_mode_dataset(UnitreeG1.__name__, task, None, dataset_type,
-                                         *UnitreeG1.valid_task_confs.get_all())
-
-        if dataset_type == "real":
-            if task == "run":
-                path = "datasets/humanoids/real/05-run_UnitreeG1.npz"
-            else:
-                path = "datasets/humanoids/real/02-constspeed_UnitreeG1.npz"
-
-        return BaseRobotHumanoid.generate(UnitreeG1, path, task, dataset_type,
-                                          clip_trajectory_to_joint_ranges=True, **kwargs)
-
-    @staticmethod
-    def _reorient_arms(xml_handle):
-        """
-        Reorients the elbow to not collide with the hip.
-
-        Args:
-            xml_handle: Handle to Mujoco XML.
-
-        Returns:
-            Modified Mujoco XML handle.
-
-        """
-
-        # modify the arm orientation
-        left_shoulder_pitch_link = xml_handle.find("body", "left_shoulder_pitch_link")
-        left_shoulder_pitch_link.quat = [1.0, 0.25, 0.1, 0.0]
-        right_elbow_link = xml_handle.find("body", "right_elbow_pitch_link")
-        right_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
-        right_shoulder_pitch_link = xml_handle.find("body", "right_shoulder_pitch_link")
-        right_shoulder_pitch_link.quat = [1.0, -0.25, 0.1, 0.0]
-        left_elbow_link = xml_handle.find("body", "left_elbow_pitch_link")
-        left_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
-
-        return xml_handle
-
-    def _get_observation_specification(self):
+    def _get_observation_specification(spec):
         """
         Getter for the observation space specification.
 
@@ -457,25 +338,116 @@ class UnitreeG1(BaseRobotHumanoid):
 
         """
 
-        observation_spec = []
-        for prefix in ["q_", "dq_"]:
-            for j in self.xml_handle.find_all("joint"):
-                obs_type = ObservationType.JOINT_POS if prefix == "q_" else ObservationType.JOINT_VEL
-                observation_spec.append((prefix + j.name, j.name, obs_type))
+        observation_spec = [# ------------- JOINT POS -------------
+                            ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
+                            ObservationType.JointPos("q_left_hip_pitch_joint", xml_name="left_hip_pitch_joint"),
+                            ObservationType.JointPos("q_left_hip_roll_joint", xml_name="left_hip_roll_joint"),
+                            ObservationType.JointPos("q_left_hip_yaw_joint", xml_name="left_hip_yaw_joint"),
+                            ObservationType.JointPos("q_left_knee_joint", xml_name="left_knee_joint"),
+                            ObservationType.JointPos("q_left_ankle_pitch_joint", xml_name="left_ankle_pitch_joint"),
+                            ObservationType.JointPos("q_left_ankle_roll_joint", xml_name="left_ankle_roll_joint"),
+                            ObservationType.JointPos("q_right_hip_pitch_joint", xml_name="right_hip_pitch_joint"),
+                            ObservationType.JointPos("q_right_hip_roll_joint", xml_name="right_hip_roll_joint"),
+                            ObservationType.JointPos("q_right_hip_yaw_joint", xml_name="right_hip_yaw_joint"),
+                            ObservationType.JointPos("q_right_knee_joint", xml_name="right_knee_joint"),
+                            ObservationType.JointPos("q_right_ankle_pitch_joint", xml_name="right_ankle_pitch_joint"),
+                            ObservationType.JointPos("q_right_ankle_roll_joint", xml_name="right_ankle_roll_joint"),
+                            ObservationType.JointPos("q_waist_yaw_joint", xml_name="waist_yaw_joint"),
+                            ObservationType.JointPos("q_left_shoulder_pitch_joint", xml_name="left_shoulder_pitch_joint"),
+                            ObservationType.JointPos("q_left_shoulder_roll_joint", xml_name="left_shoulder_roll_joint"),
+                            ObservationType.JointPos("q_left_shoulder_yaw_joint", xml_name="left_shoulder_yaw_joint"),
+                            ObservationType.JointPos("q_left_elbow_joint", xml_name="left_elbow_joint"),
+                            ObservationType.JointPos("q_left_wrist_roll_joint", xml_name="left_wrist_roll_joint"),
+                            ObservationType.JointPos("q_right_shoulder_pitch_joint", xml_name="right_shoulder_pitch_joint"),
+                            ObservationType.JointPos("q_right_shoulder_roll_joint", xml_name="right_shoulder_roll_joint"),
+                            ObservationType.JointPos("q_right_shoulder_yaw_joint", xml_name="right_shoulder_yaw_joint"),
+                            ObservationType.JointPos("q_right_elbow_joint", xml_name="right_elbow_joint"),
+                            ObservationType.JointPos("q_right_wrist_roll_joint", xml_name="right_wrist_roll_joint"),
+
+                            # ------------- JOINT VEL -------------
+                            ObservationType.FreeJointVel("dq_root", xml_name="root"),
+                            ObservationType.JointVel("dq_left_hip_pitch_joint", xml_name="left_hip_pitch_joint"),
+                            ObservationType.JointVel("dq_left_hip_roll_joint", xml_name="left_hip_roll_joint"),
+                            ObservationType.JointVel("dq_left_hip_yaw_joint", xml_name="left_hip_yaw_joint"),
+                            ObservationType.JointVel("dq_left_knee_joint", xml_name="left_knee_joint"),
+                            ObservationType.JointVel("dq_left_ankle_pitch_joint", xml_name="left_ankle_pitch_joint"),
+                            ObservationType.JointVel("dq_left_ankle_roll_joint", xml_name="left_ankle_roll_joint"),
+                            ObservationType.JointVel("dq_right_hip_pitch_joint", xml_name="right_hip_pitch_joint"),
+                            ObservationType.JointVel("dq_right_hip_roll_joint", xml_name="right_hip_roll_joint"),
+                            ObservationType.JointVel("dq_right_hip_yaw_joint", xml_name="right_hip_yaw_joint"),
+                            ObservationType.JointVel("dq_right_knee_joint", xml_name="right_knee_joint"),
+                            ObservationType.JointVel("dq_right_ankle_pitch_joint", xml_name="right_ankle_pitch_joint"),
+                            ObservationType.JointVel("dq_right_ankle_roll_joint", xml_name="right_ankle_roll_joint"),
+                            ObservationType.JointVel("dq_waist_yaw_joint", xml_name="waist_yaw_joint"),
+                            ObservationType.JointVel("dq_left_shoulder_pitch_joint", xml_name="left_shoulder_pitch_joint"),
+                            ObservationType.JointVel("dq_left_shoulder_roll_joint", xml_name="left_shoulder_roll_joint"),
+                            ObservationType.JointVel("dq_left_shoulder_yaw_joint", xml_name="left_shoulder_yaw_joint"),
+                            ObservationType.JointVel("dq_left_elbow_joint", xml_name="left_elbow_joint"),
+                            ObservationType.JointVel("dq_left_wrist_roll_joint", xml_name="left_wrist_roll_joint"),
+                            ObservationType.JointVel("dq_right_shoulder_pitch_joint", xml_name="right_shoulder_pitch_joint"),
+                            ObservationType.JointVel("dq_right_shoulder_roll_joint", xml_name="right_shoulder_roll_joint"),
+                            ObservationType.JointVel("dq_right_shoulder_yaw_joint", xml_name="right_shoulder_yaw_joint"),
+                            ObservationType.JointVel("dq_right_elbow_joint", xml_name="right_elbow_joint"),
+                            ObservationType.JointVel("dq_right_wrist_roll_joint", xml_name="right_wrist_roll_joint"),]
+
         return observation_spec
 
-    def _get_action_specification(self):
+    @staticmethod
+    def _get_action_specification(spec):
         """
         Getter for the action space specification.
 
         Returns:
-            A list of tuples containing the specification of each action
-            space entry.
+            A list of actuator names.
+
+        """
+        action_spec = []
+        for actuator in spec.actuators:
+            action_spec.append(actuator.name)
+        return action_spec
+
+    @staticmethod
+    def _reorient_arms(spec: MjSpec):
+        """
+        Reorients the elbow to not collide with the hip.
+
+        Args:
+            spec (MjSpec): to Mujoco specification.
+
+        Returns:
+            Modified Mujoco specification.
 
         """
 
-        action_spec = []
-        actuators = self.xml_handle.find_all("actuator")
-        for actuator in actuators:
-            action_spec.append(actuator.name)
-        return action_spec
+        # modify the arm orientation
+        left_shoulder_pitch_link = spec.find_body("left_shoulder_pitch_link")
+        left_shoulder_pitch_link.quat = [1.0, 0.25, 0.1, 0.0]
+        right_elbow_link = spec.find_body("right_elbow_pitch_link")
+        right_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
+        right_shoulder_pitch_link = spec.find_body("right_shoulder_pitch_link")
+        right_shoulder_pitch_link.quat = [1.0, -0.25, 0.1, 0.0]
+        left_elbow_link = spec.find_body("left_elbow_pitch_link")
+        left_elbow_link.quat = [1.0, 0.0, 0.25, 0.0]
+
+        return spec
+
+    def _modify_spec_for_mjx(self, spec: MjSpec):
+        raise NotImplementedError
+
+    @classmethod
+    def get_default_xml_file_path(cls):
+        """
+        Returns the default path to the xml file of the environment.
+        """
+        return (loco_mujoco.PATH_TO_MODELS / "unitree_g1" / "g1_23dof.xml").as_posix()
+
+    @info_property
+    def upper_body_xml_name(self):
+        return "torso_link"
+
+    @info_property
+    def root_height_healthy_range(self):
+        """
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        """
+        return (0.5, 1.0)

@@ -3,18 +3,15 @@ import warnings
 from pathlib import Path
 from copy import deepcopy
 
-from dm_control import mjcf
-
-from mushroom_rl.utils.running_stats import *
+# from mushroom_rl.utils.running_stats import *
 
 import loco_mujoco
 from loco_mujoco.environments import ValidTaskConf
-from loco_mujoco.environments.humanoids.base_humanoid import BaseHumanoid
-from loco_mujoco.utils.reward import MultiTargetVelocityReward
+from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
 from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
-class BaseHumanoid4Ages(BaseHumanoid):
+class BaseHumanoid4Ages(BaseSkeleton):
     """
     Mujoco environment of 4 simplified humanoid models.
     At the beginning of each episode, one of the four humanoid models are
@@ -76,7 +73,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
         # --- Modify the xml, the action_spec, and the observation_spec if needed ---
         self._use_box_feet = use_box_feet
         self._disable_arms = disable_arms
-        joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups = self._get_xml_modifications()
+        joints_to_remove, motors_to_remove, equ_constr_to_remove, collision_groups = self._get_spec_modifications()
 
         xml_handle = mjcf.from_path(xml_path)
         xml_handles = [self.scale_body(deepcopy(xml_handle), scaling, use_muscles) for scaling in self._scalings]
@@ -87,11 +84,11 @@ class BaseHumanoid4Ages(BaseHumanoid):
             action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
 
             for handle, scale in zip(xml_handles, self._scalings):
-                handle = self._delete_from_xml_handle(handle, joints_to_remove,
-                                                      motors_to_remove, equ_constr_to_remove)
+                handle = self._delete_from_spec(handle, joints_to_remove,
+                                                motors_to_remove, equ_constr_to_remove)
 
                 if use_box_feet:
-                    handle = self._add_box_feet_to_xml_handle(handle, alpha_box_feet, scale)
+                    handle = self._add_box_feet_to_spec(handle, alpha_box_feet, scale)
 
                 if disable_arms:
                     self._reorient_arms(handle)
@@ -99,7 +96,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
         # call gran-parent
         super(BaseHumanoid, self).__init__(xml_handles, action_spec, observation_spec, collision_groups, **kwargs)
 
-        if scaling_trajectory_map is not None and self.trajectories is None:
+        if scaling_trajectory_map is not None and self.th is None:
             warnings.warn("You have defined a scaling_trajectory_map, but no trajectory was defined. The former "
                           "will have no effect.")
 
@@ -120,29 +117,29 @@ class BaseHumanoid4Ages(BaseHumanoid):
             raise TypeError("Initializing the environment from an observation is "
                             "not allowed in this environment.")
         else:
-            if not self.trajectories and self._random_start:
+            if not self.th and self._random_start:
                 raise ValueError("Random start not possible without trajectory data.")
-            elif not self.trajectories and self._init_step_no is not None:
+            elif not self.th and self._init_step_no is not None:
                 raise ValueError("Setting an initial step is not possible without trajectory data.")
             elif self._init_step_no is not None and self._random_start:
                 raise ValueError("Either use a random start or set an initial step, not both.")
 
-            if self.trajectories is not None:
+            if self.th is not None:
                 if self._random_start:
                     if self._scaling_trajectory_map:
                         curr_model = self._current_model_idx
                         valid_traj_range = self._scaling_trajectory_map[curr_model]
                         traj_no = np.random.randint(valid_traj_range[0], valid_traj_range[1])
-                        sample = self.trajectories.reset_trajectory(traj_no=traj_no)
+                        sample = self.th.reset_trajectory(traj_no=traj_no)
                     else:
-                        sample = self.trajectories.reset_trajectory()
-                elif self._init_step_no is not None:
-                    traj_len = self.trajectories.trajectory_length
-                    n_traj = self.trajectories.number_of_trajectories
+                        sample = self.th.reset_trajectory()
+                elif self._init_step_no:
+                    traj_len = self.th.trajectory_length
+                    n_traj = self.th.nnumber_of_trajectories
                     assert self._init_step_no <= traj_len * n_traj
                     substep_no = int(self._init_step_no % traj_len)
                     traj_no = int(self._init_step_no / traj_len)
-                    sample = self.trajectories.reset_trajectory(substep_no, traj_no)
+                    sample = self.th.reset_trajectory(substep_no, traj_no)
                 self.set_sim_state(sample)
 
     def load_trajectory(self, traj_params, scaling_trajectory_map=None, warn=True):
@@ -167,14 +164,14 @@ class BaseHumanoid4Ages(BaseHumanoid):
                     warnings.warn("\"scaling_trajectory_map\" is not defined! Loading the default map, which assumes that "
                                   "the trajectory contains an equal number of trajectories for all scalings and that"
                                   "they are ordered in the following order %s." % self._scalings)
-                n_trajs_per_scaling = self.trajectories.number_of_trajectories / len(self._scalings)
+                n_trajs_per_scaling = self.th.n_trajectories / len(self._scalings)
                 assert n_trajs_per_scaling.is_integer(), "Failed to construct the default" \
                                                          "\"scaling_trajectory_map\". The number of trajectory " \
                                                          "can not be divided by the number of scalings!"
                 n_trajs_per_scaling = int(n_trajs_per_scaling)
                 current_low_idx = 0
                 self._scaling_trajectory_map = []
-                for i in range(self.trajectories.number_of_trajectories):
+                for i in range(self.th.n_trajectories):
                     current_high_idx = current_low_idx + n_trajs_per_scaling
                     self._scaling_trajectory_map.append((current_low_idx, current_high_idx))
                     current_low_idx = current_high_idx
@@ -197,6 +194,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
             included, and False means that it should be discarded.
 
         """
+
         if type(obs_to_hide) == str:
             obs_to_hide = (obs_to_hide,)
 
@@ -206,7 +204,7 @@ class BaseHumanoid4Ages(BaseHumanoid):
 
         pos_dim = len(self._get_joint_pos()) - 2
         vel_dim = len(self._get_joint_vel())
-        force_dim = self._get_grf_size()
+        force_dim = self.grf_size
         env_id_dim = len(self._get_env_id_map(0, self.n_all_models))
 
         mask = []
@@ -344,12 +342,10 @@ class BaseHumanoid4Ages(BaseHumanoid):
                 for s in h.site:
                     s.pos *= body_scaling
 
-
             actuator_handle = xml_handle.find_all("actuator")
             for h in actuator_handle:
                 if "mot" not in h.name:
                     h.force *= body_scaling ** 2
-                    h.lengthrange *= body_scaling
 
         if not use_muscles:
             actuator_handle = xml_handle.find_all("actuator")
@@ -411,33 +407,16 @@ class BaseHumanoid4Ages(BaseHumanoid):
             local_path = path + dataset_suffix
             traj_path = Path(loco_mujoco.__file__).resolve().parent / local_path
 
-        if 'reward_type' in kwargs.keys():
-            reward_type = kwargs['reward_type']
-            del kwargs['reward_type']
-
-            if 'reward_params' in kwargs.keys():
-                reward_params = kwargs['reward_params']
-                del kwargs['reward_params']
-            else:
-                reward_params = None
-        else:
-            reward_type = 'multi_target_velocity'
-
-            if 'reward_params' in kwargs.keys():
-                assert len(kwargs['reward_params'].keys()) == 1, 'The default reward only expects one parameter!'
-                assert list(kwargs['reward_params'].keys())[0] == 'target_velocity', 'The default reward only expects the parameter \'target_velocity\'!'
-                reward_params = kwargs['reward_params']
-                del kwargs['reward_params']
-            elif task == "walk":
-                reward_params = dict(target_velocity=1.25)
-            elif task == "run":
-                reward_params = dict(target_velocity=2.5)
+        if task == "walk":
+            reward_params = dict(target_velocity=1.25)
+        elif task == "run":
+            reward_params = dict(target_velocity=2.5)
 
         # Generate the MDP
-        mdp = env(scaling=scaling, reward_type=reward_type, reward_params=reward_params, **kwargs)
+        mdp = env(scaling=scaling, reward_type="multi_target_velocity", reward_params=reward_params, **kwargs)
 
         # Load the trajectory
-        env_freq = 1 / mdp._timestep  # hz
+        env_freq = 1 / mdp.simulation_dt  # hz
         desired_contr_freq = 1 / mdp.dt  # hz
         n_substeps = env_freq // desired_contr_freq
 

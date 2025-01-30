@@ -71,10 +71,10 @@ def get_obs_space_table_docs(env, additional_info, remove=None):
         env._disable_back_joint = default_args["disable_back_joint"]
 
     try:
-        joints_to_remove, _, _ = env._get_xml_modifications()
+        joints_to_remove, _, _ = env._get_spec_modifications()
     except:
         if type(env) != UnitreeA1:
-            joints_to_remove, _, _, _ = env._get_xml_modifications()
+            joints_to_remove, _, _, _ = env._get_spec_modifications()
         else:
             joints_to_remove = []
 
@@ -132,7 +132,7 @@ def get_action_space_table_docs(env, use_muscles=False):
     try:
         action_spec = env._get_action_specification()
         if type(env) != UnitreeA1:
-            _, motors_to_remove, _ = env._get_xml_modifications()
+            _, motors_to_remove, _ = env._get_spec_modifications()
         else:
             motors_to_remove = []
     except :
@@ -140,7 +140,7 @@ def get_action_space_table_docs(env, use_muscles=False):
             action_spec = env._get_action_specification()
         else:
             action_spec = env._get_action_specification(use_muscles)
-        _, motors_to_remove, _, _ = env._get_xml_modifications()
+        _, motors_to_remove, _, _ = env._get_spec_modifications()
 
     header = ["Index", "Name in XML", "Control Min", "Control Max", "Disabled"]
     grid = [header]

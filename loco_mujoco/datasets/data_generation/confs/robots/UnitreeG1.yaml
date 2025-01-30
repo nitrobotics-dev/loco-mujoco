@@ -1,0 +1,60 @@
+traj_conf:
+  joint_conf:
+    pelvis_tx: [0.725, 0.0]
+    pelvis_tz: [-0.725, 0.0]
+    pelvis_ty: [0.725, -0.9]
+    pelvis_tilt: [0.5, !expr "np.pi/2 - 0.10"]
+    pelvis_list: [0.5, !expr "np.pi/2"]
+    pelvis_rotation: [1.0, !expr "-np.pi/2"]
+    lumbar_extension: [1.0, 0.25]
+    lumbar_bending: [1.0, 0.0]
+    lumbar_rotation: [1.0, 0.0]
+    arm_rot_r: [1.0, 0.2]
+    arm_add_r: [1.0, 0.0]
+    arm_flex_r: [-1.0, 0.0]
+    elbow_flex_r: [-1.0, !expr "np.pi/2 + 0.25"]
+    pro_sup_r: [1.0, !expr "-np.pi/2"]
+    arm_rot_l: [-1.0, -0.2]
+    arm_add_l: [-1.0, 0.0]
+    arm_flex_l: [-1.0, 0.0]
+    elbow_flex_l: [-1.0, !expr "np.pi/2 + 0.25"]
+    pro_sup_l: [1.0, !expr "-np.pi/2"]
+    hip_adduction_l: [-1.0, 0.02]
+    hip_flexion_l: [-1.0, -0.1]
+    hip_rotation_l: [-0.7, 0.0]
+    knee_angle_l: [-1.0, 0.0]
+    ankle_angle_l: [-1.0, -0.12]
+    hip_adduction_r: [1.0, -0.05]
+    hip_flexion_r: [-1.0, -0.1]
+    hip_rotation_r: [0.7, 0.0]
+    knee_angle_r: [-1.0, 0.0]
+    ankle_angle_r: [-1.0, -0.12]
+  rename_map:
+    pelvis_tilt: pelvis_tilt
+    pelvis_rotation: pelvis_list
+    pelvis_list: pelvis_rotation
+    lumbar_rotation: torso_joint
+    hip_flexion_l: left_hip_pitch_joint
+    hip_adduction_l: left_hip_roll_joint
+    hip_rotation_l: left_hip_yaw_joint
+    knee_angle_l: left_knee_joint
+    ankle_angle_l: left_ankle_pitch_joint
+    hip_flexion_r: right_hip_pitch_joint
+    hip_adduction_r: right_hip_roll_joint
+    hip_rotation_r: right_hip_yaw_joint
+    knee_angle_r: right_knee_joint
+    ankle_angle_r: right_ankle_pitch_joint
+    arm_flex_l: left_shoulder_pitch_joint
+    arm_rot_l: left_shoulder_yaw_joint
+    arm_add_l: left_shoulder_roll_joint
+    elbow_flex_l: left_elbow_pitch_joint
+    pro_sup_l: left_elbow_roll_joint
+    arm_flex_r: right_shoulder_pitch_joint
+    arm_rot_r: right_shoulder_yaw_joint
+    arm_add_r: right_shoulder_roll_joint
+    elbow_flex_r: right_elbow_pitch_joint
+    pro_sup_r: right_elbow_roll_joint
+  unavailable_keys: ["left_ankle_roll_joint", "right_ankle_roll_joint"]
+env_params:
+  disable_arms: false
+  disable_back_joint: false

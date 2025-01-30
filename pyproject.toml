@@ -4,19 +4,22 @@ requires = ["setuptools", "wheel", "wget"]
 [project]
 name = "loco-mujoco"
 dependencies = [
-    "mushroom-rl>=1.10.0",
-    "numpy",
-    "scipy",
-    "mujoco==2.3.7",
+    "numpy<2.0",
+    "scipy>=1.14.0",
+    "mujoco>=3.2.6",
+    "mujoco-mjx>=3.2.6",
+    "hydra-core",
+    "jax",
+    "flax",
+    "orbax",
+    "distrax",
+    "metrx",
     "gymnasium",
-    "dm_control==1.0.14",
     "pyyaml",
-    "wget",
-    "gitpython"]
-
-requires-python = ">=3.8"
+    "opencv-python",
+    "wget"]
+requires-python = ">=3.10"
 authors = [{name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]
-
 maintainers = [{ name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]
 description = 'Imitation learning benchmark focusing on complex locomotion tasks using MuJoCo.'
 readme = "README.md"
@@ -27,8 +30,17 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dynamic = ["version"]
 
-dynamic = ["version", "optional-dependencies"]
+[project.optional-dependencies]
+smpl = [
+    "torch",
+    "tqdm",
+    "smplx @ git+https://github.com/ZhengyiLuo/smplx",
+    "easydict",
+    "joblib",
+    "lxml"
+]
 
 [project.urls]
 Homepage = "https://github.com/robfiras/loco-mujoco"
@@ -41,3 +53,8 @@ loco-mujoco-download-real = "loco_mujoco.utils:download_real_datasets"
 loco-mujoco-download-perfect = "loco_mujoco.utils:download_perfect_datasets"
 loco-mujoco-myomodel-init = "loco_mujoco.utils:fetch_myoskeleton"
 loco-mujoco-myomodel-clear = "loco_mujoco.utils:clear_myoskeleton"
+loco-mujoco-set-smpl-model-path = "loco_mujoco.utils:set_smpl_model_path"
+loco-mujoco-set-amass-path = "loco_mujoco.utils:set_amass_path"
+loco-mujoco-set-conv-amass-path = "loco_mujoco.utils:set_converted_amass_path"
+loco-mujoco-set-lafan1-path = "loco_mujoco.utils:set_lafan1_path"
+loco-mujoco-set-conv-lafan1-path = "loco_mujoco.utils:set_converted_lafan1_path"
