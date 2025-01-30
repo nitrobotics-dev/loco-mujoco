@@ -1396,6 +1396,11 @@ class MyoSkeleton(LocoEnv):
         ]
 
         return finger_hand_joints
+
     @info_property
     def sites_for_mimic(self):
         return list(self.body2sites_for_mimic.values())
+
+    @info_property
+    def goal_visualization_arrow_offset(self):
+        return [0, 0, 0.4]
