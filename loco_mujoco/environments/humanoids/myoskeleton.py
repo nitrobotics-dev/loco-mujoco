@@ -1019,11 +1019,13 @@ class MyoSkeleton(LocoEnv):
                                      data_types=["real"])
     mjx_enabled = False
 
-    def __init__(self, spec=None, observation_spec=None, action_spec=None, **kwargs):
+    def __init__(self, disable_fingers=True, spec=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
         """
+        
+        self._disable_fingers = disable_fingers
 
         if spec is None:
             spec = self.get_default_xml_file_path()
@@ -1050,6 +1052,10 @@ class MyoSkeleton(LocoEnv):
             observation_spec = self.parse_observation_spec(observation_spec)
         if action_spec is None:
             action_spec = self._get_action_specification(spec)
+
+        # modify the specification if needed
+        if self.mjx_enabled:
+            spec = self._modify_spec_for_mjx(spec)
 
         super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
 
@@ -1141,6 +1147,11 @@ class MyoSkeleton(LocoEnv):
             # todo: can not load mimic sites attributes for now, so I add them manually
             b.add_site(name=site_name, group=1, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
                        rgba=[1.0, 0.0, 0.0, 0.5])
+
+        if self._disable_fingers:
+            for j in spec.joints:
+                if "finger" in self.finger_and_hand_joints:
+                    j.delete()
 
         # add actuators
         spec = self._add_actuators(spec)
@@ -1329,7 +1340,62 @@ class MyoSkeleton(LocoEnv):
         }
 
         return body2sitemimic
+    
+    @info_property
+    def finger_and_hand_joints(self):
+        finger_hand_joints = [
+            # Thumb (Right)
+            "cmc_flexion_r", "cmc_abduction_r",
+            "mp_flexion_r",
+            "ip_flexion_r",
 
+            # Index Finger (Right)
+            "mcp2_flexion_r", "mcp2_abduction_r",
+            "pm2_flexion_r",
+            "md2_flexion_r",
+
+            # Middle Finger (Right)
+            "mcp3_flexion_r", "mcp3_abduction_r",
+            "pm3_flexion_r",
+            "md3_flexion_r",
+
+            # Ring Finger (Right)
+            "mcp4_flexion_r", "mcp4_abduction_r",
+            "pm4_flexion_r",
+            "md4_flexion_r",
+
+            # Little Finger (Right)
+            "mcp5_flexion_r", "mcp5_abduction_r",
+            "pm5_flexion_r",
+            "md5_flexion_r",
+
+            # Thumb (Left)
+            "cmc_flexion_l", "cmc_abduction_l",
+            "mp_flexion_l",
+            "ip_flexion_l",
+
+            # Index Finger (Left)
+            "mcp2_flexion_l", "mcp2_abduction_l",
+            "pm2_flexion_l",
+            "md2_flexion_l",
+
+            # Middle Finger (Left)
+            "mcp3_flexion_l", "mcp3_abduction_l",
+            "pm3_flexion_l",
+            "md3_flexion_l",
+
+            # Ring Finger (Left)
+            "mcp4_flexion_l", "mcp4_abduction_l",
+            "pm4_flexion_l",
+            "md4_flexion_l",
+
+            # Little Finger (Left)
+            "mcp5_flexion_l", "mcp5_abduction_l",
+            "pm5_flexion_l",
+            "md5_flexion_l",
+        ]
+
+        return finger_hand_joints
     @info_property
     def sites_for_mimic(self):
         return list(self.body2sites_for_mimic.values())

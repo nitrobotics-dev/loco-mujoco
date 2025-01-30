@@ -7,6 +7,7 @@ from .unitreeH1_mjx import MjxUnitreeH1
 from .unitreeH1v2 import UnitreeH1v2
 from .unitreeG1 import UnitreeG1
 from .myoskeleton import MyoSkeleton
+from .myoskeleton_mjx import MjxMyoSkeleton
 from .unitreeG1_mjx import MjxUnitreeG1
 from .apptronik_apollo import Apollo
 from .apptronik_apollo_mjx import MjxApollo
@@ -30,13 +31,14 @@ SkeletonTorque.register()
 MjxSkeletonTorque.register()
 SkeletonMuscle.register()
 MjxSkeletonMuscle.register()
+MyoSkeleton.register()
+MjxMyoSkeleton.register()
 
 # compatability with old names
 HumanoidTorque.register()
 HumanoidMuscle.register()
 HumanoidTorque4Ages.register()
 HumanoidMuscle4Ages.register()
-MyoSkeleton.register()
 
 from gymnasium import register
 
