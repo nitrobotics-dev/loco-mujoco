@@ -9,7 +9,7 @@ from omegaconf import DictConfig, OmegaConf
 import traceback
 
 
-@hydra.main(version_base=None, config_path="./config", config_name="conf_h1")
+@hydra.main(version_base=None, config_path="./config", config_name="conf_quadrupeds")
 def experiment(config: DictConfig):
 
     try:
@@ -18,7 +18,7 @@ def experiment(config: DictConfig):
             '--xla_gpu_triton_gemm_any=True ')
 
         config.experiment.env_params["headless"] = False
-        env = LocoEnv.make(goal_params=dict(visualize_goal=True), **config.experiment.env_params)
+        env = LocoEnv.make(**config.experiment.env_params)
 
         # load train state
         path = "/path/to/the/generated/pkl/file"
