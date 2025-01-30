@@ -1,3 +1,4 @@
+import numpy as np
 import mujoco
 from mujoco import MjSpec
 
@@ -81,7 +82,13 @@ class BDSpot(BaseRobotQuadruped):
         # uses PD control by default
         if "control_type" not in kwargs.keys():
             kwargs["control_type"] = "PDControl"
-            kwargs["control_params"] = dict(p_gain=500.0, d_gain=40.0)
+            kwargs["control_params"] = dict(p_gain=500.0, d_gain=10.0, scale_action_to_jnt_limits=False,
+                                            nominal_joint_positions=self.init_qpos[7:])
+
+        # set init position
+        if "init_state_handler" not in kwargs.keys():
+            kwargs["init_state_type"] = "DefaultInitialStateHandler"
+            kwargs["init_state_params"] = (dict(qpos_init=self.init_qpos, qvel_init=self.init_qvel))
 
         # modify the specification if needed
         if self.mjx_enabled:
@@ -199,3 +206,20 @@ class BDSpot(BaseRobotQuadruped):
         Return the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
         return (0.25, 1.0)
+
+    @info_property
+    def foot_geom_names(self):
+        """
+        Returns the names of the foot geometries.
+
+        """
+        return ["HL", "HR", "FL", "FR"]
+
+    @info_property
+    def init_qpos(self):
+        return np.array([0.0, 0.0, 0.46, 1.0, 0.0, 0.0, 0.0, 0.0, 1.04, -1.8, 0.0,
+                         1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
+
+    @info_property
+    def init_qvel(self):
+        return np.zeros(18)
