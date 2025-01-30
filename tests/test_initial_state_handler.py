@@ -1,7 +1,6 @@
 import numpy.random
 
-from loco_mujoco.core.utils import mj_jntname2qposid, mj_jntname2qvelid
-from loco_mujoco.smpl.utils.rotation3d import quat_pos
+from loco_mujoco.core.utils import mj_jntname2qposid
 
 from test_conf import *
 
@@ -11,7 +10,8 @@ def _create_env(backend, init_state_type, init_state_params=None, trajectory=Non
 
     mjx_env = DummyHumamoidEnv(enable_mjx=backend == "jax",
                                init_state_type=init_state_type,
-                               init_state_params=init_state_params)
+                               init_state_params=init_state_params,
+                               **DEFAULTS)
 
     if trajectory is not None:
         if backend == "numpy":
@@ -31,7 +31,7 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
     state_0 = mjx_env.reset(key)
 
     qpos_init = np.zeros(18)
-    qpos_init[:7] = np.array([1.5, 1.2, 0.3, 0., -0.00902001,  0., 0.1])
+    qpos_init[:7] = np.array([1.5, 1.2, 0.3, 1., 0,  0., 0.])
     j_id = mj_jntname2qposid("abdomen_z", mjx_env._model)
     qpos_init[j_id] = 0.3
 
@@ -49,7 +49,7 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
 
         assert np.allclose(state_0, state_0_test)
 
-        state_1_test = np.array([0.3, 0., -0.00902001, 0., -0.00902001,  0., .1, 0.9350026, 0., 0., 0., 0., 0.,
+        state_1_test = np.array([0.3, 1.,  0., 0., -0.00902001,  0., .1, 0.9350026, 0., 0., 0., 0., 0.,
                                   -0.00902001,  0.1, 0.9350026, 0., 0., 0., 0., 0., 0.])
         print("\n", state_1)
         assert np.allclose(state_1, state_1_test)
