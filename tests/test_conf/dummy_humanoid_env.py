@@ -110,37 +110,7 @@ class DummyHumamoidEnv(LocoEnv):
         return (0.6, 1.5)
 
 
-    def generate_trajectory_from_nominal(self, nominal_traj, rng_key=None):
-        """
-        Generates a dataset from the specified trajectories without including actions.
-
-        Notes:
-        - Observations are created by following steps similar to the `reset()` and `step()` methods.
-        - TrajectoryData is used instead of MjData to reduce memory usage. Forward dynamics are applied
-          to compute additional entities.
-        - Since TrajectoryData only contains very few kinematic properties (to save memory), Mujoco's
-          forward dynamics are used to calculate other entities.
-        - Kinematic entities derived from mocap data are generally reliable, while dynamics-related
-          properties may be less accurate.
-        - Observations based on kinematic entities are recommended to ensure realistic datasets.
-nominal_traj          `reset()` and `step()` methods.
-
-        Args:
-        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
-        nominal_traj (Trajectory, optional): The nominal trajectory, to generate the dataset. Defaults to the trajectory
-        loaded by the environment.
-
-        Returns:
-        TrajectoryTransitions: A dictionary containing the following:
-            - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
-            - For non-mocap datasets, actions may also be included.
-
-        Raises:
-        ValueError: If no trajectory is provided to the environment.
-
-        """
+    def generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
         if self.th is None:
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
@@ -159,7 +129,7 @@ nominal_traj          `reset()` and `step()` methods.
             mujoco.mj_resetData(model, data)
 
             # setup containers for the dataset
-            all_observations, all_next_observations, all_absorbing, all_dones = [], [], [], []
+            all_observations, all_next_observations, all_rewards, all_absorbing, all_dones = [], [], [], [], []
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -185,10 +155,17 @@ nominal_traj          `reset()` and `step()` methods.
                 obs, carry = self._create_observation(model, data, carry)
                 info = self._reset_info_dictionary(obs, data, subkey)
 
-                # initiate obs container
+                # initiate episode containers
                 observations = [obs]
+                rewards = []
                 absorbing_flags = []
-                for j in range(1, nominal_traj.data.len_trajectory(i)):
+
+                if horizon is None:
+                    t_max = nominal_traj.data.len_trajectory(i)
+                else:
+                    t_max = horizon
+
+                for j in range(1, t_max):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, np)  # get next sample
                     data = self.set_sim_state_from_traj_data(data, traj_data_single, carry)
@@ -204,9 +181,15 @@ nominal_traj          `reset()` and `step()` methods.
                     is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
                     absorbing_flags.append(is_absorbing)
 
+                    # compute reward
+                    action = np.zeros(self.info.action_space.shape)
+                    reward, carry = self._reward(obs, action, obs, is_absorbing, info, model, data, carry)
+                    rewards.append(reward)
+
                 observations = np.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
+                all_rewards.append(rewards)
                 all_absorbing.append(absorbing_flags)
                 dones = np.zeros(observations.shape[0]-1)
                 dones[-1] = 1
@@ -214,50 +197,23 @@ nominal_traj          `reset()` and `step()` methods.
 
             all_observations = np.concatenate(all_observations).astype(np.float32)
             all_next_observations = np.concatenate(all_next_observations).astype(np.float32)
+            all_rewards = np.concatenate(all_rewards).astype(np.float32)
             all_dones = np.concatenate(all_dones).astype(np.float32)
             all_absorbing = np.concatenate(all_absorbing).astype(np.float32)
 
             transitions = TrajectoryTransitions(np.array(all_observations),
                                                 np.array(all_next_observations),
                                                 np.array(all_absorbing),
-                                                np.array(all_dones))
+                                                np.array(all_dones),
+                                                rewards=all_rewards
+                                                )
 
             self.th = orig_th
             self.th.traj = replace(self.th.traj, transitions=transitions)
 
         return self.th.traj.transitions
 
-    def mjx_generate_trajectory_from_nominal(self, nominal_traj, rng_key=None):
-        """
-        Generates a dataset from the specified trajectories without including actions.
-
-        Notes:
-        - Observations are created by following steps similar to the `reset()` and `step()` methods.
-        - TrajectoryData is used instead of MjData to reduce memory usage. Forward dynamics are applied
-          to compute additional entities.
-        - Since TrajectoryData only contains very few kinematic properties (to save memory), Mujoco's
-          forward dynamics are used to calculate other entities.
-        - Kinematic entities derived from mocap data are generally reliable, while dynamics-related
-          properties may be less accurate.
-        - Observations based on kinematic entities are recommended to ensure realistic datasets.
-nominal_traj          `reset()` and `step()` methods.
-
-        Args:
-        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
-        nominal_traj (Trajectory, optional): The nominal trajectory, to generate the dataset. Defaults to the trajectory
-        loaded by the environment.
-
-        Returns:
-        TrajectoryTransitions: A dictionary containing the following:
-            - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
-            - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
-            - For non-mocap datasets, actions may also be included.
-
-        Raises:
-        ValueError: If no trajectory is provided to the environment.
-
-        """
+    def mjx_generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
         if self.th is None:
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
@@ -282,7 +238,7 @@ nominal_traj          `reset()` and `step()` methods.
 
 
             # setup containers for the dataset
-            all_observations, all_next_observations, all_absorbing, all_dones = [], [], [], []
+            all_observations, all_next_observations, all_rewards, all_absorbing, all_dones = [], [], [], [], []
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -309,11 +265,17 @@ nominal_traj          `reset()` and `step()` methods.
                 obs, carry = self._mjx_create_observation(model, data, carry)
                 info = self._reset_info_dictionary(obs, data, subkey)
 
-                # initiate obs container
+                # initiate episode containers
                 observations = [obs]
+                rewards = []
                 absorbing_flags = []
 
-                for j in range(1, nominal_traj.data.len_trajectory(i)):
+                if horizon is None:
+                    t_max = nominal_traj.data.len_trajectory(i)
+                else:
+                    t_max = horizon
+
+                for j in range(1, t_max):
                     # get next sample and calculate forward dynamics
                     traj_data_single = nominal_traj.data.get(i, j, jnp)  # get next sample
                     data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
@@ -329,9 +291,15 @@ nominal_traj          `reset()` and `step()` methods.
                     is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
                     absorbing_flags.append(is_absorbing)
 
+                    # compute reward
+                    action = jnp.zeros(self.info.action_space.shape)
+                    reward, carry = self._reward(obs, action, obs, is_absorbing, info, model, data, carry)
+                    rewards.append(reward)
+
                 observations = jnp.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
+                all_rewards.append(rewards)
                 all_absorbing.append(absorbing_flags)
                 dones = jnp.zeros(observations.shape[0]-1)
                 x = x.at[-1].set(1)
@@ -339,13 +307,16 @@ nominal_traj          `reset()` and `step()` methods.
 
             all_observations = jnp.concatenate(all_observations).astype(np.float32)
             all_next_observations = jnp.concatenate(all_next_observations).astype(np.float32)
+            all_rewards = jnp.concatenate(all_rewards).astype(np.float32)
             all_dones = jnp.concatenate(all_dones).astype(np.float32)
             all_absorbing = jnp.concatenate(all_absorbing).astype(np.float32)
 
             transitions = TrajectoryTransitions(jnp.array(all_observations),
                                                 jnp.array(all_next_observations),
                                                 jnp.array(all_absorbing),
-                                                jnp.array(all_dones))
+                                                jnp.array(all_dones),
+                                                rewards=all_rewards
+                                                )
 
             self.th = orig_th
             self.th.traj = replace(self.th.traj, transitions=transitions)

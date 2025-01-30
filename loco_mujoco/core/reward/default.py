@@ -106,7 +106,7 @@ class TargetXVelocityReward(Reward):
             Tuple[float, Any]: The reward for the current transition and the updated carry.
 
         """
-        x_vel = backend.squeeze(state[self._x_vel_idx])
+        x_vel = backend.squeeze(data.qvel[self._x_vel_idx])
         return backend.exp(-backend.square(x_vel - self._target_vel)), carry
 
 
