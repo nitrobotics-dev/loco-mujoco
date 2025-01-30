@@ -17,9 +17,7 @@ from copy import deepcopy
 from dataclasses import replace
 
 
-
 class DummyHumamoidEnv(LocoEnv):
-
 
     def __init__(self, observation_spec=None, actuation_spec=None, spec=None, **kwargs):
 
@@ -108,7 +106,6 @@ class DummyHumamoidEnv(LocoEnv):
     @info_property
     def root_height_healthy_range(self):
         return (0.6, 1.5)
-
 
     def generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
         if self.th is None:
@@ -214,6 +211,28 @@ class DummyHumamoidEnv(LocoEnv):
         return self.th.traj.transitions
 
     def mjx_generate_trajectory_from_nominal(self, nominal_traj, horizon=None, rng_key=None):
+
+        def _mjx_step(data, info, carry, traj_ind, sub_traj_ind):
+
+            # get next sample and calculate forward dynamics
+            traj_data_single = nominal_traj.data.get(traj_ind, sub_traj_ind, jnp)  # get next sample
+            data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
+            mjx.forward(sys, data)
+
+            data, carry = self._mjx_simulation_post_step(model, data, carry)
+            obs, carry = self._mjx_create_observation(model, data, carry)
+            obs, data, info, carry = (
+                self._mjx_step_finalize(obs, model, data, info, carry))
+
+            # check if the current state is an absorbing state
+            absorbing, carry = self._is_absorbing(obs, info, data, carry)
+
+            # compute reward
+            action = jnp.zeros(self.info.action_space.shape)
+            reward, carry = self._mjx_reward(obs, action, obs, absorbing, info, model, data, carry)
+
+            return obs, reward, absorbing, action, data, info, carry
+
         if self.th is None:
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
@@ -230,15 +249,16 @@ class DummyHumamoidEnv(LocoEnv):
             model = self.mjspec.compile()
             data = mujoco.MjData(model)
             mujoco.mj_resetData(model, data)
-            mujoco.mj_forward(model, data)
+            #mujoco.mj_forward(model, data)
             sys = mjx.put_model(model)
             data = mjx.put_data(model, data)
             first_data = mjx.forward(sys, data)
 
-
-
             # setup containers for the dataset
             all_observations, all_next_observations, all_rewards, all_absorbing, all_dones = [], [], [], [], []
+
+            # compile mjx_step function
+            mjx_step = jax.jit(_mjx_step)
 
             if rng_key is None:
                 rng_key = jax.random.key(0)
@@ -276,33 +296,18 @@ class DummyHumamoidEnv(LocoEnv):
                     t_max = horizon
 
                 for j in range(1, t_max):
-                    # get next sample and calculate forward dynamics
-                    traj_data_single = nominal_traj.data.get(i, j, jnp)  # get next sample
-                    data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
-                    mjx.forward(sys, data)
 
-                    data, carry = self._mjx_simulation_post_step(model, data, carry)
-                    obs, carry = self._mjx_create_observation(model, data, carry)
-                    obs, data, info, carry = (
-                        self._mjx_step_finalize(obs, model, data, info, carry))
+                    obs, reward, absorbing, action, data, info, carry = mjx_step(data, info, carry, i, j)
                     observations.append(obs)
-
-                    # check if the current state is an absorbing state
-                    is_absorbing, carry = self._is_absorbing(obs, info, data, carry)
-                    absorbing_flags.append(is_absorbing)
-
-                    # compute reward
-                    action = jnp.zeros(self.info.action_space.shape)
-                    reward, carry = self._reward(obs, action, obs, is_absorbing, info, model, data, carry)
                     rewards.append(reward)
+                    absorbing_flags.append(absorbing)
 
                 observations = jnp.vstack(observations)
                 all_observations.append(observations[:-1])
                 all_next_observations.append(observations[1:])
-                all_rewards.append(rewards)
-                all_absorbing.append(absorbing_flags)
+                all_rewards.append(jnp.hstack(rewards))
+                all_absorbing.append(jnp.hstack(absorbing_flags))
                 dones = jnp.zeros(observations.shape[0]-1)
-                x = x.at[-1].set(1)
                 all_dones.append(dones)
 
             all_observations = jnp.concatenate(all_observations).astype(np.float32)
