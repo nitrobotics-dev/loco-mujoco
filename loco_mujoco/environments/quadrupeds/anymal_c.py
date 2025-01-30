@@ -199,3 +199,11 @@ class AnymalC(BaseRobotQuadruped):
         Return the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
         return (0.30, 1.0)
+
+    @info_property
+    def foot_geom_names(self):
+        """
+        Returns the names of the foot geometries.
+
+        """
+        return ["HL", "HR", "FL", "FR"]

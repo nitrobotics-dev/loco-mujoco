@@ -114,6 +114,31 @@ def mj_spec_find_geom_id(spec, geom_name):
     raise ValueError(f"Geom {geom_name} not found in spec.")
 
 
+def mj_get_collision_dist_and_normal(geom_id1, geom_id2, data, backend):
+    """
+    Get the distance and normal of the collision between two geoms.
+
+    Args:
+        geom_id1 (int): geom id in Mujoco model.
+        geom_id2 (int): geom id in Mujoco model.
+        data: Mujoco data structure.
+        backend: np or jnp.
+
+    Returns:
+        tuple: distance and normal vector.
+    """
+    if backend == jnp:
+        mask = (jnp.array([geom_id1, geom_id2]) == data.contact.geom).all(axis=1)
+        mask |= (jnp.array([geom_id2, geom_id1]) == data.contact.geom).all(axis=1)
+        idx = jnp.where(mask, data.contact.dist, 1e4).argmin()
+        dist = data.contact.dist[idx] * mask[idx]
+        normal = (dist < 0) * data.contact.frame[idx, 0, :3]
+    else:
+        raise NotImplementedError
+
+    return dist, normal
+
+
 def mj_check_collisions(geom_id1, geom_id2, data, backend):
     """
     Check if two geoms collide.
@@ -128,13 +153,6 @@ def mj_check_collisions(geom_id1, geom_id2, data, backend):
         bool: True if geoms collide, False otherwise.
     """
 
-    def _mjx_is_in_contact(con_id, res):
-        is_in_contact = jnp.logical_or(jnp.logical_and(data.contact.geom1[con_id] == geom_id1,
-                                                       data.contact.geom2[con_id] == geom_id2),
-                                       jnp.logical_and(data.contact.geom1[con_id] == geom_id2,
-                                                       data.contact.geom2[con_id] == geom_id1))
-        return jnp.logical_or(res, is_in_contact)
-
     def _is_in_contact(con_id, res):
         con = data.contact[con_id]
         is_in_contact = np.logical_or(np.logical_and(con.geom1 == geom_id1, con.geom2 == geom_id2),
@@ -142,6 +160,6 @@ def mj_check_collisions(geom_id1, geom_id2, data, backend):
         return np.logical_or(res, is_in_contact)
 
     if backend == jnp:
-        return jax.lax.fori_loop(0, data.ncon, _mjx_is_in_contact, False)
+        return mj_get_collision_dist_and_normal(geom_id1, geom_id2, data, backend)[0] < 0
     else:
         return np.any([_is_in_contact(i, False) for i in range(data.ncon)])
