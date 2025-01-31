@@ -1,4 +1,4 @@
-<mujoco model="scene">
+git s<mujoco model="scene">
 
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
