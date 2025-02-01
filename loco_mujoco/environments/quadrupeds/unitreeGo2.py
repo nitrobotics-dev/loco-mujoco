@@ -193,3 +193,11 @@ class UnitreeGo2(BaseRobotQuadruped):
         Return the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
         return (0.25, 1.0)
+
+    @info_property
+    def foot_geom_names(self):
+        """
+        Returns the names of the foot geometries.
+
+        """
+        return ["RL_foot", "RR_foot", "FL_foot", "FR_foot"]
