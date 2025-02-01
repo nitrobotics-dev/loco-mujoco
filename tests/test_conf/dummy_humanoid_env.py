@@ -217,7 +217,7 @@ class DummyHumamoidEnv(LocoEnv):
             # get next sample and calculate forward dynamics
             traj_data_single = nominal_traj.data.get(traj_ind, sub_traj_ind, jnp)  # get next sample
             data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
-            mjx.forward(sys, data)
+            data = mjx.forward(sys, data)
 
             data, carry = self._mjx_simulation_post_step(model, data, carry)
             obs, carry = self._mjx_create_observation(model, data, carry)
@@ -249,7 +249,6 @@ class DummyHumamoidEnv(LocoEnv):
             model = self.mjspec.compile()
             data = mujoco.MjData(model)
             mujoco.mj_resetData(model, data)
-            #mujoco.mj_forward(model, data)
             sys = mjx.put_model(model)
             data = mjx.put_data(model, data)
             first_data = mjx.forward(sys, data)
@@ -277,7 +276,7 @@ class DummyHumamoidEnv(LocoEnv):
 
                 # set data from traj_data (qpos and qvel) and forward to calculate other kinematic entities.
                 data = self.mjx_set_sim_state_from_traj_data(data, traj_data_single, carry)
-                mjx.forward(sys, data)
+                data = mjx.forward(sys, data)
 
                 data, carry = self._mjx_reset_init_data_and_model(model, data, carry)
                 data, carry = (

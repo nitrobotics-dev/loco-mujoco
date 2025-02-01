@@ -6,7 +6,7 @@ jax.config.update('jax_exec_time_optimization_effort', 1.0)
 jax.config.update('jax_memory_fitting_effort', 1.0)
 print(f"Jax backend device: {jax.default_backend()} \n")
 
-_TOLERANCE = 1e-4
+_TOLERANCE = 1e-5
 
 
 def test_trajectory_generator(standing_trajectory, falling_trajectory):
@@ -18,22 +18,6 @@ def test_trajectory_generator(standing_trajectory, falling_trajectory):
                                                  reward_type="NoReward")
     transitions_np = generate_test_trajectories(expert_traj, nominal_traj, "numpy", horizon=100,
                                                 reward_type="NoReward")
-
-    # calculate differences
-    max_diff_obs = jnp.max(jnp.abs(transitions_np.observations - transitions_jax.observations), axis=0)
-    max_diff_next_obs = jnp.max(jnp.abs(transitions_np.next_observations - transitions_jax.next_observations), axis=0)
-
-    # get the index of the maximum difference
-    max_diff_obs_index = jnp.argmax(jnp.abs(transitions_np.observations - transitions_jax.observations))
-    max_diff_next_obs_index = jnp.argmax(jnp.abs(transitions_np.next_observations - transitions_jax.next_observations))
-
-    #max_diff_action = jnp.max(jnp.abs(transitions_np.actions - transitions_jax.actions))
-    #max_diff_rewards = jnp.max(jnp.abs(transitions_np.rewards - transitions_jax.rewards))
-
-    print("max_diff_obs: ", max_diff_obs)
-    print("max_diff_next_obs: ", max_diff_next_obs)
-    #print("max_diff_action: ", max_diff_action)
-    #print("max_diff_rewards: ", max_diff_rewards)
 
     assert jnp.allclose(transitions_np.observations, transitions_jax.observations, atol=_TOLERANCE, rtol=_TOLERANCE).all()
     assert jnp.allclose(transitions_np.actions, transitions_jax.actions, atol=_TOLERANCE, rtol=_TOLERANCE).all()
