@@ -460,22 +460,27 @@ class Mujoco:
         return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
 
     def _create_observation(self, model, data, carry):
+        return self._create_observation_compat(model, data, carry, np)
+
+    def _create_observation_compat(self, model, data, carry, backend):
         """
         Creates the observation array by concatenating the observation extracted from all observation types.
         """
         # fast getter for all simple non-stateful observations
-        obs_not_stateful = np.concatenate([obs_type.get_all_obs_of_type(self, model, data, self._data_indices, np)
-                                   for obs_type in ObservationType.list_all_non_stateful()])
+        obs_not_stateful = backend.concatenate([
+            obs_type.get_all_obs_of_type(self, model, data, self._data_indices, backend)
+            for obs_type in ObservationType.list_all_non_stateful()])
+
         # order non-stateful obs the way they were in obs_spec
-        obs_not_stateful[self._obs_indices.concatenated_indices] = obs_not_stateful
+        obs_not_stateful = obs_not_stateful[self._obs_indices.concatenated_indices]
 
         # get all stateful observations
         obs_stateful = []
         for obs in self.obs_container.list_all_stateful():
-            obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, np)
+            obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, backend)
             obs_stateful.append(obs_s)
 
-        return np.concatenate([obs_not_stateful, *obs_stateful]), carry
+        return backend.concatenate([obs_not_stateful, *obs_stateful]), carry
 
     @staticmethod
     def set_sim_state_from_traj_data(data, traj_data, carry):

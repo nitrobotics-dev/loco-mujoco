@@ -161,22 +161,7 @@ class Mjx(Mujoco):
         return state
 
     def _mjx_create_observation(self, model, data, carry):
-        """
-        Creates the observation array by concatenating the observation extracted from all observation types.
-        """
-        # fast getter for all simple non-stateful observations
-        obs_not_stateful = jnp.concatenate([obs_type.get_all_obs_of_type(self, model, data, self._data_indices, jnp)
-                                            for obs_type in ObservationType.list_all_non_stateful()])
-        # order non-stateful obs the way they were in obs_spec
-        obs_not_stateful = obs_not_stateful.at[self._obs_indices.concatenated_indices].set(obs_not_stateful)
-
-        # get all stateful observations
-        obs_stateful = []
-        for obs in self.obs_container.list_all_stateful():
-            obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, jnp)
-            obs_stateful.append(obs_s)
-
-        return jnp.concatenate([obs_not_stateful, *obs_stateful]), carry
+        return self._create_observation_compat(model, data, carry, jnp)
 
     def _mjx_reset_info_dictionary(self, obs, data, key):
         return {}

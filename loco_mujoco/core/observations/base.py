@@ -47,7 +47,7 @@ class ObservationIndexContainer:
                 setattr(self, attr_name, np.array(attr_value, dtype=int))
 
         # this array concatenates all indices in the order of this class
-        self.concatenated_indices = np.array(ind)
+        self.concatenated_indices = np.argsort(np.array(ind))
 
 
 class ObservationContainer(UserDict):
