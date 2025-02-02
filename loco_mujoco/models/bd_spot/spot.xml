@@ -44,8 +44,8 @@
   <default>
     <default class="spot">
       <geom solref="0.004 1"/>
-      <joint actuatorfrcrange="-1000 1000"/>
-      <motor ctrllimited="true" ctrlrange="-1000 1000"/>
+      <joint actuatorfrcrange="-100 100"/>
+      <motor ctrllimited="true" ctrlrange="-100 100"/>
       <default class="visual">
         <geom group="2" type="mesh" contype="0" conaffinity="0"/>
       </default>

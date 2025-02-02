@@ -82,7 +82,7 @@ class BDSpot(BaseRobotQuadruped):
         # uses PD control by default
         if "control_type" not in kwargs.keys():
             kwargs["control_type"] = "PDControl"
-            kwargs["control_params"] = dict(p_gain=500.0, d_gain=10.0, scale_action_to_jnt_limits=False,
+            kwargs["control_params"] = dict(p_gain=200.0, d_gain=0.0, scale_action_to_jnt_limits=False,
                                             nominal_joint_positions=self.init_qpos[7:])
 
         # set init position
