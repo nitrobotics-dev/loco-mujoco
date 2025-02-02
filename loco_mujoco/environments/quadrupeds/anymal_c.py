@@ -206,4 +206,4 @@ class AnymalC(BaseRobotQuadruped):
         Returns the names of the foot geometries.
 
         """
-        return ["HL", "HR", "FL", "FR"]
+        return ["LH", "RH", "LF", "RF"]
