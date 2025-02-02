@@ -1,3 +1,4 @@
+import numpy as np
 import mujoco
 from mujoco import MjSpec
 
@@ -212,6 +213,11 @@ class UnitreeA1(BaseRobotQuadruped):
         if action_spec is None:
             action_spec = self._get_action_specification(spec)
 
+        # set init position
+        if "init_state_handler" not in kwargs.keys():
+            kwargs["init_state_type"] = "DefaultInitialStateHandler"
+            kwargs["init_state_params"] = (dict(qpos_init=self.init_qpos, qvel_init=self.init_qvel))
+
         # modify the specification if needed
         if self.mjx_enabled:
             spec = self._modify_spec_for_mjx(spec)
@@ -331,3 +337,12 @@ class UnitreeA1(BaseRobotQuadruped):
 
         """
         return ["RL_foot", "RR_foot", "FL_foot", "FR_foot"]
+
+    @info_property
+    def init_qpos(self):
+        return np.array([0.0, 0.0, 0.27, 1.0, 0.0, 0.0, 0.0, 0.0, 0.9, -1.8, 0.0,
+                         0.9, -1.8, 0.0, 0.9, -1.8, 0.0, 0.9, -1.8])
+
+    @info_property
+    def init_qvel(self):
+        return np.zeros(18)
