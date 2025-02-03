@@ -21,32 +21,33 @@ def _create_env(backend, init_state_type, init_state_params=None, trajectory=Non
 
     return mjx_env
 
-@pytest.mark.parametrize("backend", ["numpy"])
+@pytest.mark.parametrize("backend", ["numpy", "jax"])
 def test_DefaultInitialStateHandler(falling_trajectory, backend):
-    mjx_env = _create_env(backend, "DefaultInitialStateHandler")
-
     seed = 0
     key = jax.random.PRNGKey(seed)
 
-    state_0 = mjx_env.reset(key)
+    mjx_env_1 = _create_env(backend, "DefaultInitialStateHandler")
 
+    # create init_state_params
     qpos_init = np.zeros(18)
     qpos_init[:7] = np.array([1.5, 1.2, 0.3, 1., 0,  0., 0.])
-    j_id = mj_jntname2qposid("abdomen_z", mjx_env._model)
+    j_id = mj_jntname2qposid("abdomen_z", mjx_env_1._model)
     qpos_init[j_id] = 0.3
 
-    qvel_init = 0.1*np.ones(17)
+    qvel_init = 0.1 * np.ones(17)
 
-    init_state_params= dict(qpos_init=qpos_init, qvel_init=qvel_init)
+    init_state_params = dict(qpos_init=qpos_init, qvel_init=qvel_init)
 
-    mjx_env = _create_env(backend, "DefaultInitialStateHandler", init_state_params=init_state_params)
-    state_1 = mjx_env.reset(key)
+    mjx_env_2 = _create_env(backend, "DefaultInitialStateHandler", init_state_params=init_state_params)
 
     if backend == "numpy":
+        state_0 = mjx_env_1.reset(key)
+        state_1 = mjx_env_2.reset(key)
+
         print("\nstate_0", state_0)
-        print("position: ", mjx_env._data.qpos[0:3])
-        print("quaternion: ", mjx_env._data.qpos[3:7])
-        print("quaternion[4]: ", mjx_env._data.qpos[6])
+        print("position: ", mjx_env_1._data.qpos[0:3])
+        print("quaternion: ", mjx_env_1._data.qpos[3:7])
+        print("quaternion[4]: ", mjx_env_1._data.qpos[6])
         state_0_test = np.array([ 1.4, 1., 0., 0., 0., # FreeJointPosNoXY
                                   0., # JointPos
                                   0., 0., 0., 0., 0., 0., # FreeJointVel
@@ -67,13 +68,38 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
         print("\nstate_1", state_1)
         assert np.allclose(state_1, state_1_test)
 
-        assert np.allclose(mjx_env._data.qpos, qpos_init)
-        assert np.allclose(mjx_env._data.qvel, qvel_init)
+        assert np.allclose(mjx_env_2._data.qpos, qpos_init)
+        assert np.allclose(mjx_env_2._data.qvel, qvel_init)
     else:
-        pass
+        state_0 = mjx_env_1.mjx_reset(key)
+        state_1 = mjx_env_2.mjx_reset(key)
+
+        print("\nstate_0", state_0.observation)
+        state_0_test = jnp.array([1.4, 1., 0., 0., 0.,  # FreeJointPosNoXY
+                                  0.,  # JointPos
+                                  0., 0., 0., 0., 0., 0.,  # FreeJointVel
+                                  0.,  # JointVel
+                                  -0.00902001, 0.1, 0.9350026,  # BodyPos
+                                  0., 0., 0., 0., 0., 0.  # BodyVel
+                                 ])
+
+        assert jnp.allclose(state_0.observation, state_0_test)
+
+        state_1_test = jnp.array([0.3, 1., 0., 0., 0.,  # FreeJointPosNoXY
+                                  0.3,  # JointPos
+                                  0.1, 0.1, 0.1, 0.1, 0.1, 0.1,  # FreeJointVel
+                                  .1,  # JointVel
+                                  -0.00902001, 0.1, 0.9350026,  # BodyPos
+                                  0., 0., 0., 0., 0., 0.  # BodyVel
+                                  ])
+        print("\nstate_1", state_1.observation)
+        assert jnp.allclose(state_1.observation, state_1_test)
+
+        assert jnp.allclose(state_1.data.qpos, qpos_init)
+        assert jnp.allclose(state_1.data.qvel, qvel_init)
 
 
-@pytest.mark.parametrize("backend", ["numpy"])
+@pytest.mark.parametrize("backend", ["numpy", "jax"])
 def test_TrajInitialStateHandler(falling_trajectory, backend):
     mjx_env = _create_env(backend, "TrajInitialStateHandler", trajectory=falling_trajectory)
 
@@ -81,11 +107,11 @@ def test_TrajInitialStateHandler(falling_trajectory, backend):
     key = jax.random.PRNGKey(seed)
     numpy.random.seed(seed)
 
-    state_0 = mjx_env.reset(key)
-    state_1 = mjx_env.reset(key)
-    state_2 = mjx_env.reset(key)
-
     if backend == "numpy":
+        state_0 = mjx_env.reset(key)
+        state_1 = mjx_env.reset(key)
+        state_2 = mjx_env.reset(key)
+
         state_0_test = np.array([ 1.27379999e-01,  6.11406028e-01, -2.17664987e-01, -7.40720451e-01,
                                  -1.73602626e-01,  3.92150600e-03,  1.23301230e-03, -7.03400816e-04,
                                   1.52836146e-03,  6.77359349e-04, -8.20835214e-03,  8.05158925e-04,
@@ -114,4 +140,36 @@ def test_TrajInitialStateHandler(falling_trajectory, backend):
         print("\nstate_2", state_2)
         assert np.allclose(state_2, state_2_test)
     else:
-        pass
+        state_0 = mjx_env.mjx_reset(key)
+        key = jax.random.PRNGKey(seed+1)
+        state_1 = mjx_env.mjx_reset(key)
+        key = jax.random.PRNGKey(seed+2)
+        state_2 = mjx_env.mjx_reset(key)
+
+        state_0_test = np.array([ 1.1286861e-01,  6.3870221e-01, -2.0777164e-01, -7.1726537e-01,
+                                 -1.8552853e-01,  4.8972582e-03,  3.5754945e-03, -2.0033114e-03,
+                                  5.7487963e-03, -2.7495090e-04, -3.0445326e-02,  4.6008267e-03,
+                                 -1.0005956e-03, -6.6718584e-01,  5.2557540e-01,  1.0827588e-01,
+                                  3.3251036e-02,  4.0564332e-02, -8.1857044e-04,  2.0098409e-03,
+                                 -7.3761720e-04, -6.3186735e-03])
+        state_1_test = np.array([ 1.29183963e-01,  6.07940674e-01, -2.18539864e-01, -7.43687928e-01,
+                                 -1.71978965e-01,  3.79295624e-03,  6.68634384e-05, -2.11837629e-04,
+                                  1.63286415e-04,  3.77590361e-04, -1.10921788e-03, -6.82454556e-04,
+                                  4.28220257e-04, -6.61141336e-01,  5.23520589e-01,  1.02023564e-01,
+                                 -2.18771608e-03,  1.45972520e-03,  1.34152069e-04,  3.40628649e-05,
+                                  1.23126301e-04,  2.05085627e-04])
+        state_2_test = np.array([ 1.2080755e-01,  6.2382293e-01, -2.1366180e-01, -7.3010105e-01,
+                                 -1.7929325e-01,  4.4326615e-03,  2.4164848e-03, -9.8634663e-04,
+                                  3.1212410e-03, -1.0984721e-04, -1.6716938e-02,  2.2293206e-03,
+                                 -2.1318589e-04, -6.6398108e-01,  5.2431017e-01,  1.0527880e-01,
+                                  1.3378816e-02,  2.4976406e-02,  3.8249002e-04,  1.1231992e-03,
+                                 -3.7994684e-04, -3.0530260e-03])
+
+        print("\nstate_0", state_0.observation)
+        assert np.allclose(state_0.observation, state_0_test)
+
+        print("\nstate_1", state_1.observation)
+        assert np.allclose(state_1.observation, state_1_test)
+
+        print("\nstate_2", state_2.observation)
+        assert np.allclose(state_2.observation, state_2_test)
