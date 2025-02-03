@@ -225,7 +225,7 @@ class DummyHumamoidEnv(LocoEnv):
                 self._mjx_step_finalize(obs, model, data, info, carry))
 
             # check if the current state is an absorbing state
-            absorbing, carry = self._is_absorbing(obs, info, data, carry)
+            absorbing, carry = self._mjx_is_absorbing(obs, info, data, carry)
 
             # compute reward
             action = jnp.zeros(self.info.action_space.shape)
