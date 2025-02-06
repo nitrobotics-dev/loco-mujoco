@@ -9,12 +9,14 @@ import yaml
 import joblib
 from tqdm import tqdm
 from omegaconf import DictConfig, OmegaConf
+import jax
 import jax.numpy as jnp
 import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation as sRot
 import torch
 from torch.autograd import Variable
+from smplx.lbs import transform_mat
 
 import loco_mujoco
 from loco_mujoco.smpl import SMPLH_Parser, SMPLH_BONE_ORDER_NAMES
@@ -22,7 +24,7 @@ from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
 from loco_mujoco.smpl.utils import torch_utils
 from loco_mujoco.smpl.utils.smoothing import gaussian_filter_1d_batch
 from loco_mujoco.environments import LocoEnv
-from loco_mujoco.core.utils.math import quat_scalarlast2scalarfirst
+from loco_mujoco.core.utils.math import quat_scalarlast2scalarfirst, quat_scalarfirst2scalarlast
 from loco_mujoco.trajectory import (
     Trajectory,
     TrajectoryInfo,
@@ -33,89 +35,11 @@ from loco_mujoco.trajectory import (
 from loco_mujoco.datasets.data_generation import ExtendTrajData, optimize_for_collisions
 from loco_mujoco import PATH_TO_SMPL_ROBOT_CONF
 from loco_mujoco.utils import setup_logger
+from loco_mujoco.core.utils.mujoco import mj_jntname2qposid, mj_jntname2qvelid
+from loco_mujoco.datasets.data_generation.utils import add_mocap_bodies
 
 
 OPTIMIZED_SHAPE_FILE_NAME = "shape_optimized.pkl"
-
-
-def fit_smpl_shape(
-    robot_conf: DictConfig,
-    path_to_smpl_model: str,
-    save_path_new_smpl_shape: str,
-    logger: logging.Logger
-) -> None:
-    """Fit the SMPL shape to match the robot configuration.
-
-    Args:
-        robot_conf (DictConfig): Configuration of the robot.
-        path_to_smpl_model (str): Path to the SMPL model.
-        save_path_new_smpl_shape (str): Path to save the optimized shape.
-        logger (logging.Logger): Logger for status updates.
-
-    Returns:
-        None
-
-    """
-    humanoid_fk = ForwardKinematicsHumanoidTorch(robot_conf)
-
-    robot_joint_names_augment = humanoid_fk.joint_names_augment
-    robot_joint_pick = [i[0] for i in robot_conf.joint_matches]
-    smpl_joint_pick = [i[1] for i in robot_conf.joint_matches]
-
-    robot_joint_pick_idx = [robot_joint_names_augment.index(j) for j in robot_joint_pick]
-    smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
-
-    device = torch.device("cpu")
-    pose_aa_robot = np.repeat(
-        np.repeat(sRot.identity().as_rotvec()[None, None, None], humanoid_fk.num_extend_dof, axis=2), 1, axis=1
-    )
-    pose_aa_robot = torch.from_numpy(pose_aa_robot).float()
-
-    pose_aa_stand = np.zeros((1, 156)).reshape(-1, 52, 3)
-
-    for modifiers in robot_conf.smpl_pose_modifier:
-        modifier_key = list(modifiers.keys())[0]
-        modifier_value = list(modifiers.values())[0]
-        pose_aa_stand[:, SMPLH_BONE_ORDER_NAMES.index(modifier_key)] = sRot.from_euler(
-            "xyz", eval(modifier_value), degrees=False
-        ).as_rotvec()
-
-    pose_aa_stand = torch.from_numpy(pose_aa_stand.reshape(-1, 156)).requires_grad_(False)
-    smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
-
-    trans = torch.zeros([1, 3]).requires_grad_(False)
-    beta = torch.zeros([1, 16]).requires_grad_(False)
-    verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, beta, trans)
-    offset = joints[:, 0] - trans
-    root_trans_offset = trans + offset
-
-    fk_return = humanoid_fk.fk_batch(pose_aa_robot[None,], root_trans_offset[None, 0:1])
-
-    shape_new = Variable(torch.zeros([1, 16]).to(device), requires_grad=True)
-    scale = Variable(torch.ones([1]).to(device), requires_grad=True)
-    optimizer_shape = torch.optim.Adam([shape_new, scale], lr=0.1)
-
-    pbar = tqdm(range(1000))
-    for iteration in pbar:
-        verts, joints = smpl_parser_n.get_joints_verts(pose_aa_stand, shape_new, trans[0:1])
-        root_pos = joints[:, 0]
-        joints = (joints - joints[:, 0]) * scale + root_pos
-
-        if len(robot_conf.extend_config) > 0:
-            diff = fk_return.global_translation_extend[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
-        else:
-            diff = fk_return.global_translation[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
-
-        loss_g = diff.norm(dim=-1).mean()
-        loss = loss_g
-        pbar.set_description_str(f"{iteration} - Loss: {loss.item() * 1000}")
-
-        optimizer_shape.zero_grad()
-        loss.backward(retain_graph=True)
-        optimizer_shape.step()
-
-    joblib.dump((shape_new.detach(), scale), save_path_new_smpl_shape)
-    logger.info(f"Shape parameters saved at {save_path_new_smpl_shape}")
 
 
 def load_amass_data(data_path: str) -> dict:
@@ -148,6 +72,226 @@ def load_amass_data(data_path: str) -> dict:
     }
 
 
+def to_t_pose(env, robot_conf):
+    """
+    Set the humanoid to a T-pose by modifying the Mujoco Data structure.
+
+    Args:
+        env: environment.
+        robot_conf: robot configuration file including the joint positions for the T-pose.
+
+    """
+    data = env._data
+    # apply init pose modifiers
+    for modifier in robot_conf.robot_pose_modifier:
+        name, val = list(modifier.items())[0]
+        if name != "root":
+            # convert string to numpy value
+            val = np.array(eval(val))
+            qpos_id = mj_jntname2qposid(name, env._model)
+            data.qpos[qpos_id] += val
+        else:
+            # convert string to numpy value
+            val = sRot.from_euler("xyz", eval(val), degrees=False).as_quat()
+            val = quat_scalarlast2scalarfirst(val)
+            data.qpos[3:7] += val
+
+
+def get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat):
+    """
+    Get the initial qpos for motion retargeting by temporarily disabling joint limits and collisions and
+    running the simulation to solve for the initial qpos. This avoids problems that could arise from bad initialzation
+    from the default qpos (getting stuck in joint limits or collisions).
+
+    Args:
+        env: environment.
+        init_mocap_pos: initial mocap positions.
+        init_mocap_quat: initial mocap quaternions.
+
+    Returns:
+        np.ndarray: initial qpos.
+
+    """
+
+    old_mjspec = env.mjspec.copy()
+    new_mjspec = env.mjspec
+
+    # disable joint limits and collisions
+    for j in new_mjspec.joints:
+        j.limited = False
+    for g in new_mjspec.geoms:
+        g.contype = 0
+        g.conaffinity = 0
+
+    model = new_mjspec.compile()
+    env.reload_mujoco(new_mjspec)
+
+    env._data.mocap_pos = init_mocap_pos
+    env._data.mocap_quat = init_mocap_quat
+    mujoco.mj_step(env._model, env._data, 100)
+    qpos = env._data.qpos.copy()
+
+    # load old model to env
+    env.reload_mujoco(old_mjspec)
+    key = jax.random.key(0)
+    env.reset(key)
+
+    return qpos
+
+
+def fit_smpl_shape(
+    env_name: str,
+    robot_conf: DictConfig,
+    path_to_smpl_model: str,
+    save_path_new_smpl_shape: str,
+    logger: logging.Logger,
+    visualize: bool = False,
+) -> None:
+    """Fit the SMPL shape to match the robot configuration.
+
+    Args:
+        env_name (str): Name of the environment.
+        robot_conf (DictConfig): Configuration of the robot.
+        path_to_smpl_model (str): Path to the SMPL model.
+        save_path_new_smpl_shape (str): Path to save the optimized shape.
+        logger (logging.Logger): Logger for status updates.
+        visualize (bool): Whether to visualize the optimization process.
+
+    """
+
+    Z_OFFSET = 2.0 # for visualization only
+
+    # get environment
+    env = LocoEnv.make(env_name, **robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
+
+    # add mocap bodies for all 'site_for_mimic' instances of an environment
+    mjspec = env.mjspec
+    sites_for_mimic = env.sites_for_mimic
+    target_mocap_bodies = ["target_mocap_body_" + s for s in sites_for_mimic]
+    mjspec = add_mocap_bodies(mjspec, sites_for_mimic, target_mocap_bodies, robot_conf, add_equality_constraint=False)
+    env.reload_mujoco(mjspec)
+    key = jax.random.key(0)
+    env.reset(key)
+
+    smpl2mimic_site_idx = []
+    for s in sites_for_mimic:
+        # find smpl name
+        for site_name, conf in robot_conf.site_joint_matches.items():
+            if site_name == s:
+                smpl2mimic_site_idx.append(SMPLH_BONE_ORDER_NAMES.index(conf.smpl_joint))
+
+    # set humanoid to T-pose
+    to_t_pose(env, robot_conf)
+
+    # safe initial qpos
+    qpos_init = env._data.qpos.copy()
+    qpos_init[0:3] = 0
+    qpos_init[2] = Z_OFFSET
+
+    # set initial qpos and forward
+    env._data.qpos = qpos_init
+    mujoco.mj_forward(env._model, env._data)
+
+    # get joint names
+    robot_joint_pick = [i for i in robot_conf.site_joint_matches.keys()]
+    smpl_joint_pick = [i.smpl_joint for i in robot_conf.site_joint_matches.values()]
+
+    # get joint indices
+    smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
+
+    device = torch.device("cpu")
+
+    # get initial pose
+    pose_aa_stand = np.zeros((1, 156)).reshape(-1, 52, 3)
+    pose_aa_stand[:, SMPLH_BONE_ORDER_NAMES.index("Pelvis")] = sRot.from_euler("xyz",
+                                                                               [np.pi/2, 0.0 , np.pi/2],
+                                                                               degrees=False).as_rotvec()
+    pose_aa_stand = torch.from_numpy(pose_aa_stand.reshape(-1, 156)).requires_grad_(False)
+
+    # setup parser
+    smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
+
+    # define optimization variables
+    shape_new = Variable(torch.zeros([1, 16]).to(device), requires_grad=True)
+    scale = Variable(torch.ones([1]).to(device), requires_grad=True)
+    trans = torch.zeros([1, 3]).requires_grad_(False)
+    optimizer_shape = torch.optim.Adam([shape_new, scale], lr=robot_conf.optimization_params.shape_lr)
+
+    # get target site positions
+    ordered_site_names = [i for i in robot_joint_pick]
+    site_ids = [mujoco.mj_name2id(env._model, mujoco.mjtObj.mjOBJ_SITE, s) for s in sites_for_mimic]
+    target_site_pos = torch.from_numpy(env._data.site_xpos[site_ids])[None]
+    target_site_mat = torch.from_numpy(env._data.site_xmat[site_ids])
+
+    # get z offset
+    z_offset = torch.tensor([0.0, 0.0, Z_OFFSET])[None]
+
+    # get the transformation matrices
+    transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa_stand, shape_new, trans)
+    global_rot_mats = transformations_matrices.detach().numpy()[..., :3, :3]
+    global_pos = transformations_matrices.detach().numpy()[..., :3, 3]
+    global_rot_mats = sRot.from_matrix(global_rot_mats[0, smpl2mimic_site_idx])
+
+    # get rotations of mimic sites
+    target_site_mat = sRot.from_matrix(target_site_mat.detach().numpy().reshape(-1, 3, 3))
+
+    # rel rotation smpl to robot
+    smpl2robot_pos = np.zeros_like(env._data.site_xpos[site_ids]) # will be saved after optimization
+    smpl2robot_rot_mat = np.einsum("bij,bjk->bik",global_rot_mats.inv().as_matrix(), target_site_mat.as_matrix())
+
+    # transform smpl rotations to match robot site rotations
+    # (here done just for visualization, only used in motion_fit function)
+    new_smpl_rot_mats = np.einsum("bij,bjk->bik",  global_rot_mats.as_matrix(), smpl2robot_rot_mat)
+    new_smpl_quats = quat_scalarlast2scalarfirst(sRot.from_matrix(new_smpl_rot_mats).as_quat())
+
+    pbar = tqdm(range(robot_conf.optimization_params.shape_iterations))
+    init_feet_z_pos = None
+    for iteration in pbar:
+
+        transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa_stand, shape_new, trans)
+        global_pos = transformations_matrices[..., :3, 3]
+
+        if init_feet_z_pos is None:
+            init_feet_z_pos = np.minimum(global_pos[0, SMPLH_BONE_ORDER_NAMES.index("R_Ankle"), 2].detach().numpy(),
+                                         global_pos[0, SMPLH_BONE_ORDER_NAMES.index("L_Ankle"), 2].detach().numpy())
+
+        if iteration == robot_conf.optimization_params.shape_iterations - 1:
+            final_feet_z_pos = np.minimum(global_pos[0, SMPLH_BONE_ORDER_NAMES.index("R_Ankle"), 2].detach().numpy(),
+                                          global_pos[0, SMPLH_BONE_ORDER_NAMES.index("L_Ankle"), 2].detach().numpy())
+
+        root_pos = global_pos[:, 0]
+        global_pos = (global_pos - global_pos[:, 0] + z_offset) * scale
+
+        if visualize:
+            env._data.qpos = qpos_init
+            env._data.mocap_pos = torch.squeeze(global_pos[:, smpl2mimic_site_idx]).detach().numpy()
+            env._data.mocap_quat = new_smpl_quats
+
+            mujoco.mj_forward(env._model, env._data)
+            env.render()
+
+        # calculate loss
+        diff = target_site_pos -  global_pos[:, smpl2mimic_site_idx]
+        loss = diff.norm(dim=-1).mean()
+
+        pbar.set_description_str(f"{iteration} - Loss: {loss.item() * 1000}")
+
+        optimizer_shape.zero_grad()
+        loss.backward(retain_graph=True)
+        optimizer_shape.step()
+
+    # save positions offset
+    smpl2robot_pos = global_pos[:, smpl2mimic_site_idx].detach().numpy() - target_site_pos.detach().numpy()
+    smpl2robot_pos = np.squeeze(smpl2robot_pos)
+
+    # save new z-offset
+    offset_z = init_feet_z_pos - final_feet_z_pos
+
+    # save
+    joblib.dump((shape_new.detach(), scale, smpl2robot_pos, smpl2robot_rot_mat, offset_z), save_path_new_smpl_shape)
+    logger.info(f"Shape parameters saved at {save_path_new_smpl_shape}")
+
+
 def fit_smpl_motion(
     env_name: str,
     robot_conf: DictConfig,
@@ -155,7 +299,8 @@ def fit_smpl_motion(
     path_to_amass_datasets: str,
     path_to_converted_amass_datasets: str,
     motion_file_name: str,
-    logger: logging.Logger
+    logger: logging.Logger,
+    visualize: bool = False
 ) -> Trajectory:
     """Fit SMPL motion data to a robot configuration.
 
@@ -167,22 +312,51 @@ def fit_smpl_motion(
         path_to_converted_amass_datasets (str): Path to the converted AMASS datasets.
         motion_file_name (str): Name of the motion file to process.
         logger (logging.Logger): Logger for status updates.
+        visualize (bool): Whether to visualize the optimization process.
 
     Returns:
         Trajectory: The fitted motion trajectory.
 
     """
+
+    def get_xpos_and_xquat(smpl_positions, smpl_rot_mats, s2m_pos, s2m_rot_mat):
+
+        # get rotations of mimic sites
+        new_smpl_rot_mats = np.einsum("bij,bjk->bik",  smpl_rot_mats, s2m_rot_mat)
+        new_smpl_quat = sRot.from_matrix(new_smpl_rot_mats).as_quat()
+        new_smpl_quat = quat_scalarlast2scalarfirst(new_smpl_quat)
+        pos_offset = np.einsum("bij,bj->bi", new_smpl_rot_mats, s2m_pos)
+        new_smpl_pos = torch.squeeze(smpl_positions - pos_offset).detach().numpy()
+
+        return new_smpl_pos, new_smpl_quat
+
+    # get environment
+    env = LocoEnv.make(env_name, **robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
+
+    # add mocap bodies for all 'site_for_mimic' instances of an environment
+    mjspec = env.mjspec
+    sites_for_mimic = env.sites_for_mimic
+    site_ids = [mujoco.mj_name2id(env._model, mujoco.mjtObj.mjOBJ_SITE, s) for s in sites_for_mimic]
+    target_mocap_bodies = ["target_mocap_body_" + s for s in sites_for_mimic]
+    mjspec = add_mocap_bodies(mjspec, sites_for_mimic, target_mocap_bodies, robot_conf, add_equality_constraint=True)
+    env.reload_mujoco(mjspec)
+    key = jax.random.key(0)
+    env.reset(key)
+
     device = torch.device("cpu")
     path_to_all_amass_files = os.path.join(path_to_amass_datasets, "**/*.npz")
 
-    humanoid_fk = ForwardKinematicsHumanoidTorch(robot_conf)
-    num_augment_joint = len(robot_conf.extend_config)
+    #robot_joint_names_augment = humanoid_fk.joint_names_augment
+    robot_joint_pick = [i for i in robot_conf.site_joint_matches.keys()]
+    smpl_joint_pick = [i.smpl_joint for i in robot_conf.site_joint_matches.values()]
 
-    robot_joint_names_augment = humanoid_fk.joint_names_augment
-    robot_joint_pick = [i[0] for i in robot_conf.joint_matches]
-    smpl_joint_pick = [i[1] for i in robot_conf.joint_matches]
+    smpl2mimic_site_idx = []
+    for s in sites_for_mimic:
+        # find smpl name
+        for site_name, conf in robot_conf.site_joint_matches.items():
+            if site_name == s:
+                smpl2mimic_site_idx.append(SMPLH_BONE_ORDER_NAMES.index(conf.smpl_joint))
 
-    robot_joint_pick_idx = [robot_joint_names_augment.index(j) for j in robot_joint_pick]
     smpl_joint_pick_idx = [SMPLH_BONE_ORDER_NAMES.index(j) for j in smpl_joint_pick]
 
     all_pkls = glob.glob(path_to_all_amass_files, recursive=True)
@@ -197,124 +371,97 @@ def fit_smpl_motion(
     smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
     amass_data = load_amass_data(all_pkls[key_names.index(motion_file_name)])
 
-    skip = int(amass_data['fps'] // 30)
-    trans = torch.from_numpy(amass_data['trans'][::skip])
+    shape_new, scale, smpl2robot_pos, smpl2robot_rot_mat, offset_z = joblib.load(
+        os.path.join(path_to_converted_amass_datasets, f"{env_name}/shape_optimized.pkl")
+    )
+
+    skip = robot_conf.optimization_params.skip_frames
+    total_z_offet = offset_z + robot_conf.optimization_params.z_offset_feet
+    trans = torch.from_numpy(amass_data['trans'][::skip]) + torch.tensor([0.0, 0.0, total_z_offet])
     N = trans.shape[0]
     pose_aa = torch.from_numpy(amass_data['pose_aa'][::skip]).float()
     pose_aa = torch.cat(
         [pose_aa, torch.zeros((pose_aa.shape[0], 156 - pose_aa.shape[1]))], axis=-1
     )
+    len_traj = pose_aa.shape[0]
 
-    shape_new, scale = joblib.load(
-        os.path.join(path_to_converted_amass_datasets, f"{env_name}/shape_optimized.pkl")
-    )
+    global_root_rot_mats = sRot.from_rotvec(pose_aa[:, 0:3].detach().numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
+    global_root_rot_mats = global_root_rot_mats.as_matrix()
 
     with torch.no_grad():
-        verts, joints = smpl_parser_n.get_joints_verts(
-            pose_aa.reshape(N, -1, 3), shape_new.repeat(N, 1), trans
-        )
-        root_pos = joints[:, 0:1]
-        joints = (joints - joints[:, 0:1]) * scale.detach() + root_pos
+        transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa.reshape(N, -1, 3),
+                                                                           shape_new.repeat(N, 1), trans)
+        global_pos = transformations_matrices[..., :3, 3]
+        global_rot_mats = transformations_matrices[..., :3, :3].detach().numpy()
+        root_pos = global_pos[:, 0:1]
+        global_pos = (global_pos - global_pos[:, 0:1]) * scale.detach() + root_pos
 
-    offset = joints[:, 0] - trans
-    root_trans_offset = (trans + offset).clone()
+    # calculate initial qpos from initial mocap pos
+    init_mocap_pos, init_mocap_quat = get_xpos_and_xquat(global_pos[0, smpl2mimic_site_idx],
+                                                         global_rot_mats[0, smpl2mimic_site_idx],
+                                                         smpl2robot_pos, smpl2robot_rot_mat)
+    qpos = get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat)
 
-    if root_trans_offset[..., 2].min() < 0.6:
-        logger.warning("The root position is too low!")
+    qpos = np.zeros((len_traj, env._model.nq))
+    for i in tqdm(range(len_traj)):
 
-    gt_root_rot_quat = torch.from_numpy(
-        (
-            sRot.from_rotvec(pose_aa[:, :3])
-            * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()
-        ).as_quat()
-    ).float()
-    gt_root_rot = torch.from_numpy(
-        sRot.from_quat(torch_utils.calc_heading_quat(gt_root_rot_quat)).as_rotvec()
-    ).float()
+        mocap_pos, mocap_quat = get_xpos_and_xquat(global_pos[i, smpl2mimic_site_idx],
+                                                   global_rot_mats[i, smpl2mimic_site_idx],
+                                                   smpl2robot_pos, smpl2robot_rot_mat)
+        env._data.mocap_pos = mocap_pos
+        env._data.mocap_quat = mocap_quat
 
-    dof_pos = torch.zeros((1, N, humanoid_fk.num_dof, 1))
-    dof_pos_new = Variable(dof_pos.clone(), requires_grad=True)
-    root_rot_new = Variable(gt_root_rot.clone(), requires_grad=True)
-    root_pos_offset = Variable(torch.zeros(1, 3), requires_grad=True)
+        mujoco.mj_step(env._model, env._data, robot_conf.optimization_params.motion_iterations)
 
-    optimizer_pose = torch.optim.Adadelta([dof_pos_new], lr=100)
-    optimizer_root = torch.optim.Adam([root_rot_new, root_pos_offset], lr=0.01)
+        # save qpos
+        qpos[i] = env._data.qpos.copy()
 
-    kernel_size = 5
-    sigma = 0.75
+        if visualize:
+            env.render()
 
-    pbar = tqdm(range(500))
-    for iteration in pbar:
-        pose_aa = torch.cat(
-            [
-                root_rot_new[None, :, None],
-                humanoid_fk.dof_axis * dof_pos_new,
-                torch.zeros((1, N, num_augment_joint, 3)).to(device),
-            ],
-            axis=2,
-        )
-        fk_return = humanoid_fk.fk_batch(
-            pose_aa, root_trans_offset[None] + root_pos_offset
-        )
+    fps = amass_data["fps"] // robot_conf.optimization_params.skip_frames
 
-        if num_augment_joint > 0:
-            diff = fk_return.global_translation_extend[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
-        else:
-            diff = fk_return.global_translation[:, :, robot_joint_pick_idx] - joints[:, smpl_joint_pick_idx]
+    free_joint_qpos_ids = mj_jntname2qposid(env.root_free_joint_xml_name, env._model)
+    free_joint_qpos_mask = np.zeros(env._model.nq, dtype=bool)
+    free_joint_qpos_mask[free_joint_qpos_ids] = True
+    free_joint_qpos = qpos[:, free_joint_qpos_ids]
+    joint_pos = qpos[:, ~free_joint_qpos_mask]
 
-        loss_g = diff.norm(dim=-1).mean()
-        loss = loss_g
+    free_joint_qvel_ids = mj_jntname2qvelid(env.root_free_joint_xml_name, env._model)
+    free_joint_qvel_mask = np.zeros(env._model.nv, dtype=bool)
+    free_joint_qvel_mask[free_joint_qvel_ids] = True
 
-        optimizer_pose.zero_grad()
-        optimizer_root.zero_grad()
-        loss.backward()
-        optimizer_pose.step()
-        optimizer_root.step()
+    free_joint_pos = free_joint_qpos[:, :3]
+    free_joint_quat = free_joint_qpos[:, 3:]
+    free_joint_quat_scalar_last = quat_scalarfirst2scalarlast(free_joint_quat)
+    free_joint_rotvec = sRot.from_quat(free_joint_quat_scalar_last).as_rotvec()
 
-        dof_pos_new.data.clamp_(
-            humanoid_fk.joints_range[:, 0, None], humanoid_fk.joints_range[:, 1, None]
-        )
-
-        pbar.set_description_str(f"Iter: {iteration} \t {loss.item() * 1000:.3f}")
-        dof_pos_new.data = gaussian_filter_1d_batch(
-            dof_pos_new.squeeze().transpose(1, 0)[None], kernel_size, sigma
-        ).transpose(2, 1)[..., None]
-
-    dof_pos_new.data.clamp_(
-        humanoid_fk.joints_range[:, 0, None], humanoid_fk.joints_range[:, 1, None]
-    )
-
-    root_trans_offset_dump = (root_trans_offset + root_pos_offset).clone()
-    root_trans_offset_dump[..., 2] -= fk_return.global_translation[..., 2].min().item() - 0.05
-
-    root_trans_offset = root_trans_offset_dump.squeeze().detach().numpy()
-    root_rot_rotvec = root_rot_new.detach().numpy()
-    root_rot_quat = sRot.from_rotvec(root_rot_rotvec).as_quat()
-
-    free_joint_pos = root_trans_offset
-    free_joint_quat = quat_scalarlast2scalarfirst(root_rot_quat)
-    joints = dof_pos_new.squeeze().detach().numpy()
-
-    fps = 30
     free_joint_vel = (free_joint_pos[2:] - free_joint_pos[:-2]) / (2 * (1 / fps))
-    free_joint_vel_rot = (root_rot_rotvec[2:] - root_rot_rotvec[:-2]) / (2 * (1 / fps))
-    joints_vel = (joints[2:] - joints[:-2]) / (2 * (1 / fps))
+    free_joint_vel_rot = (free_joint_rotvec[2:] - free_joint_rotvec[:-2]) / (2 * (1 / fps))
+    joints_vel = (joint_pos[2:] - joint_pos[:-2]) / (2 * (1 / fps))
 
     free_joint_pos = free_joint_pos[1:-1]
     free_joint_quat = free_joint_quat[1:-1]
-    joints = joints[1:-1]
+    joint_pos = joint_pos[1:-1]
 
-    qpos = np.concatenate([free_joint_pos, free_joint_quat, joints], axis=1)
-    qvel = np.concatenate([free_joint_vel, free_joint_vel_rot, joints_vel], axis=1)
+    # concatenate free joint qpos and qvel
+    free_joint_qpos = np.concatenate([free_joint_pos, free_joint_quat], axis=1)
+    free_joint_qvel = np.concatenate([free_joint_vel, free_joint_vel_rot], axis=1)
 
-    robot_cls = LocoEnv.registered_envs[env_name]
-    spec = mujoco.MjSpec.from_file(robot_cls.get_default_xml_file_path())
-    model = spec.compile()
+    # create empty qpos and qvel arrays
+    qpos = np.zeros((len_traj-2, env._model.nq))
+    qvel = np.zeros((len_traj-2, env._model.nv))
 
-    njnt = model.njnt
-    jnt_type = model.jnt_type
+    # set qpos and qvel
+    qpos[:, free_joint_qpos_mask] = free_joint_qpos
+    qpos[:, ~free_joint_qpos_mask] = joint_pos
+    qvel[:, free_joint_qvel_mask] = free_joint_qvel
+    qvel[:, ~free_joint_qvel_mask] = joints_vel
+
+    njnt = env._model.njnt
+    jnt_type = env._model.jnt_type
     jnt_names = [
-        mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)
+        mujoco.mj_id2name(env._model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)
     ]
 
     traj_info = TrajectoryInfo(
@@ -326,7 +473,6 @@ def fit_smpl_motion(
     )
 
     return Trajectory(traj_info, traj_data)
-
 
 def extend_motion(
     env_name: str,
@@ -428,7 +574,9 @@ def load_retargeted_amass_trajectory(
     filepath = os.path.join(PATH_TO_SMPL_ROBOT_CONF, filename)
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"YAML file '{filename}' not found in path: {PATH_TO_SMPL_ROBOT_CONF}")
+    default_conf = OmegaConf.load(PATH_TO_SMPL_ROBOT_CONF / "defaults.yaml")
     robot_conf = OmegaConf.load(filepath)
+    robot_conf = OmegaConf.merge(default_conf, robot_conf)
 
     path_robot_smpl_data = os.path.join(path_to_converted_amass_datasets, env_name)
     if not os.path.exists(path_robot_smpl_data):
@@ -437,7 +585,7 @@ def load_retargeted_amass_trajectory(
     path_to_robot_smpl_shape = os.path.join(path_robot_smpl_data, OPTIMIZED_SHAPE_FILE_NAME)
     if not os.path.exists(path_to_robot_smpl_shape):
         logger.info("Robot shape file not found, fitting new one ...")
-        fit_smpl_shape(robot_conf, path_to_smpl_model, path_to_robot_smpl_shape, logger)
+        fit_smpl_shape(env_name, robot_conf, path_to_smpl_model, path_to_robot_smpl_shape, logger)
     else:
         logger.info(f"Found existing robot shape file at {path_to_robot_smpl_shape}")
 
@@ -460,8 +608,7 @@ def load_retargeted_amass_trajectory(
                 d_name,
                 logger
             )
-            logger.info("Using Mujoco to optimize for collisions and to calculate other model-specific entities ...")
-            trajectory = optimize_for_collisions(env_name, robot_conf, trajectory)
+            logger.info("Using Mujoco to calculate other model-specific entities ...")
             trajectory = extend_motion(env_name, robot_conf, trajectory, logger)
             trajectory.save(d_path)
             all_trajectories.append(trajectory)

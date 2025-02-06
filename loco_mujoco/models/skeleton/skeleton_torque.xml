@@ -93,7 +93,8 @@
         </body>
       </body>
       <body name="torso" pos="-0.10282 0.0832155        0" quat="1.0 0.0 0.0 0.0">
-        <site name="upper_body_mimic" class="mimic" pos="0.0 0.3 0.0"/>
+        <site name="upper_body_mimic" class="mimic" pos="0.13 0.155 0.0"/>
+        <site name="head_mimic" class="mimic" pos="0.0 0.6 0.0"/>
         <geom name="hat_spine" type="mesh" mesh="hat_spine"></geom>
         <geom name="hat_jaw" type="mesh" mesh="hat_jaw"></geom>
         <geom name="hat_skull" type="mesh" mesh="hat_skull"></geom>

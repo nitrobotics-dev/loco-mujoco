@@ -1,28 +1,26 @@
-name: Talos
-mjcf_file: talos/talos.xml
-extend_config: []
-  
-    
-joint_matches:
-  - ["pelvis", "Pelvis"]
-  - ["leg_left_1_link", "L_Hip"]
-  - ["leg_left_4_link", "L_Knee"]
-  - ["leg_left_5_link", "L_Ankle"]
-  - ["leg_right_1_link", "R_Hip"]
-  - ["leg_right_4_link", "R_Knee"]
-  - ["leg_right_5_link", "R_Ankle"]
-  - ["arm_left_1_link", "L_Shoulder"]
-  - ["arm_left_4_link", "L_Elbow"]
-  #- ["arm_left_5_link", "L_Hand"]
-  - ["arm_right_1_link", "R_Shoulder"]
-  - ["arm_right_4_link", "R_Elbow"]
-  #- ["arm_right_5_link", "R_Hand"]
-  - ["head_1_link", "Head"]
+site_joint_matches:
+  upper_body_mimic:
+    smpl_joint: "Chest"
+    equality_constraint_type: mjEQ_WELD
+    torque_scale: 10.0
+  pelvis_mimic:
+    smpl_joint: "Pelvis"
+    equality_constraint_type: mjEQ_WELD
+    torque_scale: 10.0
+  left_shoulder_mimic:
+    smpl_joint: "L_Shoulder"
+    equality_constraint_type: mjEQ_WELD
+    torque_scale: 10.0
+  right_shoulder_mimic:
+    smpl_joint: "R_Shoulder"
+    equality_constraint_type: mjEQ_WELD
+    torque_scale: 10.0
 
-smpl_pose_modifier:
-  - Pelvis: "[np.pi/2, np.pi/2, 0]"
-  - L_Shoulder: "[0, 0, -np.pi/2]"
-  - R_Shoulder: "[0, 0, np.pi/2]"
+
+robot_pose_modifier:
+- l_arm_shx: "np.pi/2"
+- r_arm_shx: "-np.pi/2"
+
 
 env_params:
   disable_arms: false

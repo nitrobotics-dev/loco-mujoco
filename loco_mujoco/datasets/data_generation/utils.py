@@ -155,7 +155,9 @@ class ExtendTrajData(ReplayCallback):
 
 def add_mocap_bodies(mjspec: MjSpec,
                      sites_for_mimic: List[str],
-                     mocap_bodies: List[str]):
+                     mocap_bodies: List[str],
+                     robot_conf: DictConfig = None,
+                     add_equality_constraint: bool = True):
     """
     Add mocap bodies to the model specification.
 
@@ -164,16 +166,37 @@ def add_mocap_bodies(mjspec: MjSpec,
         sites_for_mimic (List[str]): The sites to mimic.
         mocap_bodies (List[str]): The names of the mocap bodies to be added to the model specification.
         mocap_bodies_init_pos: The initial positions of the mocap bodies.
+        add_equality_constraint (bool): Whether to add equality constraints between the sites and the mocap bodies.
 
     """
+
+    if robot_conf is not None and robot_conf.optimization_params.disable_joint_limits:
+        for j in mjspec.joints:
+            j.limited = False
+
+    if robot_conf is not None and robot_conf.optimization_params.disable_collisions:
+        for g in mjspec.geoms:
+            g.contype = 0
+            g.conaffinity = 0
 
     for mb_name in mocap_bodies:
         b_handle = mjspec.worldbody.add_body(name=mb_name, mocap=True)
         b_handle.add_site(name=mb_name, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.1, 0.05, 0.01],
-                          rgba=[1.0, 0.0, 0.0, 0.5], group=1)
+                          rgba=[0.0, 1.0, 0.0, 0.5], group=1)
 
-    for b1, b2 in zip(sites_for_mimic, mocap_bodies):
-        mjspec.add_equality(type=mujoco.mjtEq.mjEQ_WELD, name1=b1, name2=b2, objtype=mujoco.mjtObj.mjOBJ_SITE)
+    if add_equality_constraint:
+        for b1, b2 in zip(sites_for_mimic, mocap_bodies):
+            if robot_conf is not None:
+                eq_type = getattr(mujoco.mjtEq, robot_conf.site_joint_matches[b1].equality_constraint_type)
+                torque_scale = robot_conf.site_joint_matches[b1].torque_scale
+            else:
+                eq_type = mujoco.mjtEq.mjEQ_WELD
+                torque_scale = 1.0
+
+            constraint_data = np.zeros(11)
+            constraint_data[10] = torque_scale
+            mjspec.add_equality(type=eq_type, name1=b1, name2=b2,
+                                objtype=mujoco.mjtObj.mjOBJ_SITE, data=constraint_data)
 
     return mjspec
 
