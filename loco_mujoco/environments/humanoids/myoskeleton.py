@@ -1145,7 +1145,7 @@ class MyoSkeleton(LocoEnv):
         for body_name, site_name in self.body2sites_for_mimic.items():
             b = spec.find_body(body_name)
             # todo: can not load mimic sites attributes for now, so I add them manually
-            b.add_site(name=site_name, group=1, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
+            b.add_site(name=site_name, group=4, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
                        rgba=[1.0, 0.0, 0.0, 0.5])
 
         if self._disable_fingers:
