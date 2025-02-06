@@ -54,10 +54,14 @@ def load_amass_data(data_path: str) -> dict:
     """
     entry_data = dict(np.load(open(data_path, "rb"), allow_pickle=True))
 
-    if 'mocap_framerate' not in entry_data:
-        return {}
+    framerate = None
+    if 'mocap_framerate' in entry_data:
+        framerate = entry_data['mocap_framerate']
+    elif 'mocap_frame_rate' in entry_data:
+        framerate = entry_data['mocap_frame_rate']
+    else:
+        raise ValueError("Framerate not found in the data file.")
 
-    framerate = entry_data['mocap_framerate']
     root_trans = entry_data['trans']
     pose_aa = np.concatenate([entry_data['poses'][:, :66], np.zeros((root_trans.shape[0], 6))], axis=-1)
     betas = entry_data['betas']
