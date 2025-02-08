@@ -394,7 +394,7 @@ class BodyRot(SimpleObs):
     dim = 4
 
     def _init_from_mj(self, env, model, data, current_obs_size):
-        dim = len(data.body(self.xml_name).cvel)
+        dim = len(data.body(self.xml_name).xquat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
         self.data_type_ind = np.array(self.to_list(data.body(self.xml_name).id))
@@ -468,9 +468,9 @@ class EntryFromFreeJointPos(FreeJointPos):
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         super()._init_from_mj(None, model, data, current_obs_size)
-        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
-        self.data_type_ind = self.data_type_ind[self._entry_index]
-        self.obs_ind = self.obs_ind[0]
+        self.min, self.max = [self.min[self._entry_index]], [self.max[self._entry_index]]
+        self.data_type_ind = np.array([self.data_type_ind[self._entry_index]])
+        self.obs_ind = np.array([self.obs_ind[0]])
         self._initialized_from_mj = True
 
     @classmethod
@@ -606,9 +606,9 @@ class EntryFromFreeJointVel(FreeJointVel):
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         super()._init_from_mj(None, model, data, current_obs_size)
-        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
-        self.data_type_ind = self.data_type_ind[self._entry_index]
-        self.obs_ind = self.obs_ind[0]
+        self.min, self.max = [self.min[self._entry_index]], [self.max[self._entry_index]]
+        self.data_type_ind = np.array([self.data_type_ind[self._entry_index]])
+        self.obs_ind = np.array([self.obs_ind[0]])
 
     @classmethod
     def data_type(cls):
