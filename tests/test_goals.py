@@ -5,6 +5,7 @@ import jax
 
 from test_conf import DummyHumamoidEnv
 from loco_mujoco.core.observations.goals import Goal
+from loco_mujoco.environments.base import TrajState
 
 from loco_mujoco.trajectory import Trajectory
 from test_conf import *
@@ -142,6 +143,30 @@ def test_GoalTrajRootVelocity(backend, standing_trajectory):
         obs = state.observation
         carry = state.additional_carry
     obs = obs[-dim:]
+
+    # Simulate a scenario where the trajectory is ending
+    traj_no = carry.traj_state.traj_no
+    idx_of_next_traj = mjx_env.th.traj.data.split_points[traj_no + 1]
+    current_step = idx_of_next_traj - 1
+
+    carry = carry.replace(
+        traj_state=TrajState(
+            traj_no=traj_no,
+            subtraj_step_no=current_step,
+            subtraj_step_no_init=current_step,
+        )
+    )
+
+    if backend == np:
+        # Check is_done function
+        done = goal.is_done(mjx_env, mjx_env._model, mjx_env._data, carry, backend)
+    else:
+        # Check JAX-compatible version
+        done = goal.mjx_is_done(mjx_env, mjx_env._model, mjx_env._data, carry, backend)
+
+    assert (
+        done == True
+    ), "Goal should be marked as done when steps till end < _n_steps_average"
 
     goal, _ = goal.get_obs_and_update_state(
         mjx_env, mjx_env._model, mjx_env._data, carry, backend
