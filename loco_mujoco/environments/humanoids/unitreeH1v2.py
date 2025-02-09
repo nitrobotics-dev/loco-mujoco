@@ -105,6 +105,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
         joints_to_remove = [
             # Left Hand
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
             "L_thumb_proximal_yaw_joint",
             "L_thumb_proximal_pitch_joint",
             "L_thumb_intermediate_joint",
@@ -118,6 +121,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
             "L_pinky_proximal_joint",
             "L_pinky_intermediate_joint",
             # Right Hand
+            "right_wrist_roll_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
             "R_thumb_proximal_yaw_joint",
             "R_thumb_proximal_pitch_joint",
             "R_thumb_intermediate_joint",
@@ -134,6 +140,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
         actuators_to_remove = [
             # Left Hand
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
             "L_thumb_proximal_yaw_joint",
             "L_thumb_proximal_pitch_joint",
             "L_thumb_intermediate_joint",
@@ -147,6 +156,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
             "L_pinky_proximal_joint",
             "L_pinky_intermediate_joint",
             # Right Hand
+            "right_wrist_roll_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
             "R_thumb_proximal_yaw_joint",
             "R_thumb_proximal_pitch_joint",
             "R_thumb_intermediate_joint",
