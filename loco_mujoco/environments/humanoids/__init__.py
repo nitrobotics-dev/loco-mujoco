@@ -12,6 +12,7 @@ from .myoskeleton_mjx import MjxMyoSkeleton
 from .unitreeG1_mjx import MjxUnitreeG1
 from .apptronik_apollo import Apollo
 from .apptronik_apollo_mjx import MjxApollo
+from .boostert1 import BoosterT1
 from .skeletons import (SkeletonTorque, MjxSkeletonTorque, HumanoidTorque, SkeletonMuscle, MjxSkeletonMuscle,
                         HumanoidMuscle, HumanoidTorque4Ages, HumanoidMuscle4Ages)
 
@@ -29,6 +30,7 @@ UnitreeG1.register()
 MjxUnitreeG1.register()
 Apollo.register()
 MjxApollo.register()
+BoosterT1.register()
 SkeletonTorque.register()
 MjxSkeletonTorque.register()
 SkeletonMuscle.register()
