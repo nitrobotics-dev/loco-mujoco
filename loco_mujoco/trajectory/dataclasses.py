@@ -1131,14 +1131,26 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
             quat_ids = backend.array(quat_ids)
             qpos = qpos.at[:, quat_ids].set(slerp_batch(traj_data_slice.qpos[:, quat_ids], x, x_new))
 
+        # interpolate the rest of the data
+        qvel_interpolated = interp1d(x, traj_data_slice.qvel, kind="cubic", axis=0)(x_new)
+        xpos_interpolated = interp1d(x, traj_data_slice.xpos, kind="cubic", axis=0)(x_new) \
+            if traj_data_slice.xpos.size > 0 else jnp.empty(0)
+        cvel_interpolated = interp1d(x, traj_data_slice.cvel, kind="cubic", axis=0)(x_new) \
+            if traj_data_slice.cvel.size > 0 else jnp.empty(0)
+        site_xpos_interpolated = interp1d(x, traj_data_slice.site_xpos, kind="cubic", axis=0)(x_new) \
+            if traj_data_slice.site_xpos.size > 0 else jnp.empty(0)
+        subtree_com_interpolated = interp1d(x, traj_data_slice.subtree_com, kind="cubic", axis=0)(x_new) \
+            if traj_data_slice.subtree_com.size > 0 else jnp.empty(0)
+
         traj_data_slice = traj_data_slice.replace(
             qpos=qpos,
-            qvel=interp1d(x, traj_data_slice.qvel, kind="cubic", axis=0)(x_new),
-            xpos=interp1d(x, traj_data_slice.xpos, kind="cubic", axis=0)(x_new) if traj_data_slice.xpos.size > 0 else jnp.empty(0),
+            qvel=qvel_interpolated,
+            xpos=xpos_interpolated,
             xquat=xquat_interpolated,
-            cvel=interp1d(x, traj_data_slice.cvel, kind="cubic", axis=0)(x_new) if traj_data_slice.cvel.size > 0 else jnp.empty(0),
-            site_xpos=interp1d(x, traj_data_slice.site_xpos, kind="cubic", axis=0)(x_new) if traj_data_slice.site_xpos.size > 0 else jnp.empty(0),
+            cvel=cvel_interpolated,
+            site_xpos=site_xpos_interpolated,
             site_xmat=xmat_interpolated,
+            subtree_com=subtree_com_interpolated,
             split_points=backend.array([0, len(x_new)]))
 
         new_traj_datas.append(traj_data_slice)
