@@ -100,6 +100,7 @@ class Apollo(BaseRobotHumanoid):
         """
         observation_spec = [
             # ------------- JOINT POS -------------
+            ObservationType.FreeJointPosNoXY("q_floating_base", xml_name="floating_base"),
             ObservationType.JointPos("q_neck_yaw", xml_name="neck_yaw"),
             ObservationType.JointPos("q_neck_roll", xml_name="neck_roll"),
             ObservationType.JointPos("q_neck_pitch", xml_name="neck_pitch"),
@@ -134,6 +135,7 @@ class Apollo(BaseRobotHumanoid):
             ObservationType.JointPos("q_r_wrist_pitch", xml_name="r_wrist_pitch"),
 
             # ------------- JOINT VEL -------------
+            ObservationType.FreeJointVel("dq_floating_base", xml_name="floating_base"),
             ObservationType.JointVel("dq_neck_yaw", xml_name="neck_yaw"),
             ObservationType.JointVel("dq_neck_roll", xml_name="neck_roll"),
             ObservationType.JointVel("dq_neck_pitch", xml_name="neck_pitch"),
