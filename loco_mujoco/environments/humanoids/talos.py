@@ -1,5 +1,6 @@
 import mujoco
 from mujoco import MjSpec
+import numpy as np
 
 import loco_mujoco
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
@@ -262,15 +263,13 @@ class Talos(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=True, disable_back_joint=False, spec=None,
-                 observation_spec=None, action_spec=None, **kwargs):
+    def __init__(self, disable_gripper=True, spec=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
 
         """
 
-        self._disable_arms = disable_arms
-        self._disable_back_joint = disable_back_joint
+        self._disable_gripper = disable_gripper
 
         if spec is None:
             spec = self.get_default_xml_file_path()
@@ -288,18 +287,16 @@ class Talos(BaseRobotHumanoid):
         if action_spec is None:
             action_spec = self._get_action_specification(spec)
 
-        if self.mjx_enabled:
-            spec = self._modify_spec_for_mjx(spec)
-
-        if disable_arms or disable_back_joint:
+        if disable_gripper:
             joints_to_remove, motors_to_remove, equ_constr_to_remove = self._get_spec_modifications()
             obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
             observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
             action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
 
             spec = self._delete_from_spec(spec, joints_to_remove, motors_to_remove, equ_constr_to_remove)
-            if disable_arms:
-                spec = self._reorient_arms(spec)
+
+        if self.mjx_enabled:
+            spec = self._modify_spec_for_mjx(spec)
 
         super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
 
@@ -318,16 +315,28 @@ class Talos(BaseRobotHumanoid):
         motors_to_remove = []
         equ_constr_to_remove = []
 
-        if self._disable_arms:
-            joints_to_remove += ["l_arm_shz", "l_arm_shx", "l_arm_ely", "l_arm_elx", "l_arm_wry", "l_arm_wrx",
-                                 "r_arm_shz", "r_arm_shx", "r_arm_ely", "r_arm_elx", "r_arm_wry", "r_arm_wrx"]
-            motors_to_remove += ["l_arm_shz_actuator", "l_arm_shx_actuator", "l_arm_ely_actuator", "l_arm_elx_actuator",
-                                 "l_arm_wry_actuator", "l_arm_wrx_actuator", "r_arm_shz_actuator", "r_arm_shx_actuator",
-                                 "r_arm_ely_actuator", "r_arm_elx_actuator", "r_arm_wry_actuator", "r_arm_wrx_actuator"]
+        if self._disable_gripper:
+            joints_to_remove += [
+                "gripper_left_joint",
+                "gripper_left_inner_double_joint",
+                "gripper_left_motor_single_joint",
+                "gripper_left_inner_single_joint",
+                "gripper_left_fingertip_1_joint",
+                "gripper_left_fingertip_2_joint",
+                "gripper_left_fingertip_3_joint",
+                "gripper_right_joint",
+                "gripper_right_inner_double_joint",
+                "gripper_right_motor_single_joint",
+                "gripper_right_inner_single_joint",
+                "gripper_right_fingertip_1_joint",
+                "gripper_right_fingertip_2_joint",
+                "gripper_right_fingertip_3_joint"]
 
-        if self._disable_back_joint:
-            joints_to_remove += ["back_bkz", "back_bky"]
-            motors_to_remove += ["back_bkz_actuator", "back_bky_actuator"]
+            motors_to_remove += [
+                "gripper_left_joint_torque",
+                "gripper_right_joint_torque"]
+
+            equ_constr_to_remove += ["eq1", "eq2", "eq3", "eq4", "eq5", "eq6"]
 
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
@@ -348,26 +357,6 @@ class Talos(BaseRobotHumanoid):
         return 6
 
     @staticmethod
-    def _reorient_arms(spec: MjSpec):
-        """
-        Reorients the elbow to not collide with the hip.
-
-        Args:
-            spec: Mujoco specification.
-
-        Returns:
-            Modified Mujoco specification.
-
-        """
-        # modify the arm orientation
-        arm_right_4_link = spec.find_body("arm_right_4_link")
-        arm_right_4_link.quat = [1.0,  0.0, -0.25, 0.0]
-        arm_left_4_link = spec.find_body("arm_left_4_link")
-        arm_left_4_link.quat = [1.0,  0.0, -0.25, 0.0]
-
-        return spec
-
-    @staticmethod
     def _get_observation_specification(spec: MjSpec):
         """
         Returns the observation specification of the environment.
@@ -379,59 +368,122 @@ class Talos(BaseRobotHumanoid):
             A list of observation types.
         """
 
-        observation_spec = [# ------------- JOINT POS -------------
-                            ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
-                            ObservationType.JointPos("q_back_bkz", xml_name="back_bkz"),
-                            ObservationType.JointPos("q_back_bky", xml_name="back_bky"),
-                            ObservationType.JointPos("q_l_arm_shz", xml_name="l_arm_shz"),
-                            ObservationType.JointPos("q_l_arm_shx", xml_name="l_arm_shx"),
-                            ObservationType.JointPos("q_l_arm_ely", xml_name="l_arm_ely"),
-                            ObservationType.JointPos("q_l_arm_elx", xml_name="l_arm_elx"),
-                            ObservationType.JointPos("q_l_arm_wry", xml_name="l_arm_wry"),
-                            ObservationType.JointPos("q_l_arm_wrx", xml_name="l_arm_wrx"),
-                            ObservationType.JointPos("q_r_arm_shz", xml_name="r_arm_shz"),
-                            ObservationType.JointPos("q_r_arm_shx", xml_name="r_arm_shx"),
-                            ObservationType.JointPos("q_r_arm_ely", xml_name="r_arm_ely"),
-                            ObservationType.JointPos("q_r_arm_elx", xml_name="r_arm_elx"),
-                            ObservationType.JointPos("q_r_arm_wry", xml_name="r_arm_wry"),
-                            ObservationType.JointPos("q_r_arm_wrx", xml_name="r_arm_wrx"),
-                            ObservationType.JointPos("q_hip_flexion_r", xml_name="hip_flexion_r"),
-                            ObservationType.JointPos("q_hip_adduction_r", xml_name="hip_adduction_r"),
-                            ObservationType.JointPos("q_hip_rotation_r", xml_name="hip_rotation_r"),
-                            ObservationType.JointPos("q_knee_angle_r", xml_name="knee_angle_r"),
-                            ObservationType.JointPos("q_ankle_angle_r", xml_name="ankle_angle_r"),
-                            ObservationType.JointPos("q_hip_flexion_l", xml_name="hip_flexion_l"),
-                            ObservationType.JointPos("q_hip_adduction_l", xml_name="hip_adduction_l"),
-                            ObservationType.JointPos("q_hip_rotation_l", xml_name="hip_rotation_l"),
-                            ObservationType.JointPos("q_knee_angle_l", xml_name="knee_angle_l"),
-                            ObservationType.JointPos("q_ankle_angle_l", xml_name="ankle_angle_l"),
+        observation_spec = [
+            # ------------- JOINT POS -------------
+            ObservationType.FreeJointPosNoXY("q_reference", xml_name="reference"),
+            ObservationType.JointPos("q_torso_1_joint", xml_name="torso_1_joint"),
+            ObservationType.JointPos("q_torso_2_joint", xml_name="torso_2_joint"),
+            ObservationType.JointPos("q_head_1_joint", xml_name="head_1_joint"),
+            ObservationType.JointPos("q_head_2_joint", xml_name="head_2_joint"),
+            ObservationType.JointPos("q_arm_left_1_joint", xml_name="arm_left_1_joint"),
+            ObservationType.JointPos("q_arm_left_2_joint", xml_name="arm_left_2_joint"),
+            ObservationType.JointPos("q_arm_left_3_joint", xml_name="arm_left_3_joint"),
+            ObservationType.JointPos("q_arm_left_4_joint", xml_name="arm_left_4_joint"),
+            ObservationType.JointPos("q_arm_left_5_joint", xml_name="arm_left_5_joint"),
+            ObservationType.JointPos("q_arm_left_6_joint", xml_name="arm_left_6_joint"),
+            ObservationType.JointPos("q_arm_left_7_joint", xml_name="arm_left_7_joint"),
+            ObservationType.JointPos("q_gripper_left_joint", xml_name="gripper_left_joint"),
+            ObservationType.JointPos("q_gripper_left_inner_double_joint",
+                                     xml_name="gripper_left_inner_double_joint"),
+            ObservationType.JointPos("q_gripper_left_motor_single_joint",
+                                     xml_name="gripper_left_motor_single_joint"),
+            ObservationType.JointPos("q_gripper_left_inner_single_joint",
+                                     xml_name="gripper_left_inner_single_joint"),
+            ObservationType.JointPos("q_gripper_left_fingertip_1_joint", xml_name="gripper_left_fingertip_1_joint"),
+            ObservationType.JointPos("q_gripper_left_fingertip_2_joint", xml_name="gripper_left_fingertip_2_joint"),
+            ObservationType.JointPos("q_gripper_left_fingertip_3_joint", xml_name="gripper_left_fingertip_3_joint"),
+            ObservationType.JointPos("q_arm_right_1_joint", xml_name="arm_right_1_joint"),
+            ObservationType.JointPos("q_arm_right_2_joint", xml_name="arm_right_2_joint"),
+            ObservationType.JointPos("q_arm_right_3_joint", xml_name="arm_right_3_joint"),
+            ObservationType.JointPos("q_arm_right_4_joint", xml_name="arm_right_4_joint"),
+            ObservationType.JointPos("q_arm_right_5_joint", xml_name="arm_right_5_joint"),
+            ObservationType.JointPos("q_arm_right_6_joint", xml_name="arm_right_6_joint"),
+            ObservationType.JointPos("q_arm_right_7_joint", xml_name="arm_right_7_joint"),
+            ObservationType.JointPos("q_gripper_right_joint", xml_name="gripper_right_joint"),
+            ObservationType.JointPos("q_gripper_right_inner_double_joint",
+                                     xml_name="gripper_right_inner_double_joint"),
+            ObservationType.JointPos("q_gripper_right_motor_single_joint",
+                                     xml_name="gripper_right_motor_single_joint"),
+            ObservationType.JointPos("q_gripper_right_inner_single_joint",
+                                     xml_name="gripper_right_inner_single_joint"),
+            ObservationType.JointPos("q_gripper_right_fingertip_1_joint",
+                                     xml_name="gripper_right_fingertip_1_joint"),
+            ObservationType.JointPos("q_gripper_right_fingertip_2_joint",
+                                     xml_name="gripper_right_fingertip_2_joint"),
+            ObservationType.JointPos("q_gripper_right_fingertip_3_joint",
+                                     xml_name="gripper_right_fingertip_3_joint"),
+            ObservationType.JointPos("q_leg_left_1_joint", xml_name="leg_left_1_joint"),
+            ObservationType.JointPos("q_leg_left_2_joint", xml_name="leg_left_2_joint"),
+            ObservationType.JointPos("q_leg_left_3_joint", xml_name="leg_left_3_joint"),
+            ObservationType.JointPos("q_leg_left_4_joint", xml_name="leg_left_4_joint"),
+            ObservationType.JointPos("q_leg_left_5_joint", xml_name="leg_left_5_joint"),
+            ObservationType.JointPos("q_leg_left_6_joint", xml_name="leg_left_6_joint"),
+            ObservationType.JointPos("q_leg_right_1_joint", xml_name="leg_right_1_joint"),
+            ObservationType.JointPos("q_leg_right_2_joint", xml_name="leg_right_2_joint"),
+            ObservationType.JointPos("q_leg_right_3_joint", xml_name="leg_right_3_joint"),
+            ObservationType.JointPos("q_leg_right_4_joint", xml_name="leg_right_4_joint"),
+            ObservationType.JointPos("q_leg_right_5_joint", xml_name="leg_right_5_joint"),
+            ObservationType.JointPos("q_leg_right_6_joint", xml_name="leg_right_6_joint"),
 
-                            # ------------- JOINT VEL -------------
-                            ObservationType.FreeJointVel("dq_root", xml_name="root"),
-                            ObservationType.JointVel("dq_back_bkz", xml_name="back_bkz"),
-                            ObservationType.JointVel("dq_back_bky", xml_name="back_bky"),
-                            ObservationType.JointVel("dq_l_arm_shz", xml_name="l_arm_shz"),
-                            ObservationType.JointVel("dq_l_arm_shx", xml_name="l_arm_shx"),
-                            ObservationType.JointVel("dq_l_arm_ely", xml_name="l_arm_ely"),
-                            ObservationType.JointVel("dq_l_arm_elx", xml_name="l_arm_elx"),
-                            ObservationType.JointVel("dq_l_arm_wry", xml_name="l_arm_wry"),
-                            ObservationType.JointVel("dq_l_arm_wrx", xml_name="l_arm_wrx"),
-                            ObservationType.JointVel("dq_r_arm_shz", xml_name="r_arm_shz"),
-                            ObservationType.JointVel("dq_r_arm_shx", xml_name="r_arm_shx"),
-                            ObservationType.JointVel("dq_r_arm_ely", xml_name="r_arm_ely"),
-                            ObservationType.JointVel("dq_r_arm_elx", xml_name="r_arm_elx"),
-                            ObservationType.JointVel("dq_r_arm_wry", xml_name="r_arm_wry"),
-                            ObservationType.JointVel("dq_r_arm_wrx", xml_name="r_arm_wrx"),
-                            ObservationType.JointVel("dq_hip_flexion_r", xml_name="hip_flexion_r"),
-                            ObservationType.JointVel("dq_hip_adduction_r", xml_name="hip_adduction_r"),
-                            ObservationType.JointVel("dq_hip_rotation_r", xml_name="hip_rotation_r"),
-                            ObservationType.JointVel("dq_knee_angle_r", xml_name="knee_angle_r"),
-                            ObservationType.JointVel("dq_ankle_angle_r", xml_name="ankle_angle_r"),
-                            ObservationType.JointVel("dq_hip_flexion_l", xml_name="hip_flexion_l"),
-                            ObservationType.JointVel("dq_hip_adduction_l", xml_name="hip_adduction_l"),
-                            ObservationType.JointVel("dq_hip_rotation_l", xml_name="hip_rotation_l"),
-                            ObservationType.JointVel("dq_knee_angle_l", xml_name="knee_angle_l"),
-                            ObservationType.JointVel("dq_ankle_angle_l", xml_name="ankle_angle_l")]
+            # ------------- JOINT VEL -------------
+            ObservationType.FreeJointVel("dq_reference", xml_name="reference"),
+            ObservationType.JointVel("dq_torso_1_joint", xml_name="torso_1_joint"),
+            ObservationType.JointVel("dq_torso_2_joint", xml_name="torso_2_joint"),
+            ObservationType.JointVel("dq_head_1_joint", xml_name="head_1_joint"),
+            ObservationType.JointVel("dq_head_2_joint", xml_name="head_2_joint"),
+            ObservationType.JointVel("dq_arm_left_1_joint", xml_name="arm_left_1_joint"),
+            ObservationType.JointVel("dq_arm_left_2_joint", xml_name="arm_left_2_joint"),
+            ObservationType.JointVel("dq_arm_left_3_joint", xml_name="arm_left_3_joint"),
+            ObservationType.JointVel("dq_arm_left_4_joint", xml_name="arm_left_4_joint"),
+            ObservationType.JointVel("dq_arm_left_5_joint", xml_name="arm_left_5_joint"),
+            ObservationType.JointVel("dq_arm_left_6_joint", xml_name="arm_left_6_joint"),
+            ObservationType.JointVel("dq_arm_left_7_joint", xml_name="arm_left_7_joint"),
+            ObservationType.JointVel("dq_gripper_left_joint", xml_name="gripper_left_joint"),
+            ObservationType.JointVel("dq_gripper_left_inner_double_joint",
+                                     xml_name="gripper_left_inner_double_joint"),
+            ObservationType.JointVel("dq_gripper_left_motor_single_joint",
+                                     xml_name="gripper_left_motor_single_joint"),
+            ObservationType.JointVel("dq_gripper_left_inner_single_joint",
+                                     xml_name="gripper_left_inner_single_joint"),
+            ObservationType.JointVel("dq_gripper_left_fingertip_1_joint",
+                                     xml_name="gripper_left_fingertip_1_joint"),
+            ObservationType.JointVel("dq_gripper_left_fingertip_2_joint",
+                                     xml_name="gripper_left_fingertip_2_joint"),
+            ObservationType.JointVel("dq_gripper_left_fingertip_3_joint",
+                                     xml_name="gripper_left_fingertip_3_joint"),
+            ObservationType.JointVel("dq_arm_right_1_joint", xml_name="arm_right_1_joint"),
+            ObservationType.JointVel("dq_arm_right_2_joint", xml_name="arm_right_2_joint"),
+            ObservationType.JointVel("dq_arm_right_3_joint", xml_name="arm_right_3_joint"),
+            ObservationType.JointVel("dq_arm_right_4_joint", xml_name="arm_right_4_joint"),
+            ObservationType.JointVel("dq_arm_right_5_joint", xml_name="arm_right_5_joint"),
+            ObservationType.JointVel("dq_arm_right_6_joint", xml_name="arm_right_6_joint"),
+            ObservationType.JointVel("dq_arm_right_7_joint", xml_name="arm_right_7_joint"),
+            ObservationType.JointVel("dq_gripper_right_joint", xml_name="gripper_right_joint"),
+            ObservationType.JointVel("dq_gripper_right_inner_double_joint",
+                                     xml_name="gripper_right_inner_double_joint"),
+            ObservationType.JointVel("dq_gripper_right_motor_single_joint",
+                                     xml_name="gripper_right_motor_single_joint"),
+            ObservationType.JointVel("dq_gripper_right_inner_single_joint",
+                                     xml_name="gripper_right_inner_single_joint"),
+            ObservationType.JointVel("dq_gripper_right_fingertip_1_joint",
+                                     xml_name="gripper_right_fingertip_1_joint"),
+            ObservationType.JointVel("dq_gripper_right_fingertip_2_joint",
+                                     xml_name="gripper_right_fingertip_2_joint"),
+            ObservationType.JointVel("dq_gripper_right_fingertip_3_joint",
+                                     xml_name="gripper_right_fingertip_3_joint"),
+            ObservationType.JointVel("dq_leg_left_1_joint", xml_name="leg_left_1_joint"),
+            ObservationType.JointVel("dq_leg_left_2_joint", xml_name="leg_left_2_joint"),
+            ObservationType.JointVel("dq_leg_left_3_joint", xml_name="leg_left_3_joint"),
+            ObservationType.JointVel("dq_leg_left_4_joint", xml_name="leg_left_4_joint"),
+            ObservationType.JointVel("dq_leg_left_5_joint", xml_name="leg_left_5_joint"),
+            ObservationType.JointVel("dq_leg_left_6_joint", xml_name="leg_left_6_joint"),
+            ObservationType.JointVel("dq_leg_right_1_joint", xml_name="leg_right_1_joint"),
+            ObservationType.JointVel("dq_leg_right_2_joint", xml_name="leg_right_2_joint"),
+            ObservationType.JointVel("dq_leg_right_3_joint", xml_name="leg_right_3_joint"),
+            ObservationType.JointVel("dq_leg_right_4_joint", xml_name="leg_right_4_joint"),
+            ObservationType.JointVel("dq_leg_right_5_joint", xml_name="leg_right_5_joint"),
+            ObservationType.JointVel("dq_leg_right_6_joint", xml_name="leg_right_6_joint")
+        ]
 
         return observation_spec
 
@@ -446,14 +498,41 @@ class Talos(BaseRobotHumanoid):
         Returns:
             A list of actuator names.
         """
-        action_spec = ["back_bkz_actuator", "back_bky_actuator", "l_arm_shz_actuator",
-                       "l_arm_shx_actuator", "l_arm_ely_actuator", "l_arm_elx_actuator", "l_arm_wry_actuator",
-                       "l_arm_wrx_actuator", "r_arm_shz_actuator", "r_arm_shx_actuator",
-                       "r_arm_ely_actuator", "r_arm_elx_actuator", "r_arm_wry_actuator", "r_arm_wrx_actuator",
-                       "hip_flexion_r_actuator", "hip_adduction_r_actuator", "hip_rotation_r_actuator",
-                       "knee_angle_r_actuator", "ankle_angle_r_actuator", "hip_flexion_l_actuator",
-                       "hip_adduction_l_actuator", "hip_rotation_l_actuator", "knee_angle_l_actuator",
-                       "ankle_angle_l_actuator"]
+
+        action_spec = [
+            "torso_1_joint_torque",
+            "torso_2_joint_torque",
+            "head_1_joint_torque",
+            "head_2_joint_torque",
+            "arm_left_1_joint_torque",
+            "arm_left_2_joint_torque",
+            "arm_left_3_joint_torque",
+            "arm_left_4_joint_torque",
+            "arm_left_5_joint_torque",
+            "arm_left_6_joint_torque",
+            "arm_left_7_joint_torque",
+            "gripper_left_joint_torque",
+            "arm_right_1_joint_torque",
+            "arm_right_2_joint_torque",
+            "arm_right_3_joint_torque",
+            "arm_right_4_joint_torque",
+            "arm_right_5_joint_torque",
+            "arm_right_6_joint_torque",
+            "arm_right_7_joint_torque",
+            "gripper_right_joint_torque",
+            "leg_left_1_joint_torque",
+            "leg_left_2_joint_torque",
+            "leg_left_3_joint_torque",
+            "leg_left_4_joint_torque",
+            "leg_left_5_joint_torque",
+            "leg_left_6_joint_torque",
+            "leg_right_1_joint_torque",
+            "leg_right_2_joint_torque",
+            "leg_right_3_joint_torque",
+            "leg_right_4_joint_torque",
+            "leg_right_5_joint_torque",
+            "leg_right_6_joint_torque"
+        ]
 
         return action_spec
 
@@ -462,12 +541,27 @@ class Talos(BaseRobotHumanoid):
         return "torso_2_link"
 
     @info_property
+    def root_body_name(self):
+        return "base_link"
+
+    @info_property
     def root_free_joint_xml_name(self):
-        return "root"
+        return "reference"
+
+    @info_property
+    def init_qpos(self):
+        return np.array([0.0, 0.0, 1.08, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, -0.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+    @info_property
+    def init_qvel(self):
+        return np.zeros(49)
 
     @info_property
     def root_height_healthy_range(self):
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
-        return (0.8, 1.1)
+        return (-10000, 100000)
