@@ -409,7 +409,7 @@
                     mass="1.61177" diaginertia="0.00773279 0.006503 0.00387932"/>
                   <joint name="leg_left_6_joint" axis="1 0 0" range="-0.5236 0.5236" actuatorfrcrange="-100 100"/>
                   <geom class="visual" rgba="0.7 0.7 0.7 1" mesh="l_ankle_X_lo_res"/>
-                  <geom class="collision" contype="6" type="box" size=".1 .06 .006" pos="-0.005 0 -.1"/>
+                  <geom name="left_foot" class="collision" contype="6" type="box" size=".1 .06 .006" pos="-0.005 0 -.1"/>
                   <site name="left_foot" pos="0 0 -0.1"/>
                 </body>
               </body>
@@ -455,7 +455,7 @@
                     mass="1.61177" diaginertia="0.00773279 0.006503 0.00387932"/>
                   <joint name="leg_right_6_joint" axis="1 0 0" range="-0.5236 0.5236" actuatorfrcrange="-100 100"/>
                   <geom class="visual" rgba="0.7 0.7 0.7 1" mesh="r_ankle_X_lo_res"/>
-                  <geom class="collision" contype="6" type="box" size=".1 .06 .006" pos="-0.005 0 -.1"/>
+                  <geom name="right_foot" class="collision" contype="6" type="box" size=".1 .06 .006" pos="-0.005 0 -.1"/>
                   <site name="right_foot" pos="0 0 -0.1"/>
                 </body>
               </body>

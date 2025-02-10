@@ -564,4 +564,4 @@ class Talos(BaseRobotHumanoid):
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
-        return (-10000, 100000)
+        return (0.8, 1.3)
