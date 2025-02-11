@@ -678,6 +678,14 @@ class Mujoco:
         return observation_spec
 
     @property
+    def model(self):
+        return self._model
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
     def mjspec(self):
         return self._mjspec
 
