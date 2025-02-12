@@ -67,7 +67,7 @@ class LAFAN1DatasetConf:
 
 
 @dataclass
-class CustomTrajectoryConf:
+class CustomDatasetConf:
     """
     Configuration for loading custom trajectories.
 

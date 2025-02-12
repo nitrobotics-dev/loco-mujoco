@@ -11,7 +11,7 @@ from loco_mujoco.datasets.humanoids.LAFAN1 import (LAFAN1_LOCOMOTION_DATASETS,
                                                    LAFAN1_DANCE_DATASETS, LAFAN1_ALL_DATASETS)
 
 from .base import TaskFactory
-from .dataset_confs import DefaultDatasetConf, AMASSDatasetConf, LAFAN1DatasetConf, CustomTrajectoryConf
+from .dataset_confs import DefaultDatasetConf, AMASSDatasetConf, LAFAN1DatasetConf, CustomDatasetConf
 
 
 class ImitationFactory(TaskFactory):
@@ -31,7 +31,7 @@ class ImitationFactory(TaskFactory):
              default_dataset_conf: Union[DefaultDatasetConf, Dict, DictConfig] = None,
              amass_dataset_conf: Union[AMASSDatasetConf, Dict, DictConfig] = None,
              lafan1_dataset_conf: Union[LAFAN1DatasetConf, Dict, DictConfig] = None,
-             custom_traj_conf: Union[CustomTrajectoryConf, Dict, DictConfig] = None,
+             custom_dataset_conf: Union[CustomDatasetConf, Dict, DictConfig] = None,
              terminal_state_type: str = "RootPoseTrajTerminalStateHandler",
              init_state_type: str = "TrajInitialStateHandler",
              **kwargs) -> LocoEnv:
@@ -43,7 +43,7 @@ class ImitationFactory(TaskFactory):
             default_dataset_conf (DefaultDatasetConf, optional): The configuration for the default trajectory.
             amass_dataset_conf (AMASSDatasetConf, optional): The configuration for the AMASS trajectory.
             lafan1_dataset_conf (LAFAN1DatasetConf, optional): The configuration for the LAFAN1 trajectory.
-            custom_traj_conf (CustomTrajectoryConf, optional): The configuration for a custom trajectory.
+            custom_dataset_conf (CustomDatasetConf, optional): The configuration for a custom trajectory.
             terminal_state_type (str, optional): The terminal state handler to use.
                 Defaults to "RootPoseTrajTerminalStateHandler".
             init_state_type (str, optional): The initial state handler to use. Defaults to "TrajInitialStateHandler".
@@ -86,10 +86,10 @@ class ImitationFactory(TaskFactory):
             all_trajs.append(cls.get_lafan1_traj(env, lafan1_dataset_conf))
 
         # Load the custom trajectory if available
-        if custom_traj_conf is not None:
-            if isinstance(custom_traj_conf, (dict, DictConfig)):
-                custom_traj_conf = CustomTrajectoryConf(**custom_traj_conf)
-            all_trajs.append(cls.get_custom_dataset(env, custom_traj_conf))
+        if custom_dataset_conf is not None:
+            if isinstance(custom_dataset_conf, (dict, DictConfig)):
+                custom_dataset_conf = CustomDatasetConf(**custom_dataset_conf)
+            all_trajs.append(cls.get_custom_dataset(env, custom_dataset_conf))
 
         # concatenate trajectories
         all_trajs = Trajectory.concatenate(all_trajs)
@@ -213,13 +213,13 @@ class ImitationFactory(TaskFactory):
         return default_th.traj
 
     @staticmethod
-    def get_custom_dataset(env, custom_dataset_conf: CustomTrajectoryConf) -> Trajectory:
+    def get_custom_dataset(env, custom_dataset_conf: CustomDatasetConf) -> Trajectory:
         """
         Loads the custom trajectory based on the dataset type, task, and debug mode.
 
         Args:
             env: The environment, which provides dataset paths.
-            custom_dataset_conf (CustomTrajectoryConf): The configuration for the custom trajectory.
+            custom_dataset_conf (CustomDatasetConf): The configuration for the custom trajectory.
 
         Returns:
             Trajectory: The custom trajectories.
