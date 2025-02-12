@@ -11,8 +11,7 @@ try:
 
     from .core import Mujoco, Mjx
     from .environments import LocoEnv
-    from .task_factories import (TaskFactory, RLFactory, ImitationFactory,
-                                 AMASSImitationFactory, LAFAN1ImitationFactory)
+    from .task_factories import (TaskFactory, RLFactory, ImitationFactory)
 
     def get_all_task_names():
         return LocoEnv.get_all_task_names()

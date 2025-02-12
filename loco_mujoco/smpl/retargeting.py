@@ -699,7 +699,7 @@ def extend_motion(
     env_name: str,
     robot_conf: DictConfig,
     traj: Trajectory,
-    logger: logging.Logger
+    logger: logging.Logger = None
 ) -> Trajectory:
     """
     Extend a motion trajectory to include more model-specific entities

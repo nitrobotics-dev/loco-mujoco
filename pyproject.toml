@@ -18,7 +18,9 @@ dependencies = [
     "pyyaml",
     "opencv-python",
     "wget",
-    "gitpython"]
+    "gitpython",
+    "datasets",
+    "huggingface_hub"]
 
 requires-python = ">=3.10"
 authors = [{name="Firas Al-Hafez", email="fi.alhafez@gmail.com"}]

@@ -38,16 +38,21 @@ class Trajectory:
     transitions: TrajectoryTransitions = None
     obs_container: ObservationContainer = None
 
-    def save(self, path: str) -> None:
-        """
-        Serializes the trajectory and saves it to a npz file.
+    @staticmethod
+    def concatenate(trajs: list, backend=jnp):
+        traj_data = [traj.data for traj in trajs]
+        traj_info = [traj.info for traj in trajs]
+        traj_data, traj_info = TrajectoryData.concatenate(traj_data, traj_info, backend)
+        return Trajectory(info=traj_info, data=traj_data)
 
-        Args:
-            path (str): Path to save the trajectory.
+    def to_dict(self):
         """
-        dir_name = os.path.dirname(path)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
+        Serializes the trajectory to dict.
+
+        Returns:
+            A dictionary containing the trajectory data.
+
+        """
         serialized = flax.serialization.to_state_dict(self.data)
         traj_info_dict = self.info.to_dict()
         traj_model = flax.serialization.to_state_dict(traj_info_dict["model"])
@@ -60,12 +65,29 @@ class Trajectory:
         if self.obs_container is not None:
             obs_container = pickle.dumps(self.obs_container)
             serialized["obs_container"] = obs_container
+        return serialized
+
+    def save(self, path: str) -> None:
+        """
+        Serializes the trajectory and saves it to a npz file.
+
+        Args:
+            path (str): Path to save the trajectory.
+        """
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        serialized = self.to_dict()
         np.savez(str(path), **serialized)
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path, backend=jnp):
         """
         Loads a trajectory from a npz file.
+
+        Args:
+            path (str): Path to the trajectory to load.
+            backend: Backend to use for arrays. Either numpy or jax.numpy.
 
         Returns:
             A new instance of Trajectory.
@@ -88,11 +110,11 @@ class Trajectory:
             if key in TrajectoryInfo.get_attribute_names():
                 converted_info[key] = None if is_none_object_array(value) else value.tolist()
             elif key in TrajectoryModel.get_attribute_names():
-                converted_model[key] = None if is_none_object_array(value) else jnp.array(value)
+                converted_model[key] = None if is_none_object_array(value) else backend.array(value)
             elif key in TrajectoryData.get_attribute_names():
-                converted_data[key] = jnp.array(value)
+                converted_data[key] = backend.array(value)
             elif key in TrajectoryTransitions.get_attribute_names():
-                converted_transitions[key] = jnp.array(value)
+                converted_transitions[key] = backend.array(value)
             elif key == "obs_container":
                 converted_obs_container = value
             else:

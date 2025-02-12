@@ -1,27 +1,13 @@
 # LAFAN1 Dataset Installation Guide
 
-This guide helps you install and set up the **LAFAN1 Retargeting Dataset**, designed for Unitree robots (H1, G1, and H1_2).
+The LAFAN1 dataset will be downloaded and cached automatically from the Hugging Face hub. 
+For the UnitreeH1, UnitreeG1 and UnitreeH1v2 environments, we use the converted datasets by 
+Unitree (https://huggingface.co/datasets/unitreerobotics/LAFAN1_Retargeting_Dataset/)
 
----
-
-## Step 1: Clone the Dataset Repository
-
-Navigate to the directory where you'd like to store the dataset, and clone the repository from the Hugging Face Hub:
-
-```bash
-git clone https://huggingface.co/datasets/unitreerobotics/LAFAN1_Retargeting_Dataset
-```
-
-## Step 2: Configure the Dataset Path
-To ensure LocoMuJoCo can locate the dataset, configure the dataset path using the following command:
-
-``` bash
-loco-mujoco-set-lafan1-path --path "/path/to/LAFAN1_Retargeting_Dataset"
-```
-
-Replace /path/to/LAFAN1_Retargeting_Dataset with the actual path to the cloned dataset on your system.
-
-Also, set the path to which the converted dataset will be saved:
+While caching is handleled by the hugging face automatically on your systems, the actual dataset
+using in LocoMuJoCo require further processing. To speed up data loading and processing, 
+you can define a path to which the converted dataset will be saved. If this path is not set, 
+the dataset will be converted online.
 
 ``` bash
 loco-mujoco-set-conv-lafan1-path --path "/path/to/converted/LAFAN1_Retargeting_Dataset"

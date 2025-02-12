@@ -24,7 +24,6 @@ from loco_mujoco.core.visuals import VideoRecorder
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils import info_property
 from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
-from loco_mujoco.datasets.data_generation import convert_single_dataset_of_env, PATH_RAW_DATASET
 
 
 @struct.dataclass
@@ -154,18 +153,12 @@ class LocoEnv(Mjx):
             traj_path (string): path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
                 with a 'traj_data' array and possibly a 'split_points' array inside. The 'traj_data'
                 should be in the shape (joints x observations). If traj_files is specified, this should be None.
-            warn (bool): If True, a warning will be raised if the
-                trajectory ranges are violated.
+            warn (bool): If True, a warning will be raised.
 
         """
 
-        if self.th is not None:
+        if self.th is not None and warn:
             warnings.warn("New trajectories loaded, which overrides the old ones.", RuntimeWarning)
-
-        if traj_path is not None:
-            if not os.path.exists(traj_path):
-                # trajectories for this environment do not exist yet, so convert and save them
-                self.convert_dataset_for_env(traj_path)
 
         th_params = self._th_params if self._th_params is not None else {}
         self.th = TrajectoryHandler(model=self._model, warn=warn, traj_path=traj_path,
@@ -664,14 +657,14 @@ class LocoEnv(Mjx):
         raise NotImplementedError
 
     @classmethod
-    def generate(cls, task=None, dataset_type="real", debug=False,
+    def generate(cls, task=None, dataset_type="mocap", debug=False,
                  clip_trajectory_to_joint_ranges=False, **kwargs):
         """
         Returns an environment corresponding to the specified task.
 
         Args:
             task (str): Main task to solve.
-            dataset_type (str): "real" or "perfect". "real" uses real motion capture data as the
+            dataset_type (str): "mocap" or "pretrained". "real" uses real motion capture data as the
             reference trajectory. This data does not perfectly match the kinematics
             and dynamics of this environment, hence it is more challenging. "perfect" uses
             a perfect dataset.
@@ -684,7 +677,7 @@ class LocoEnv(Mjx):
         """
 
         warnings.warn(
-            "The methods `LocoEnv.make()` and `LocoEnv.generate()` are deprecated and will be"
+            "The methods `LocoEnv.make()` and `LocoEnv.generate()` are deprecated and will be "
             "removed in a future release.\nPlease use the task factory classes instead: "
             "`ImitationFactory`, `RLFactory`, or `AMASSImitationFactory`.",
             category=DeprecationWarning,
@@ -692,13 +685,14 @@ class LocoEnv(Mjx):
         )
 
         # import here to avoid circular dependency
-        from loco_mujoco.task_factories.default_imitation_factory import ImitationFactory
-        from loco_mujoco.task_factories.rl_factory import RLFactory
+        from loco_mujoco.task_factories import ImitationFactory, DefaultDatasetConf
+        from loco_mujoco.task_factories import RLFactory
+
 
         if task is None:
             return RLFactory.make(cls.__name__, **kwargs)
         else:
-            return ImitationFactory.make(cls.__name__, task, dataset_type, debug, **kwargs)
+            return ImitationFactory.make(cls.__name__, DefaultDatasetConf(task, dataset_type, debug), **kwargs)
 
     @classmethod
     def get_default_xml_file_path(cls):
@@ -855,40 +849,6 @@ class LocoEnv(Mjx):
     @staticmethod
     def raise_mjx_not_enabled_error(*args, **kwargs):
         return ValueError("Mjx not enabled in this environment")
-
-    @classmethod
-    def path_to_real_datasets(cls):
-        """
-        Returns the path to the real datasets.
-
-        """
-
-        return Path(loco_mujoco.__file__).resolve().parent / "datasets" / "real" / cls.__name__
-
-    @classmethod
-    def path_to_perfect_datasets(cls):
-        """
-        Returns the path to the perfect datasets.
-
-        """
-
-        return Path(loco_mujoco.__file__).resolve().parent / "datasets" / "perfect" / cls.__name__
-
-    @classmethod
-    def convert_dataset_for_env(cls, traj_path):
-        try:
-            env_name = cls.__name__.split(".")[0]
-            if "Mjx" in env_name:
-                env_name = env_name[3:]
-            file_path = PATH_RAW_DATASET / (traj_path.split("/")[-1].split(".")[0] + ".mat")
-            print(f"Trajectory files for env \"{env_name}\" and task \"{file_path.stem}\" not yet converted."
-                  f" Trying to convert.\n")
-            convert_single_dataset_of_env(env_name, file_path)
-        except Exception:
-            print(f"Trajectory file {traj_path} not found and could not be created.")
-            raise
-
-        print(f"Conversion successful. Saving dataset to: {traj_path}.\n")
 
     @classmethod
     def get_all_task_names(cls):
