@@ -6,8 +6,15 @@ To use the AMASS dataset, you need to download and set up the required data and 
 
 ## Additional dependencies
 
-Currently, only editable installations are supported. Install the additional dependencies with:
+The retargeting pipeline builds on the SMPL models, which require PyTorch. It is recommended to install the CPU version of PyTorch to avoid conflicts with JAX.
 
+To install the CPU version of PyTorch, run:
+
+ ```bash
+pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+````
+
+Once PyTorch is installed, you can install the rest of the additional dependencies, including SMPL-related packages. Note that this will install the GPU version of PyTorch if you haven't explicitly installed the CPU version above:
 ```bash
 pip install -e '.[smpl]'
 ```
