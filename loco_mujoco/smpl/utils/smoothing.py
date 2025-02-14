@@ -1,6 +1,10 @@
 import math
-import torch
-import torch.nn.functional as F
+
+try:
+    import torch
+    import torch.nn.functional as F
+except ImportError:
+    pass
 
 
 def gaussian_kernel_1d(size, sigma):

@@ -1,16 +1,20 @@
 # This script is borrowed and extended from https://github.com/nkolot/SPIN/blob/master/models/hmr.py
 # Adhere to their licence to use this script
 
-import torch
 import numpy as np
-from smplx import SMPL as _SMPL
-from smplx import SMPLH as _SMPLH
-from smplx import SMPLX as _SMPLX
+from loco_mujoco.smpl import SMPL_BONE_ORDER_NAMES, SMPLH_BONE_ORDER_NAMES
 
-from smplx import MANO as _MANO
-from smplx.utils import match_dim
-from smplx.lbs import blend_shapes, vertices2joints, batch_rodrigues, batch_rigid_transform, transform_mat
-from loco_mujoco.smpl import SMPL_BONE_ORDER_NAMES, SMPLH_BONE_ORDER_NAMES, SMPLX_BONE_ORDER_NAMES
+try:
+    import torch
+    from smplx import SMPL as _SMPL
+    from smplx import SMPLH as _SMPLH
+
+    from smplx import MANO as _MANO
+    from smplx.utils import match_dim
+    from smplx.lbs import blend_shapes, vertices2joints, batch_rodrigues, batch_rigid_transform, transform_mat
+
+except ImportError:
+    pass
 
 
 class SMPL_Parser(_SMPL):
@@ -78,16 +82,6 @@ class SMPL_Parser(_SMPL):
 
         self.contype = {1: self.joint_names}
         self.conaffinity = {1: self.joint_names}
-
-        # self.contype = {
-        #     3: ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee','R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Neck', 'Head','L_Thorax',  'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax',  'R_Elbow', 'R_Wrist', 'R_Hand'],
-        #     1: ['Chest', "L_Shoulder", "R_Shoulder"]
-        #     }
-
-        # self.conaffinity = {
-        #     1: ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee','R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Neck', 'Head','L_Thorax',  'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax',  'R_Elbow', 'R_Wrist', 'R_Hand'],
-        #     3: ['Chest', "L_Shoulder", "R_Shoulder"]
-        # }
 
         self.zero_pose = torch.zeros(1, 72).float()
 
@@ -474,160 +468,6 @@ class SMPLH_Parser(_SMPLH):
             joint_parents = {x: joint_names[i] if i >= 0 else None for x, i in zip(joint_names, smpl_joint_parents)}
 
             skin_weights = self.lbs_weights
-            return (
-                verts,
-                joint_pos,
-                skin_weights,
-                joint_names,
-                joint_offsets,
-                joint_parents,
-                self.joint_axes,
-                self.joint_dofs,
-                self.joint_range,
-                self.contype,
-                self.conaffinity,
-            )
-
-
-class SMPLX_Parser(_SMPLX):
-
-    def __init__(self, *args, **kwargs):
-        super(SMPLX_Parser, self).__init__(*args, **kwargs)
-        self.device = next(self.parameters()).device
-        self.joint_names = SMPLH_BONE_ORDER_NAMES
-        self.joint_axes = {x: np.identity(3) for x in self.joint_names}
-        self.joint_dofs = {x: ["x", "y", "z"] for x in self.joint_names}
-        self.joint_range = {x: np.hstack([np.ones([3, 1]) * -np.pi, np.ones([3, 1]) * np.pi]) for x in self.joint_names}
-        self.joint_range["L_Elbow"] *= 4
-        self.joint_range["R_Elbow"] *= 4
-
-        self.contype = {1: self.joint_names}
-        self.conaffinity = {1: self.joint_names}
-        self.zero_pose = torch.zeros(1, 156).float()
-        self.joint_to_use = [SMPLX_BONE_ORDER_NAMES.index(i) for i in SMPLH_BONE_ORDER_NAMES]
-        self.parents_to_use = np.concatenate([np.arange(0, 22), np.arange(25, 55)])
-
-    def forward(self, *args, **kwargs):
-        smpl_output = super(SMPLX_Parser, self).forward(*args, **kwargs)
-        return smpl_output
-
-    def get_joints_verts(self, pose, th_betas=None, th_trans=None):
-        """
-        Pose should be batch_size x 156
-        """
-
-        if pose.shape[1] != 156:
-            pose = pose.reshape(-1, 156)
-        pose = pose.float()
-        if th_betas is not None:
-            th_betas = th_betas.float()
-            B, beta_shape = th_betas.shape
-            if beta_shape != 20:
-                th_betas = torch.cat([th_betas, torch.zeros((B, 20 - beta_shape)).to(th_betas)], dim=-1)
-
-        smpl_output = self.forward(
-            body_pose=pose[:, 3:66],
-            global_orient=pose[:, :3],
-            left_hand_pose=pose[:, 66:111],
-            right_hand_pose=pose[:, 111:156],
-            betas=th_betas,
-            transl=th_trans,
-        )
-        vertices = smpl_output.vertices
-        joints = smpl_output.joints
-        #         return vertices, joints
-        return vertices, joints
-
-    def get_offsets(self, v_template=None, zero_pose=None, betas=None, flatfoot=False):
-        if not v_template is None:
-            self.v_template = v_template
-
-        with torch.no_grad():
-            joint_names = SMPLX_BONE_ORDER_NAMES
-            if zero_pose is None:
-                verts, Jtr = self.get_joints_verts(self.zero_pose, th_betas=betas)
-            else:
-                verts, Jtr = self.get_joints_verts(zero_pose, th_betas=betas)
-
-            jts_np = Jtr.detach().cpu().numpy()
-
-            smpl_joint_parents = self.parents.cpu().numpy()
-            joint_pick_idx = [SMPLX_BONE_ORDER_NAMES.index(i) for i in SMPLH_BONE_ORDER_NAMES]
-            joint_pos = Jtr[0].numpy()
-            joint_offsets = {joint_names[c]: (joint_pos[c] - joint_pos[p]) if c > 0 else joint_pos[c] for c, p in
-                             enumerate(smpl_joint_parents) if joint_names[c] in self.joint_names}
-            parents_dict = {x: joint_names[i] if i >= 0 else None for x, i in zip(joint_names, smpl_joint_parents) if
-                            joint_names[i] in self.joint_names and x in self.joint_names}
-            joint_pos = joint_pos[joint_pick_idx]
-
-            #  (SMPLX_BONE_ORDER_NAMES[:22] + SMPLX_BONE_ORDER_NAMES[25:55]) == SMPLH_BONE_ORDER_NAMES # ZL Hack: only use the weights we need.
-            skin_weights = self.lbs_weights.numpy()[:, self.parents_to_use]
-            skin_weights.argmax(axis=1)
-
-            channels = ["z", "y", "x"]
-            return (verts[0], jts_np[0], skin_weights, self.joint_names, joint_offsets, parents_dict, channels,
-                    self.joint_range)
-
-    def get_mesh_offsets(self, v_template=None, zero_pose=None, betas=None, flatfoot=False):
-        if not v_template is None:
-            self.v_template = v_template
-        with torch.no_grad():
-            joint_names = SMPLX_BONE_ORDER_NAMES
-            if zero_pose is None:
-                verts, Jtr = self.get_joints_verts(self.zero_pose, th_betas=betas)
-            else:
-                verts, Jtr = self.get_joints_verts(zero_pose, th_betas=betas)
-
-            smpl_joint_parents = self.parents.cpu().numpy()
-            joint_pick_idx = [SMPLX_BONE_ORDER_NAMES.index(i) for i in SMPLH_BONE_ORDER_NAMES]
-            joint_pos = Jtr[0].numpy()
-            joint_offsets = {joint_names[c]: (joint_pos[c] - joint_pos[p]) if c > 0 else joint_pos[c] for c, p in
-                             enumerate(smpl_joint_parents) if joint_names[c] in self.joint_names}
-            joint_parents = {x: joint_names[i] if i >= 0 else None for x, i in zip(joint_names, smpl_joint_parents) if
-                             joint_names[i] in self.joint_names and x in self.joint_names}
-            joint_pos = joint_pos[joint_pick_idx]
-            verts = verts[0].numpy()
-            #  (SMPLX_BONE_ORDER_NAMES[:22] + SMPLX_BONE_ORDER_NAMES[25:55]) == SMPLH_BONE_ORDER_NAMES # ZL Hack: only use the weights we need.
-            skin_weights = self.lbs_weights.numpy()[:, self.parents_to_use]
-            skin_weights.argmax(axis=1)
-
-            return (
-                verts,
-                joint_pos,
-                skin_weights,
-                self.joint_names,
-                joint_offsets,
-                joint_parents,
-                self.joint_axes,
-                self.joint_dofs,
-                self.joint_range,
-                self.contype,
-                self.conaffinity,
-            )
-
-    def get_mesh_offsets_batch(self, betas=torch.zeros(1, 10), flatfoot=False):
-        with torch.no_grad():
-            joint_names = SMPLX_BONE_ORDER_NAMES
-            verts, Jtr = self.get_joints_verts(self.zero_pose.repeat(betas.shape[0], 1), th_betas=betas)
-            verts_np = verts.detach().cpu().numpy()
-            verts = verts_np[0]
-
-            if flatfoot:
-                feet_subset = verts[:, 1] < np.min(verts[:, 1]) + 0.01
-                verts[feet_subset, 1] = np.mean(verts[feet_subset][:, 1])
-
-            smpl_joint_parents = self.parents.cpu().numpy()
-            joint_pick_idx = [SMPLX_BONE_ORDER_NAMES.index(i) for i in SMPLH_BONE_ORDER_NAMES]
-
-            joint_pos = Jtr
-            joint_offsets = {joint_names[c]: (joint_pos[:, c] - joint_pos[:, p]) if c > 0 else joint_pos[:, c] for c, p
-                             in enumerate(smpl_joint_parents) if joint_names[c] in self.joint_names}
-            joint_parents = {x: joint_names[i] if i >= 0 else None for x, i in zip(joint_names, smpl_joint_parents) if
-                             joint_names[i] in self.joint_names and x in self.joint_names}
-            joint_pos = joint_pos[:, joint_pick_idx]
-
-            skin_weights = self.lbs_weights.numpy()[:, self.parents_to_use]
-
             return (
                 verts,
                 joint_pos,

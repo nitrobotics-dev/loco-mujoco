@@ -19,13 +19,12 @@ try:
     from torch.autograd import Variable
     from smplx.lbs import transform_mat
     import joblib
+    _OPTIONAL_IMPORT_INSTALLED = True
 except ImportError:
-    pass
+    _OPTIONAL_IMPORT_INSTALLED = False
 
 import loco_mujoco
 from loco_mujoco.smpl import SMPLH_Parser, SMPLH_BONE_ORDER_NAMES
-from loco_mujoco.smpl.torch_fk_humanoid import ForwardKinematicsHumanoidTorch
-from loco_mujoco.smpl.utils import torch_utils
 from loco_mujoco.smpl.utils.smoothing import gaussian_filter_1d_batch
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils.math import quat_scalarlast2scalarfirst, quat_scalarfirst2scalarlast
@@ -45,6 +44,10 @@ from loco_mujoco.datasets.data_generation.utils import add_mocap_bodies
 
 OPTIMIZED_SHAPE_FILE_NAME = "shape_optimized.pkl"
 
+
+def check_optional_imports():
+    if not _OPTIONAL_IMPORT_INSTALLED:
+        raise ImportError("[LocoMuJoCo] Optional smpl depencies not installed. Checkout the README for installation instructions.")
 
 def get_amass_dataset_path():
     path_to_conf = loco_mujoco.PATH_TO_VARIABLES
@@ -208,6 +211,8 @@ def fit_smpl_motion(
         new_smpl_pos = torch.squeeze(smpl_positions - pos_offset)
 
         return new_smpl_pos, new_smpl_quat
+
+    check_optional_imports()
 
     # get environment
     env_cls = LocoEnv.registered_envs[env_name]
@@ -400,6 +405,8 @@ def fit_smpl_shape(
 
     """
 
+    check_optional_imports()
+
     Z_OFFSET = 2.0 # for visualization only
 
     # get environment
@@ -566,6 +573,8 @@ def motion_transfer_robot_to_robot(
         eps = 1e-6  # Small epsilon for numerical stability
         theta = torch.acos(torch.clamp((trace - 1) / 2, -1.0 + eps, 1.0 - eps))
         return theta.mean()
+
+    check_optional_imports()
 
     path_to_target_robot_smpl_shape = os.path.join(path_target_robot_smpl_data, OPTIMIZED_SHAPE_FILE_NAME)
 
@@ -821,6 +830,9 @@ def load_retargeted_amass_trajectory(
         Trajectory: The retargeted trajectories.
 
     """
+
+    check_optional_imports()
+
     logger = setup_logger("amass", identifier="[LocoMuJoCo's AMASS Retargeting Pipeline]")
 
     path_to_smpl_model = get_smpl_model_path()
@@ -894,6 +906,8 @@ def retarget_traj_from_robot_to_robot(
         robot_conf_target: DictConfig = None,
         path_to_fitted_motion_source: str = None,
 ):
+
+    check_optional_imports()
 
     logger = setup_logger("amass", identifier="[LocoMuJoCo's Robot2Robot Retargeting Pipeline]")
 
