@@ -12,9 +12,9 @@ def gaussian_kernel_1d(size, sigma):
 
 
 # Function to apply 1D Gaussian filter
-def gaussian_filter_1d_batch(input_data, kernel_size, sigma):
+def gaussian_filter_1d_batch(input_data, kernel_size, sigma, device):
     # Create 1D Gaussian kernel
-    kernel = gaussian_kernel_1d(kernel_size, sigma)
+    kernel = gaussian_kernel_1d(kernel_size, sigma).to(device)
 
     # Reshape kernel for convolution
     kernel = kernel.view(1, 1, kernel_size)
@@ -28,5 +28,6 @@ def gaussian_filter_1d_batch(input_data, kernel_size, sigma):
     padded_input = F.pad(input_data, (padding_size, padding_size), mode='replicate')
 
     # Apply convolution (gaussian filtering)
-    filtered_data = F.conv1d(padded_input, kernel, padding="valid", groups=input_data.size(1))
+    filtered_data = F.conv1d(padded_input, kernel, padding="valid", groups=3)
+
     return filtered_data

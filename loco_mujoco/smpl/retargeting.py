@@ -228,21 +228,26 @@ def fit_smpl_motion(
 
     smpl_parser_n = SMPLH_Parser(model_path=path_to_smpl_model, gender="neutral")
 
-    shape_new, scale, smpl2robot_pos, smpl2robot_rot_mat, offset_z = joblib.load(path_to_optimized_smpl_shape)
+    shape_new, scale, smpl2robot_pos, smpl2robot_rot_mat, offset_z, height_scale = (
+        joblib.load(path_to_optimized_smpl_shape))
 
     skip = robot_conf.optimization_params.skip_frames if skip_steps else 1
-    total_z_offet = offset_z + robot_conf.optimization_params.z_offset_feet
-    trans = torch.from_numpy(motion_data['trans'][::skip]) + torch.tensor([0.0, 0.0, total_z_offet])
-    N = trans.shape[0]
     pose_aa = torch.from_numpy(motion_data['pose_aa'][::skip]).float()
     pose_aa = torch.cat(
         [pose_aa, torch.zeros((pose_aa.shape[0], 156 - pose_aa.shape[1]))], axis=-1
     )
     len_traj = pose_aa.shape[0]
 
+    total_z_offet = offset_z + robot_conf.optimization_params.z_offset_feet
+    trans = (torch.from_numpy(motion_data['trans'][::skip]) + torch.tensor([0.0, 0.0, total_z_offet]))
+
+    # apply height scaling while perserving init height
+    trans[:, :2] *= height_scale    # scale x and y
+    trans[:, 2] = (trans[: , 2] - trans[0 , 2]) * height_scale + trans[0 , 2]
+
     with torch.no_grad():
-        transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa.reshape(N, -1, 3),
-                                                                           shape_new.repeat(N, 1), trans)
+        transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa.reshape(len_traj, -1, 3),
+                                                                           shape_new.repeat(len_traj, 1), trans)
         global_pos = transformations_matrices[..., :3, 3]
         global_rot_mats = transformations_matrices[..., :3, :3].detach().numpy()
         root_pos = global_pos[:, 0:1]
@@ -252,7 +257,7 @@ def fit_smpl_motion(
     init_mocap_pos, init_mocap_quat = get_xpos_and_xquat(global_pos[0, smpl2mimic_site_idx],
                                                          global_rot_mats[0, smpl2mimic_site_idx],
                                                          smpl2robot_pos, smpl2robot_rot_mat)
-    qpos_init = get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat)
+    qpos_init = get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat, robot_conf)
     env._data.qpos = qpos_init
 
     qpos = np.zeros((len_traj, env._model.nq))
@@ -328,7 +333,7 @@ def fit_smpl_motion(
     return Trajectory(traj_info, traj_data)
 
 
-def get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat):
+def get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat, robot_conf):
     """
     Get the initial qpos for motion retargeting by temporarily disabling joint limits and collisions and
     running the simulation to solve for the initial qpos. This avoids problems that could arise from bad initialzation
@@ -348,17 +353,19 @@ def get_init_qpos_for_motion_retargeting(env, init_mocap_pos, init_mocap_quat):
     new_mjspec = env.mjspec
 
     # disable joint limits and collisions
-    for j in new_mjspec.joints:
-        j.limited = False
-    for g in new_mjspec.geoms:
-        g.contype = 0
-        g.conaffinity = 0
+    if robot_conf.optimization_params.disable_joint_limits_on_initialization:
+        for j in new_mjspec.joints:
+            j.limited = False
+    if robot_conf.optimization_params.disable_collisions_on_initialization:
+        for g in new_mjspec.geoms:
+            g.contype = 0
+            g.conaffinity = 0
 
     env.reload_mujoco(new_mjspec)
 
     env._data.mocap_pos = init_mocap_pos
     env._data.mocap_quat = init_mocap_quat
-    mujoco.mj_step(env._model, env._data, 100)
+    mujoco.mj_step(env._model, env._data, robot_conf.optimization_params.init_motion_iterations)
     qpos = env._data.qpos.copy()
 
     # load old model to env
@@ -472,6 +479,7 @@ def fit_smpl_shape(
 
     pbar = tqdm(range(robot_conf.optimization_params.shape_iterations))
     init_feet_z_pos = None
+    init_head_z_pos = None
     for iteration in pbar:
 
         transformations_matrices = smpl_parser_n.get_joint_transformations(pose_aa_stand, shape_new, trans)
@@ -480,10 +488,12 @@ def fit_smpl_shape(
         if init_feet_z_pos is None:
             init_feet_z_pos = np.minimum(global_pos[0, SMPLH_BONE_ORDER_NAMES.index("R_Ankle"), 2].detach().numpy(),
                                          global_pos[0, SMPLH_BONE_ORDER_NAMES.index("L_Ankle"), 2].detach().numpy())
+            init_head_z_pos = global_pos[0, SMPLH_BONE_ORDER_NAMES.index("Head"), 2].detach().numpy()
 
         if iteration == robot_conf.optimization_params.shape_iterations - 1:
             final_feet_z_pos = np.minimum(global_pos[0, SMPLH_BONE_ORDER_NAMES.index("R_Ankle"), 2].detach().numpy(),
                                           global_pos[0, SMPLH_BONE_ORDER_NAMES.index("L_Ankle"), 2].detach().numpy())
+            final_head_z_pos = global_pos[0, SMPLH_BONE_ORDER_NAMES.index("Head"), 2].detach().numpy()
 
         root_pos = global_pos[:, 0]
         global_pos = (global_pos - global_pos[:, 0] + z_offset) * scale
@@ -507,11 +517,13 @@ def fit_smpl_shape(
         optimizer_shape.step()
 
     # save positions offset
-    smpl2robot_pos = global_pos[:, smpl2mimic_site_idx].detach().numpy() - target_site_pos.detach().numpy()
+    smpl_pos = global_pos[0, smpl2mimic_site_idx].detach().numpy()
+    smpl2robot_pos = smpl_pos - target_site_pos.detach().numpy()
     smpl2robot_pos = np.squeeze(smpl2robot_pos)
 
     # save new z-offset
     offset_z = init_feet_z_pos - final_feet_z_pos
+    height_scale = (final_head_z_pos - final_feet_z_pos) / (init_head_z_pos - init_feet_z_pos)
 
     # Extract the directory path from the save path
     directory = os.path.dirname(save_path_new_smpl_shape)
@@ -520,7 +532,8 @@ def fit_smpl_shape(
     os.makedirs(directory, exist_ok=True)
 
     # save
-    joblib.dump((shape_new.detach(), scale, smpl2robot_pos, smpl2robot_rot_mat, offset_z), save_path_new_smpl_shape)
+    joblib.dump((shape_new.detach(), scale, smpl2robot_pos, smpl2robot_rot_mat,
+                 offset_z, height_scale), save_path_new_smpl_shape)
     logger.info(f"Shape parameters saved at {save_path_new_smpl_shape}")
 
 
@@ -580,8 +593,8 @@ def motion_transfer_robot_to_robot(
         fit_smpl_shape(env_name_source, robot_conf_source, path_to_smpl_model, path_to_source_robot_smpl_shape, logger)
     else:
         logger.info(f"Found existing robot shape file at {path_to_source_robot_smpl_shape}")
-    shape_source, scale_source, smpl2robot_pos_source, smpl2robot_rot_mat_source, offset_z_source = joblib.load(
-        path_to_source_robot_smpl_shape)
+    (shape_source, scale_source, smpl2robot_pos_source, smpl2robot_rot_mat_source,
+     offset_z_source, height_scale_source) = joblib.load(path_to_source_robot_smpl_shape)
 
     # get the source site positions used as a target for optimization
     sites_for_mimic = env.sites_for_mimic
@@ -673,6 +686,16 @@ def motion_transfer_robot_to_robot(
         loss.backward(retain_graph=True)
         optimizer.step()
 
+        # apply smoothing
+        kernel_size = robot_conf_target.optimization_params.smoothing_kernel_size
+        sigma = robot_conf_target.optimization_params.smoothing_sigma
+        if sigma > 0:
+            pose_non_filtered = pose.reshape(len_dataset, -1, 3)
+            pose_non_filtered = pose_non_filtered.permute(1, 2, 0)
+            pose_filtered = gaussian_filter_1d_batch(pose_non_filtered, kernel_size, sigma, device)
+            pose_filtered = pose_filtered.permute(2, 0, 1)
+            pose.data[:] = pose_filtered.reshape(-1, 156)
+
     motion_file = {"pose_aa": pose.cpu().detach().numpy().reshape(-1, 156),
                    "trans": trans.cpu().detach().numpy(),
                    "fps": env.th.traj.info.frequency}
@@ -681,16 +704,18 @@ def motion_transfer_robot_to_robot(
     path_to_target_robot_smpl_shape = os.path.join(path_target_robot_smpl_data, OPTIMIZED_SHAPE_FILE_NAME)
     if not os.path.exists(path_to_target_robot_smpl_shape):
         logger.info("Robot shape file not found, fitting new one ...")
-        fit_smpl_shape(env_name_target, robot_conf_target, path_to_smpl_model, path_to_target_robot_smpl_shape, logger)
+        fit_smpl_shape(env_name_target, robot_conf_target, path_to_smpl_model, path_to_target_robot_smpl_shape,
+                       logger, visualize)
     else:
         logger.info(f"Found existing robot shape file at {path_to_target_robot_smpl_shape}")
-    _, _, _, _, offset_z_target = joblib.load(path_to_target_robot_smpl_shape)
 
-    # account for height difference
-    motion_file["trans"][:, 2] += offset_z_target - offset_z_source
+    # account for scale
+    motion_file["pose_aa"] /= scale_source.cpu().detach().numpy()
+    motion_file["trans"][:] /= height_scale_source
+    motion_file["trans"][:, 2] -= offset_z_source
 
     traj_target = fit_smpl_motion(env_name_target, robot_conf_target, path_to_smpl_model, motion_file,
-                                  path_to_target_robot_smpl_shape, logger, skip_steps=False)
+                                  path_to_target_robot_smpl_shape, logger, skip_steps=False, visualize=visualize)
 
     return traj_target
 
