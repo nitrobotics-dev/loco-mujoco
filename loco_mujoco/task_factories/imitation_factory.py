@@ -128,7 +128,8 @@ class ImitationFactory(TaskFactory):
         traj = Trajectory.load(file_path)
 
         # extend the motion to the desired length
-        traj = extend_motion(env_name, load_robot_conf_file(env_name), traj)
+        if not traj.data.is_complete:
+            traj = extend_motion(env_name, load_robot_conf_file(env_name), traj)
 
         # pass the default trajectory through a TrajectoryHandler to interpolate it to the environment frequency
         # and to filter out or add necessary entities is needed
@@ -225,9 +226,15 @@ class ImitationFactory(TaskFactory):
             Trajectory: The custom trajectories.
 
         """
+        env_name = env.__class__.__name__
+        traj = custom_dataset_conf.traj
+
+        # extend the motion to the desired length
+        if not traj.data.is_complete:
+            traj = extend_motion(env_name, load_robot_conf_file(env_name), traj)
 
         # pass the default trajectory through a TrajectoryHandler to interpolate it to the environment frequency
         # and to filter out or add necessary entities is needed
-        default_th = TrajectoryHandler(env.model, control_dt=env.dt, traj=custom_dataset_conf.traj)
+        default_th = TrajectoryHandler(env.model, control_dt=env.dt, traj=traj)
 
         return default_th.traj
