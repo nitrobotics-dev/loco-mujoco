@@ -155,7 +155,7 @@ def calculate_relative_rotation_matrices(main_rot, other_rots, backend):
     """
     # Ensure main_rot is a 2D array and other_rots is at least 3D
     main_rot = backend.atleast_2d(main_rot)  # Shape: (3, 3)
-    other_rots = backend.atleast_3d(other_rots)  # Shape: (N, 3, 3)
+    other_rots = atleast_3d(other_rots, backend)  # Shape: (N, 3, 3)
 
     # Use the transpose of the main rotation matrix as the inverse
     main_rot_inv = main_rot.T  # Shape: (3, 3)
@@ -180,7 +180,7 @@ def calculate_global_rotation_matrices(main_rot, relative_rots, backend):
     """
     # Ensure main_rot is a 2D array and relative_rots is at least 3D
     main_rot = backend.atleast_2d(main_rot)  # Shape: (3, 3)
-    relative_rots = backend.atleast_3d(relative_rots)  # Shape: (N, 3, 3)
+    relative_rots = atleast_3d(relative_rots, backend)  # Shape: (N, 3, 3)
 
     # Calculate global rotation matrices
     global_rots = backend.einsum('ij,njk->nik', main_rot, relative_rots)  # Shape: (N, 3, 3)
@@ -208,7 +208,7 @@ def calculate_relative_velocity_in_local_frame(vel_a, vel_b, rot_mat_w_a, rot_ma
     vel_a = backend.atleast_1d(vel_a)  # Shape: (6,)
     vel_b = backend.atleast_2d(vel_b)  # Shape: (1, 6) or (batch_size, 6)
     rot_mat_w_a = backend.atleast_2d(rot_mat_w_a)  # Shape: (3, 3)
-    rot_mat_a_b = backend.atleast_3d(rot_mat_a_b)  # Shape: (1, 3, 3) or (batch_size, 3, 3)
+    rot_mat_a_b = atleast_3d(rot_mat_a_b, backend)  # Shape: (1, 3, 3) or (batch_size, 3, 3)
 
     # Extract linear and angular components (corrected based on your input structure)
     ang_a = vel_a[:3]  # Angular components of A (Shape: (3,))
@@ -274,7 +274,7 @@ def calc_site_velocities(site_ids, data, parent_body_id, root_body_id, backend, 
     """
 
     site_xpos = data.site_xpos[site_ids]
-    site_xmat = data.site_xmat[site_ids]
+    site_xmat = data.site_xmat[site_ids].reshape(*site_ids.shape, 3, 3)
     parent_body_cvel = data.cvel[parent_body_id]
     root_subtree_com = data.subtree_com[root_body_id]
 
@@ -300,7 +300,7 @@ def calc_body_velocities(body_ids, data, root_body_id, backend, flg_local=False)
     """
 
     body_xpos = data.xpos[body_ids]
-    body_xmat = data.xmat[body_ids]
+    body_xmat = data.xmat[body_ids].reshape(*body_ids.shape, 3, 3)
     root_subtree_com = data.subtree_com[root_body_id]
     body_cvel = data.cvel[body_ids]
 
@@ -330,7 +330,8 @@ def transform_motion(vel, new_pos, old_pos, rot_mat_new2old, backend, flg_local=
     vel = backend.atleast_2d(vel)  # Shape: (batch_size, 6)
     new_pos = backend.atleast_2d(new_pos)  # Shape: (batch_size, 3)
     old_pos = backend.atleast_2d(old_pos)  # Shape: (batch_size, 3)
-    rot_mat_new2old = backend.atleast_3d(rot_mat_new2old)  # Shape: (batch_size, 3, 3)
+    assert rot_mat_new2old.shape[-2:] == (3, 3)
+    rot_mat_new2old = atleast_3d(rot_mat_new2old, backend)  # Shape: (batch_size, 3, 3)
 
     # Step 1: Compute the relative position of the new frame w.r.t. the old frame
     lin_vel = vel[:, 3:]  # Shape: (batch_size, 3)
@@ -443,3 +444,19 @@ def quat_scalarlast2scalarfirst(quat):
     """
     return quat[..., [3, 0, 1, 2]]
 
+
+def atleast_3d(tensor, backend):
+    """
+    Ensures the tensor has at least 3 dimensions by adding axes at the front if necessary.
+
+    Args:
+        tensor: Input tensor (numpy or JAX array).
+        backend: The numerical backend, either numpy or jax.numpy.
+
+    Returns:
+        A tensor with at least 3 dimensions.
+    """
+    while tensor.ndim < 3:
+        tensor = backend.expand_dims(tensor, axis=0)
+    
+    return tensor
