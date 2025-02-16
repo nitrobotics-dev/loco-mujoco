@@ -5,7 +5,6 @@ import loco_mujoco
 from loco_mujoco.core.utils import info_property
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
-from loco_mujoco.environments import ValidTaskConf
 
 
 class Atlas(BaseRobotHumanoid):
@@ -266,9 +265,6 @@ class Atlas(BaseRobotHumanoid):
     ------------
 
     """
-
-    valid_task_confs = ValidTaskConf(tasks=["walk", "carry"],
-                                     data_types=["real", "perfect"])
 
     mjx_enabled = False
 

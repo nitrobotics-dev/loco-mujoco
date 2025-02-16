@@ -3,7 +3,6 @@ import os
 import mujoco
 from mujoco import MjSpec
 from loco_mujoco.core import ObservationType
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils import info_property
 from loco_mujoco import PATH_TO_MODELS
@@ -1015,8 +1014,6 @@ class MyoSkeleton(LocoEnv):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"])
     mjx_enabled = False
 
     def __init__(self, disable_fingers=True, spec=None, observation_spec=None, action_spec=None, **kwargs):

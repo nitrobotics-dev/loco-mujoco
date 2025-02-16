@@ -2,14 +2,10 @@ import mujoco
 from mujoco import MjSpec
 
 from .apptronik_apollo import Apollo
-from loco_mujoco.environments import ValidTaskConf
 
 
 class MjxApollo(Apollo):
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"],
-                                     non_combinable=[("carry", None, "perfect")])
     mjx_enabled = True
     
     def __init__(self, timestep=0.001, n_substeps=5, **kwargs):
