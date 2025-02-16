@@ -658,6 +658,8 @@ def motion_transfer_robot_to_robot(
         target_site_mat = torch.from_numpy(target_site_mat).float().to(device)
 
         iterations = robot_conf_source.optimization_params.pose_iterations
+        pos_loss_weight = robot_conf_source.optimization_params.pos_loss_weight
+        rot_loss_weight = robot_conf_source.optimization_params.rot_loss_weight
         for i in tqdm(range(iterations)):
 
             # sample random indices
@@ -673,22 +675,23 @@ def motion_transfer_robot_to_robot(
             global_pos = (global_pos - global_pos[:, 0:1]) * scale_source + global_pos[:, 0:1]
 
             # calculate the loss
-            pos_diff = target_site_pos - global_pos[:, smpl2mimic_site_idx]
+            pos_loss = (target_site_pos - global_pos[:, smpl2mimic_site_idx]).norm(dim=-1).mean()
             mat_loss = rotation_matrix_loss_geodesic(global_rot_mats[:, smpl2mimic_site_idx],
                                                      target_site_mat.reshape(len_dataset, -1, 3, 3))
+            root_consistency_loss = torch.norm(pose[:1, :3] - pose[1:, :3], p=2).mean()
 
             if torch.any(torch.isnan(mat_loss)):
                 raise ValueError("NaN in rotation matrix loss.")
 
-            loss = pos_diff.norm(dim=-1).mean() + mat_loss
+            loss =  pos_loss_weight * pos_loss + rot_loss_weight * mat_loss + 0.0 * root_consistency_loss
 
             if visualize:
                 index = 0
 
                 # convert smpl frame to site frame for visualization
-                new_global_pos = global_pos[0, smpl2mimic_site_idx].cpu().detach().numpy()
+                new_global_pos = global_pos[index, smpl2mimic_site_idx].cpu().detach().numpy()
                 new_smpl_rot_mats = np.einsum("bij,bjk->bik",
-                                              global_rot_mats[0, smpl2mimic_site_idx].cpu().detach().numpy(),
+                                              global_rot_mats[index, smpl2mimic_site_idx].cpu().detach().numpy(),
                                               smpl2robot_rot_mat_source)
                 pos_offset = np.einsum("bij,bj->bi", new_smpl_rot_mats, smpl2robot_pos_source)
                 new_global_pos = np.squeeze(new_global_pos - pos_offset)
@@ -708,11 +711,11 @@ def motion_transfer_robot_to_robot(
             kernel_size = robot_conf_target.optimization_params.smoothing_kernel_size
             sigma = robot_conf_target.optimization_params.smoothing_sigma
             if sigma > 0:
-                pose_non_filtered = pose.reshape(len_dataset, -1, 3)
+                pose_non_filtered = pose[:, 3:].reshape(len_dataset, -1, 3)
                 pose_non_filtered = pose_non_filtered.permute(1, 2, 0)
                 pose_filtered = gaussian_filter_1d_batch(pose_non_filtered, kernel_size, sigma, device)
                 pose_filtered = pose_filtered.permute(2, 0, 1)
-                pose.data[:] = pose_filtered.reshape(-1, 156)
+                pose.data[:, 3:] = pose_filtered.reshape(-1, 153)
 
         motion_file = {"pose_aa": pose.cpu().detach().numpy().reshape(-1, 156),
                        "trans": trans.cpu().detach().numpy(),
