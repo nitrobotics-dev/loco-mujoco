@@ -81,8 +81,8 @@
                     <geom class="viz" mesh="mtorso"/>
                     <geom type="cylinder" size="0.02 0.075" pos="0 0 -0.02" />
                     <body name="utorso" pos="0 0 0.05">
-                        <site name="upper_body_mimic" class="mimic" pos="0.0 0.0 0.3"/>
-                        <site name="head_mimic" class="mimic" pos="0.1 0.0 0.6"/>
+                        <site name="upper_body_mimic" class="mimic" pos="0.0 0.0 0.15"/>
+                        <site name="head_mimic" class="mimic" pos="0.1 0.0 0.5"/>
                         <inertial pos="-0.0622 0.0023 0.3157" quat="0.450601 -0.0341277 -0.0439518 0.89099" mass="84.409" diaginertia="1.62425 1.5673 0.552443" />
                         <joint name="back_bkx" stiffness="30" damping="10" axis="1 0 0" range="-0.523599 0.523599"/>
                         <geom class="viz" mesh="utorso"/>
