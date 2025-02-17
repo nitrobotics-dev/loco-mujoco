@@ -203,12 +203,25 @@ class DefaultRandomizer(DomainRandomizer):
         """
         assert_backend_is_supported(backend)
 
+        # get indices of all the observation components
+        total_len_noise_vec = 0
         ind_of_all_joint_pos = env._obs_indices.JointPos
+        ind_of_all_joint_pos_noise = np.arange(total_len_noise_vec, total_len_noise_vec+len(ind_of_all_joint_pos))
+        total_len_noise_vec += len(ind_of_all_joint_pos)
         ind_of_all_joint_vel = env._obs_indices.JointVel
+        ind_of_all_joint_vel_noise = np.arange(total_len_noise_vec, total_len_noise_vec+len(ind_of_all_joint_vel))
+        total_len_noise_vec += len(ind_of_all_joint_vel)
         ind_of_gravity_vec = env._obs_indices.ProjectedGravityVector
+        ind_of_gravity_vec_noise = np.arange(total_len_noise_vec, total_len_noise_vec+len(ind_of_gravity_vec))
+        total_len_noise_vec += len(ind_of_gravity_vec)
         ind_of_lin_vel = env._obs_indices.FreeJointVel[:3]
+        ind_of_lin_vel_noise = np.arange(total_len_noise_vec, total_len_noise_vec+len(ind_of_lin_vel))
+        total_len_noise_vec += len(ind_of_lin_vel)
         ind_of_ang_vel = env._obs_indices.FreeJointVel[3:]
+        ind_of_ang_vel_noise = np.arange(total_len_noise_vec, total_len_noise_vec+len(ind_of_ang_vel))
+        total_len_noise_vec += len(ind_of_ang_vel)
 
+        # get randomization parameters
         joint_pos_noise_scale = self.rand_conf["joint_pos_noise_scale"]
         joint_vel_noise_scale = self.rand_conf["joint_vel_noise_scale"]
         gravity_noise_scale = self.rand_conf["gravity_noise_scale"]
@@ -218,95 +231,52 @@ class DefaultRandomizer(DomainRandomizer):
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            noise = jax.random.normal(
-                _k, 
-                shape=(
-                    len(ind_of_all_joint_pos) + 
-                    len(ind_of_all_joint_vel) + 
-                    len(ind_of_gravity_vec) + 
-                    len(ind_of_lin_vel) + 
-                    len(ind_of_ang_vel),
-                )
-            )
+            noise = jax.random.normal(_k, shape=(total_len_noise_vec,))
 
             # Add noise to joint positions
             if self.rand_conf["add_joint_pos_noise"]:
-                obs = obs.at[ind_of_all_joint_pos].add(noise[:len(ind_of_all_joint_pos)] * joint_pos_noise_scale)
+                obs = obs.at[ind_of_all_joint_pos].add(noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale)
             
             # Add noise to joint velocities
             if self.rand_conf["add_joint_vel_noise"]:
-                obs = obs.at[ind_of_all_joint_vel].add(
-                    noise[len(ind_of_all_joint_pos):len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel)] * joint_vel_noise_scale
-                )
+                obs = obs.at[ind_of_all_joint_vel].add(noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale)
             
             # Add noise to gravity vector
             if self.rand_conf["add_gravity_noise"]:
-                obs = obs.at[ind_of_gravity_vec].add(
-                    noise[
-                        len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel):
-                        len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec)
-                    ] * gravity_noise_scale
-                )
+                obs = obs.at[ind_of_gravity_vec].add(noise[ind_of_gravity_vec_noise] * gravity_noise_scale)
             
             # Add noise to linear velocities
             if self.rand_conf["add_free_joint_lin_vel_noise"]:
-                obs = obs.at[ind_of_lin_vel].add(
-                    noise[
-                        len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec):
-                        len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec) + len(ind_of_lin_vel)
-                    ] * lin_vel_noise_scale
-                )
+                obs = obs.at[ind_of_lin_vel].add(noise[ind_of_lin_vel_noise] * lin_vel_noise_scale)
 
             # Add noise to angular velocities
             if self.rand_conf["add_free_joint_ang_vel_noise"]:
-                obs = obs.at[ind_of_ang_vel].add(
-                    noise[
-                        len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec) + len(ind_of_lin_vel):
-                    ] * ang_vel_noise_scale
-                )
+                obs = obs.at[ind_of_ang_vel].add(noise[ind_of_ang_vel_noise] * ang_vel_noise_scale)
             
             carry = carry.replace(key=key)
 
         else:
-            noise = np.random.normal(
-                size=(
-                    len(ind_of_all_joint_pos) + 
-                    len(ind_of_all_joint_vel) + 
-                    len(ind_of_gravity_vec) + 
-                    len(ind_of_lin_vel) + 
-                    len(ind_of_ang_vel),
-                )
-            )
+            noise = np.random.normal(size=(total_len_noise_vec,))
 
              # Add noise to joint positions
             if self.rand_conf["add_joint_pos_noise"]:
-                obs[ind_of_all_joint_pos] += noise[:len(ind_of_all_joint_pos)] * joint_pos_noise_scale
+                obs[ind_of_all_joint_pos] += noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale
 
             # Add noise to joint velocities
             if self.rand_conf["add_joint_vel_noise"]:
-                obs[ind_of_all_joint_vel] += noise[
-                    len(ind_of_all_joint_pos):len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel)
-                ] * joint_vel_noise_scale
+                obs[ind_of_all_joint_vel] += noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale
 
             # Add noise to gravity vector
             if self.rand_conf["add_gravity_noise"]:
-                obs[ind_of_gravity_vec] += noise[
-                    len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel):
-                    len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec)
-                ] * gravity_noise_scale
+                obs[ind_of_gravity_vec] += noise[ind_of_gravity_vec_noise] * gravity_noise_scale
 
             # Add noise to linear velocities
             if self.rand_conf["add_free_joint_lin_vel_noise"]:
-                obs[ind_of_lin_vel] += noise[
-                    len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec):
-                    len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec) + len(ind_of_lin_vel)
-                ] * lin_vel_noise_scale
+                obs[ind_of_lin_vel] += noise[ind_of_lin_vel_noise] * lin_vel_noise_scale
 
             # Add noise to angular velocities
             if self.rand_conf["add_free_joint_ang_vel_noise"]:
-                obs[ind_of_ang_vel] += noise[
-                    len(ind_of_all_joint_pos) + len(ind_of_all_joint_vel) + len(ind_of_gravity_vec) + len(ind_of_lin_vel):
-                ] * ang_vel_noise_scale
+                obs[ind_of_ang_vel] += noise[ind_of_ang_vel_noise] * ang_vel_noise_scale
 
         return obs, carry
 
