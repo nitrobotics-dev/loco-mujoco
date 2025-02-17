@@ -268,7 +268,7 @@ class Atlas(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=True, disable_back_joint=True, spec=None,
+    def __init__(self, disable_arms=False, disable_back_joint=False, spec=None,
                  observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
