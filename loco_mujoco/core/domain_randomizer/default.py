@@ -34,6 +34,15 @@ class DefaultRandomizer(DomainRandomizer):
     A domain randomizer that modifies simulation parameters like geometry friction.
     """
 
+    def __init__(self, **kwargs):
+        # store initial values for reset (only needed for numpy backend)
+        self._init_body_ipos = None
+        self._init_body_mass = None
+        self._init_dof_frictionloss = None
+        self._init_dof_damping = None
+        self._init_dof_armature = None
+        super().__init__(**kwargs)
+
     def init_state(self, env: Any,
                    key: Any,
                    model: Union[MjModel, Model],
@@ -81,6 +90,14 @@ class DefaultRandomizer(DomainRandomizer):
         """
         assert_backend_is_supported(backend)
         domain_randomizer_state = carry.domain_randomizer_state
+
+        if backend == np and self._init_body_ipos is None:
+            # store initial values for reset
+            self._init_body_ipos = model.body_ipos.copy()
+            self._init_body_mass = model.body_mass.copy()
+            self._init_dof_frictionloss = model.dof_frictionloss.copy()
+            self._init_dof_damping = model.dof_damping.copy()
+            self._init_dof_armature = model.dof_armature.copy()
 
         # update different randomization parameters
         geom_friction, carry = self._sample_geom_friction(model, carry, backend)
@@ -135,14 +152,32 @@ class DefaultRandomizer(DomainRandomizer):
         info_props = env._get_all_info_properties()
         root_body_name = info_props["root_body_name"]
         root_body_id = mujoco.mj_name2id(env._model, mujoco.mjtObj.mjOBJ_BODY, root_body_name)
-
         domrand_state = carry.domain_randomizer_state
+
+        if backend == jnp:
+            body_ipos = model.body_ipos.at[root_body_id].set(model.body_ipos[root_body_id] + domrand_state.com_displacement)
+            body_mass = model.body_mass.at[root_body_id:].set(model.body_mass[root_body_id:] * domrand_state.link_mass_multipliers)
+            dof_frictionloss = model.dof_frictionloss.at[6:].set(domrand_state.joint_friction_loss)
+            dof_damping = model.dof_damping.at[6:].set(domrand_state.joint_damping)
+            dof_armature = model.dof_armature.at[6:].set(domrand_state.joint_armature)
+        else:
+            body_ipos = self._init_body_ipos.copy()
+            body_ipos[root_body_id] += domrand_state.com_displacement
+            body_mass = self._init_body_mass.copy()
+            body_mass[root_body_id:] *= domrand_state.link_mass_multipliers
+            dof_frictionloss = self._init_dof_frictionloss.copy()
+            dof_frictionloss[6:] = domrand_state.joint_friction_loss
+            dof_damping = self._init_dof_damping.copy()
+            dof_damping[6:] = domrand_state.joint_damping
+            dof_armature = self._init_dof_armature.copy()
+            dof_armature[6:] = domrand_state.joint_armature
+
         model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
-        model = self._set_attribute_in_model(model, "body_ipos", model.body_ipos.at[root_body_id].set(model.body_ipos[root_body_id] + domrand_state.com_displacement), backend)
-        model = self._set_attribute_in_model(model, "body_mass", model.body_mass.at[root_body_id:].set(model.body_mass[root_body_id:] * domrand_state.link_mass_multipliers), backend)
-        model = self._set_attribute_in_model(model, "dof_frictionloss", model.dof_frictionloss.at[6:].set(domrand_state.joint_friction_loss), backend)
-        model = self._set_attribute_in_model(model, "dof_damping", model.dof_damping.at[6:].set(domrand_state.joint_damping), backend)
-        model = self._set_attribute_in_model(model, "dof_armature", model.dof_armature.at[6:].set(domrand_state.joint_armature), backend)
+        model = self._set_attribute_in_model(model, "body_ipos", body_ipos, backend)
+        model = self._set_attribute_in_model(model, "body_mass", body_mass, backend)
+        model = self._set_attribute_in_model(model, "dof_frictionloss", dof_frictionloss, backend)
+        model = self._set_attribute_in_model(model, "dof_damping", dof_damping ,backend)
+        model = self._set_attribute_in_model(model, "dof_armature", dof_armature, backend)
 
         return model, data, carry
 
