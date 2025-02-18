@@ -119,72 +119,21 @@ def load_lafan1_trajectory(
                 all_trajectories.append(traj)
                 continue
 
-        if env_name in ["UnitreeH1", "UnitreeG1", "UnitreeH1v2"]:
-            # load the csv file
-            d_name = d_name if d_name.endswith(".csv") else f"{d_name}.csv"
+        # load the npz file
+        d_name = d_name if d_name.endswith(".npz") else f"{d_name}.npz"
 
-            if env_name == "UnitreeH1":
-                name_on_hf_hub = "h1"
-            elif env_name == "UnitreeG1":
-                name_on_hf_hub = "g1"
-            elif env_name == "UnitreeH1v2":
-                name_on_hf_hub = "h1_2"
+        file_path = hf_hub_download(
+            repo_id="robfiras/loco-mujoco-datasets",
+            filename=f"Lafan1/mocap/{env_name}/{d_name}",
+            repo_type="dataset"
+        )
 
-            file_path = hf_hub_download(
-                repo_id="unitreerobotics/LAFAN1_Retargeting_Dataset",
-                filename=f"{name_on_hf_hub}/{d_name}",
-                repo_type="dataset"
-            )
+        traj = Trajectory.load(file_path)
 
-            # load robot_conf
-            robot_conf_path = os.path.join(Path(__file__).resolve().parent / "conf.yaml")
-            all_robot_confs = OmegaConf.load(robot_conf_path)
-            robot_conf = all_robot_confs[env_name]
-
-            # load csv
-            qpos = np.loadtxt(file_path, delimiter=",")
-
-            logger.info(f"Loaded LAFAN1 dataset: {d_name}.")
-
-            # convert free joint quaternion from scalar last to scalar first
-            qpos[:, 3:7] = quat_scalarlast2scalarfirst(qpos[:, 3:7])
-
-            # add offset
-            qpos[:, 2] += robot_conf.root_height_offset
-
-            # put into Trajectory
-            njnt = len(robot_conf.jnt_names)
-            jnt_type = np.array(
-                [int(mujoco.mjtJoint.mjJNT_FREE)] + [int(mujoco.mjtJoint.mjJNT_HINGE)] * (njnt - 1))
-            traj_info = TrajectoryInfo(joint_names=robot_conf.jnt_names,
-                                       model=TrajectoryModel(njnt, jnt_type), frequency=robot_conf.fps)
-            # calculate velocities
-            qpos, qvel = calculate_qvel_with_finite_difference(qpos, robot_conf.fps)
-
-            traj_data = TrajectoryData(qpos=qpos, qvel=qvel, split_points=jnp.array([0, len(qpos)]))
-            traj = Trajectory(info=traj_info, data=traj_data)
-            # extend the motion to the desired length
-            if not traj.data.is_complete:
-                logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
-                traj = extend_motion(env_name, robot_conf, traj,
-                                     replace_qvel_with_finite_diff=True)
-
-        else:
-            # load the npz file
-            d_name = d_name if d_name.endswith(".npz") else f"{d_name}.npz"
-
-            file_path = hf_hub_download(
-                repo_id="robfiras/loco-mujoco-datasets",
-                filename=f"Lafan1/mocap/{env_name}/{d_name}",
-                repo_type="dataset"
-            )
-
-            traj = Trajectory.load(file_path)
-
-            # extend the motion to the desired length
-            if not traj.data.is_complete:
-                logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
-                traj = extend_motion(env_name, load_robot_conf_file(env_name), traj, replace_qvel_with_finite_diff=False)
+        # extend the motion to the desired length
+        if not traj.data.is_complete:
+            logger.info("Using Mujoco's kinematics to calculate other model-specific entities ...")
+            traj = extend_motion(env_name, load_robot_conf_file(env_name), traj, replace_qvel_with_finite_diff=False)
 
         if path_to_convert_lafan1_datasets:
             traj.save(target_path_dataset)
