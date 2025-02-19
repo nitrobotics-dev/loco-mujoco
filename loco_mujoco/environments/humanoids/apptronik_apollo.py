@@ -209,8 +209,7 @@ class Apollo(BaseRobotHumanoid):
         """
         Returns the derivative gains for the default PD controller.
         """
-        return [15, 3, 3, 142, 165, 60, 171, 153, 92, 46, 11, 21, 171, 153, 92, 46, 11, 21, 26, 45, 21, 24, 15, 3, 3,
-                26, 45, 21, 24, 15, 3, 3]
+        return 0.0
 
     @info_property
     def grf_size(self):
