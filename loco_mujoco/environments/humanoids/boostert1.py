@@ -190,7 +190,7 @@ class BoosterT1(BaseRobotHumanoid):
         """
         Returns the derivative gains for the default PD controller.
         """
-        return 5
+        return 0.0
 
     @info_property
     def grf_size(self):
