@@ -62,7 +62,7 @@
         <body name="pelvis" pos="0 0 0.94">
             <site name="pelvis_mimic" class="mimic"/>
             <inertial pos="0.0111 0 0.0271" quat="0.698584 0.713914 0.0424837 -0.0224092" mass="9.509" diaginertia="0.124488 0.116646 0.0957666" />
-            <light name="spotlight" mode="trackcom" pos="0 -2 10" dir="0 0 -1"/>
+            <light name="spotlight" mode="trackcom" pos="0 -2 50" dir="0 0 -1"/>
             <camera name="track" mode="trackcom" pos="0 -4 0" xyaxes="1 0 0 0 0 1"/>
             <geom class="viz" mesh="pelvis"/>
             <geom type="cylinder" size="0.11 0.03" pos="0.046 0 0.01" quat="0.707107 0.707107 0 0" />

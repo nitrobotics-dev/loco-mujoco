@@ -73,7 +73,7 @@
 
   <worldbody>
     <body name="trunk" pos="0 0 0.43" childclass="a1">
-      <light name="spotlight" mode="trackcom" pos="0 -0.25 2"/>
+      <light name="spotlight" mode="trackcom" pos="0 -0.25 50"/>
       <camera name="track" mode="trackcom" pos="0 -2 0" xyaxes="1 0 0 0 0 1"/>
       <freejoint name="root"/>
       <inertial mass="4.713" pos="0 0.0041 -0.0005"
