@@ -47,7 +47,9 @@ class MujocoViewer:
     def __init__(self, model, dt, viewer_size=(1280, 720), start_paused=False,
                  custom_render_callback=None, record=False, camera_params=None,
                  default_camera_mode="static", hide_menu_on_startup=None,
-                 geom_group_visualization_on_startup=None, headless=False, recorder_params=None):
+                 geom_group_visualization_on_startup=None,
+                 mimic_site_visualization_on_startup=False,
+                 headless=False, recorder_params=None):
         """
         Constructor.
 
@@ -65,6 +67,7 @@ class MujocoViewer:
             hide_menu_on_startup (bool): If True, the menu is hidden on startup.
             geom_group_visualization_on_startup (int/list): int or list defining which geom group_ids should be
                 visualized on startup. If None, all are visualized.
+            mimic_site_visualization_on_startup (bool): If True, mimic sites are visualized on startup.
             headless (bool): If True, render will be done in headless mode.
             recorder_params (dict): Dictionary of parameters for the video recorder.
 
@@ -126,6 +129,8 @@ class MujocoViewer:
         self._scene = mujoco.MjvScene(self._model, 100000)
         self._user_scene = mujoco.MjvScene(self._model, 1000)
         self._scene_option = mujoco.MjvOption()
+        if mimic_site_visualization_on_startup:
+            self._scene_option.sitegroup[4] = True
         self._camera = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(model, self._camera)
         if camera_params is None:
