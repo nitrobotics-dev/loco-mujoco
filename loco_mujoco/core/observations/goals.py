@@ -798,26 +798,6 @@ class GoalTrajMimic(Goal):
 
         self._initialized_from_mj = True
 
-    def apply_spec_modifications(self,
-                                 spec: Any,
-                                 info_props: Dict):
-        """
-        Apply modifications to the Mujoco XML specification to include the goal.
-
-        Args:
-            spec (Any): Mujoco specification.
-            info_props (Dict): Information properties.
-
-        Returns:
-            Any: Modified Mujoco specification.
-        """
-
-        if self.visualize_goal:
-            for site in spec.sites:
-                if "mimic" in site.name:
-                    site.group = 0
-        return spec
-
     def init_from_traj(self, traj_handler: Any):
         """
         Initialize from a trajectory handler.

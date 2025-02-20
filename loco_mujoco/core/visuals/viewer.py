@@ -285,17 +285,9 @@ class MujocoViewer:
         if key == glfw.KEY_5:
             self._scene_option.geomgroup[5] = not self._scene_option.geomgroup[5]
 
-        if key == glfw.KEY_6:
-            self._scene_option.geomgroup[6] = not self._scene_option.geomgroup[6]
-
-        if key == glfw.KEY_7:
-            self._scene_option.geomgroup[7] = not self._scene_option.geomgroup[7]
-
-        if key == glfw.KEY_8:
-            self._scene_option.geomgroup[8] = not self._scene_option.geomgroup[8]
-
-        if key == glfw.KEY_9:
-            self._scene_option.geomgroup[9] = not self._scene_option.geomgroup[9]
+        if key == glfw.KEY_M:
+            # mimic sites
+            self._scene_option.sitegroup[4] = not self._scene_option.sitegroup[4]
 
         if key == glfw.KEY_TAB:
             self._camera_mode_target = next(self._camera_mode_iter)
@@ -697,7 +689,11 @@ class MujocoViewer:
 
         add_overlay(
             topleft,
-            "Press 0-9 to disable/enable geom group visualization.")
+            "Press M for mimic sites visualization (if available).")
+
+        add_overlay(
+            topleft,
+            "Press 0-5 to disable/enable geom group visualization.")
 
         visualize_contact = "On" if self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] else "Off"
         add_overlay(
