@@ -47,7 +47,7 @@
       <joint actuatorfrcrange="-100 100"/>
       <motor ctrllimited="true" ctrlrange="-100 100"/>
       <default class="visual">
-        <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+        <geom group="0" type="mesh" contype="0" conaffinity="0"/>
       </default>
       <default class="collision">
         <geom group="3" type="mesh"/>

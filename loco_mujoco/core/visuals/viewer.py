@@ -402,6 +402,10 @@ class MujocoViewer:
                                     carry.user_scene.geoms.pos[j],
                                     carry.user_scene.geoms.mat[j],
                                     carry.user_scene.geoms.rgba[j])
+                # set dataid to be able to identify the geom in the user scene
+                self._scene.geoms[carry_visual_start_idx + j].dataid = int(carry.user_scene.geoms.dataid[j]*2)
+                self._scene.geoms[carry_visual_start_idx + j].category =  mujoco.mjtCatBit.mjCAT_DECOR
+
                 self._scene.ngeom += 1
 
             self._add_user_scene_geoms()
@@ -506,6 +510,7 @@ class MujocoViewer:
         visual_geoms_pos[..., :2] += self._visual_geom_offsets
         visual_geoms_mat = np.array(mjx_state.additional_carry.user_scene.geoms.mat)
         visual_geoms_rgba = np.array(mjx_state.additional_carry.user_scene.geoms.rgba)
+        visual_geoms_dataid = np.array(mjx_state.additional_carry.user_scene.geoms.dataid)
         n_visual_geoms = mjx_state.additional_carry.user_scene.ngeoms[0]
 
         def render_all_inner_loop(self):
@@ -547,6 +552,11 @@ class MujocoViewer:
                                         visual_geoms_pos[i, j],
                                         visual_geoms_mat[i, j],
                                         visual_geoms_rgba[i, j])
+
+                    # set dataid to be able to identify the geom in the user scene
+                    self._scene.geoms[carry_visual_start_idx + j].dataid = int(visual_geoms_dataid[i, j] * 2)
+                    self._scene.geoms[carry_visual_start_idx + j].category = mujoco.mjtCatBit.mjCAT_DECOR
+
                     self._scene.ngeom += 1
 
             self._add_user_scene_geoms()

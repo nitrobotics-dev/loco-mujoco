@@ -685,7 +685,7 @@ class Mujoco:
     def data(self):
         return self._data
 
-    @property
+    @info_property
     def mjspec(self):
         return self._mjspec
 

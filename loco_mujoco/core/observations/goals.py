@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Union, Any, Tuple, Dict, List
 from types import ModuleType
 import numpy as np
@@ -948,3 +949,165 @@ class GoalTrajMimic(Goal):
     def dim(self) -> int:
         """Get the dimension of the goal."""
         return self._dim + self._size_additional_observation
+
+
+class GoalTrajMimicv2(GoalTrajMimic):
+
+    """
+    Equivalent to GoalTrajMimic but with the ability to visualize the goal with the robot's geoms/body.
+
+    ..note:: This class might slows down the simulation. Use it for visualization purposes only.
+
+    Args:
+        info_props (Dict): Information properties required for initialization.
+        rel_body_names (List[str]): List of relevant body names. Defaults to None.
+        target_geom_rgba (Tuple[float, float, float, float]): RGBA values for the target geom.
+        Defaults to (0.471, 0.38, 0.812, 0.5).
+
+    """
+
+    def __init__(self, info_props: Dict,
+                 rel_body_names: List[str] = None,
+                 target_geom_rgba: Tuple[float, float, float, float] = (0.471, 0.38, 0.812, 0.5),
+                 **kwargs):
+
+        self.n_step_lookahead = 1   # todo: implement n_step_lookahead
+        n_visual_geoms = len(info_props["sites_for_mimic"]) if \
+            ("visualize_goal" in kwargs.keys() and kwargs["visualize_goal"]) else 0
+
+        self.mjspec = info_props["mjspec"]
+        n_visual_geoms = 0
+        self._geom_group_to_include = 0
+        self._geom_ids_to_exclude = (0,)  # worldbody
+        self._target_geom_rgba = target_geom_rgba
+        for i, geom in enumerate(self.mjspec.geoms):
+            if i not in self._geom_ids_to_exclude and geom.group == self._geom_group_to_include:
+                n_visual_geoms += 1
+        super(GoalTrajMimic, self).__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
+
+        self.main_body_name = self._info_props["upper_body_xml_name"]
+        self._qpos_ind = None
+        self._qvel_ind = None
+        self._size_additional_observation = None
+
+        # To be initialized
+        self._relevant_body_names = [] if rel_body_names is None else rel_body_names
+        self._relevant_body_ids = []
+        self._rel_site_ids = []
+        self._body_rootid = None
+        self._site_bodyid = None
+        self._dim = None
+
+
+    def _init_from_mj(self,
+                      env: Any,
+                      model: Union[MjModel, Model],
+                      data: Union[MjData, Data],
+                      current_obs_size: int):
+
+        super()._init_from_mj(env, model, data, current_obs_size)
+
+        geom_ids = []
+        geom_bodyid = []
+        geom_type = []
+        geom_size = []
+        geom_rgba = []
+        geom_dataid = []
+        geom_group = []
+
+        for i in range(model.ngeom):
+            if i not in self._geom_ids_to_exclude and model.geom_group[i] == self._geom_group_to_include:
+                geom_ids.append(i)
+                geom_bodyid.append(model.geom_bodyid[i])
+                geom_type.append(model.geom_type[i])
+                geom_size.append(model.geom_size[i])
+                geom_rgba.append(self._target_geom_rgba)
+                geom_dataid.append(model.geom_dataid[i])
+                geom_group.append(model.geom_group[i])
+
+        self._geom_ids = np.array(geom_ids)
+        self._geom_bodyid = np.array(geom_bodyid)
+        self._geom_type = np.array(geom_type).reshape(-1, 1)
+        self._geom_size = np.array(geom_size)
+        self._geom_rgba = np.array(geom_rgba)
+        self._geom_dataid = np.array(geom_dataid).reshape(-1, 1)
+        self._geom_group = np.array(geom_group).reshape(-1, 1)
+
+    def set_visuals(self,
+                    env: Any,
+                    model: Union[MjModel, Model],
+                    data: Union[MjData, Data],
+                    carry: Any,
+                    backend: ModuleType) -> Any:
+        """
+        Set the visualizations for the goal.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            carry (Any): Carry object.
+            backend (ModuleType): The backend (numpy or jax).
+
+        Returns:
+            Any: Updated carry with visualizations set.
+        """
+        if backend == np:
+            R = np_R
+        else:
+            R = jnp_R
+
+        traj_data = env.th.traj.data
+        traj_state = carry.traj_state
+        user_scene = carry.user_scene
+        goal_geoms = user_scene.geoms
+
+        qpos_init = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no_init, backend)
+        qpos = traj_data.get_qpos(traj_state.traj_no, traj_state.subtraj_step_no, backend)
+        qvel = traj_data.get_qvel(traj_state.traj_no, traj_state.subtraj_step_no, backend)
+
+        if backend == jnp:
+
+            # calculate geom positions and orientations usinf FK
+            qpos = qpos.at[:2].add(-qpos_init[:2])
+            data = data.replace(qpos=qpos, qvel=qvel)
+            data = mujoco.mjx.kinematics(env.sys, data)
+            geom_pos = data.geom_xpos[self._geom_ids]
+            geom_mat = data.geom_xmat[self._geom_ids]
+
+            geom_pos = user_scene.geoms.pos.at[self.visual_geoms_idx].set(geom_pos)
+            geom_mat = user_scene.geoms.mat.at[self.visual_geoms_idx].set(geom_mat.reshape(-1, 9))
+            geom_type = user_scene.geoms.type.at[self.visual_geoms_idx].set(self._geom_type)
+            geom_size = user_scene.geoms.size.at[self.visual_geoms_idx].set(self._geom_size)
+            geom_rgba = user_scene.geoms.rgba.at[self.visual_geoms_idx].set(self._geom_rgba)
+            geom_data = user_scene.geoms.dataid.at[self.visual_geoms_idx].set(self._geom_dataid)
+        else:
+
+            # calculate geom positions and orientations usinf FK
+            data = deepcopy(data)
+            data.qpos = qpos
+            data.qpos[:2] -= qpos_init[:2]
+            data.qvel = qvel
+            mujoco.mj_kinematics(model, data)
+            geom_pos = data.geom_xpos[self._geom_ids]
+            geom_mat = data.geom_xmat[self._geom_ids]
+
+            user_scene.geoms.pos[self.visual_geoms_idx] = geom_pos
+            user_scene.geoms.mat[self.visual_geoms_idx] = geom_mat.reshape(-1, 9)
+            user_scene.geoms.type[self.visual_geoms_idx] = self._geom_type
+            user_scene.geoms.size[self.visual_geoms_idx] = self._geom_size
+            user_scene.geoms.rgba[self.visual_geoms_idx] = self._geom_rgba
+            user_scene.geoms.dataid[self.visual_geoms_idx] = self._geom_dataid
+            geom_pos = user_scene.geoms.pos[self.visual_geoms_idx]
+            geom_mat = user_scene.geoms.mat[self.visual_geoms_idx]
+            geom_type = user_scene.geoms.type[self.visual_geoms_idx]
+            geom_rgba = user_scene.geoms.rgba[self.visual_geoms_idx]
+            geom_size = user_scene.geoms.size[self.visual_geoms_idx]
+            geom_data = user_scene.geoms.dataid[self.visual_geoms_idx]
+
+        # update carry
+        new_user_scene = user_scene.replace(geoms=user_scene.geoms.replace(
+            pos=geom_pos, mat=geom_mat, size=geom_size, type=geom_type, rgba=geom_rgba, dataid=geom_data))
+        carry = carry.replace(user_scene=new_user_scene)
+
+        return carry

@@ -613,7 +613,7 @@
   </actuator>
   <default>
     <default class="visual">
-      <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      <geom type="mesh" contype="0" conaffinity="0" group="0"/>
     </default>
     <default class="collision">
       <geom group="3"/>
