@@ -233,7 +233,6 @@ class DefaultRandomizer(DomainRandomizer):
             model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
         if self.rand_conf["randomize_geom_damping"] or self.rand_conf["randomize_geom_stiffness"]:
             model = self._set_attribute_in_model(model, "geom_solref", geom_solref, backend)
-            print("randomize geom damping and stiffness:", self.rand_conf["randomize_geom_damping"], self.rand_conf["randomize_geom_stiffness"])
         if self.rand_conf["randomize_com_displacement"]:
             model = self._set_attribute_in_model(model, "body_ipos", body_ipos, backend)
         if self.rand_conf["randomize_link_mass"] or self.rand_conf["randomize_base_mass"]:
