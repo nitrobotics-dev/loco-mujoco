@@ -23,14 +23,15 @@ wandb:
 
 experiment:
   task_factory:
-    name: LAFAN1ImitationFactory
+    name: ImitationFactory
     params:
-      dataset_name:
-      #- walk1_subject1
-      - walk1_subject2
-      #- walk1_subject5
-      #- walk2_subject4
-      #- walk3_subject2
+      lafan1_dataset_conf:
+        dataset_name:
+          - walk1_subject1
+          - walk1_subject2
+          #- walk1_subject5
+          #- walk2_subject4
+          #- walk3_subject2
   env_params:
     env_name: MjxUnitreeH1
     headless: True

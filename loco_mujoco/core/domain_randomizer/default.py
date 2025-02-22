@@ -10,6 +10,7 @@ from mujoco import MjData, MjModel
 from mujoco.mjx import Data, Model
 
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
+from loco_mujoco.core.control_functions import PDControl
 from loco_mujoco.core.utils.backend import assert_backend_is_supported
 
 
@@ -18,10 +19,13 @@ class DefaultRandomizerState:
     """
     Represents the state of the default randomizer.
 
-    Attributes:
-        geom_friction (Union[np.ndarray, jax.Array]): Friction parameters for geometry.
     """
+
+    gravity: Union[np.ndarray, jax.Array]
     geom_friction: Union[np.ndarray, jax.Array]
+    geom_stiffness: Union[np.ndarray, jax.Array]
+    geom_damping: Union[np.ndarray, jax.Array]
+    base_mass_to_add: float
     com_displacement: Union[np.ndarray, jax.Array]
     link_mass_multipliers: Union[np.ndarray, jax.Array]
     joint_friction_loss: Union[np.ndarray, jax.Array]
@@ -31,19 +35,34 @@ class DefaultRandomizerState:
 
 class DefaultRandomizer(DomainRandomizer):
     """
-    A domain randomizer that modifies simulation parameters like geometry friction.
+    A domain randomizer class that modifies typical simulation parameters.
+
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, env, **kwargs):
+
         # store initial values for reset (only needed for numpy backend)
+        self._init_gravity = None
+        self._init_geom_friction = None
+        self._init_geom_solref = None
         self._init_body_ipos = None
         self._init_body_mass = None
         self._init_dof_frictionloss = None
         self._init_dof_damping = None
         self._init_dof_armature = None
-        super().__init__(**kwargs)
 
-    def init_state(self, env: Any,
+        info_props = env._get_all_info_properties()
+        root_body_name = info_props["root_body_name"]
+        self._root_body_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_BODY, root_body_name)
+
+        self._other_body_masks = np.ones(env.model.nbody, dtype=bool)
+        self._other_body_masks[0] = False # exclude worldbody
+        self._other_body_masks[self._root_body_id] = False
+
+        super().__init__(env, **kwargs)
+
+    def init_state(self,
+                   env: Any,
                    key: Any,
                    model: Union[MjModel, Model],
                    data: Union[MjData, Data],
@@ -60,9 +79,15 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             DefaultRandomizerState: The initialized randomizer state.
+
         """
+
         assert_backend_is_supported(backend)
-        return DefaultRandomizerState(geom_friction=backend.array([0.0, 0.0, 0.0]), 
+        return DefaultRandomizerState(gravity=backend.array([0.0, 0.0, -9.81]),
+                                      geom_friction=backend.array(model.geom_friction.copy()),
+                                      geom_stiffness=backend.zeros(model.ngeom),
+                                      geom_damping=backend.zeros(model.ngeom),
+                                      base_mass_to_add=0.0,
                                       com_displacement=backend.array([0.0, 0.0, 0.0]),
                                       link_mass_multipliers=backend.array([1.0] * (model.nbody-1)), #exclude worldbody
                                       joint_friction_loss=backend.array([0.0] * (model.nv-6)), #exclude freejoint 6 dofs
@@ -70,7 +95,8 @@ class DefaultRandomizer(DomainRandomizer):
                                       joint_armature=backend.array([0.0] * (model.nv-6)), #exclude freejoint 6 dofs
                                       )
 
-    def reset(self, env: Any,
+    def reset(self,
+              env: Any,
               model: Union[MjModel, Model],
               data: Union[MjData, Data],
               carry: Any,
@@ -87,12 +113,16 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             Tuple[Union[MjData, Data], Any]: The updated simulation data and carry.
+
         """
+
         assert_backend_is_supported(backend)
         domain_randomizer_state = carry.domain_randomizer_state
 
         if backend == np and self._init_body_ipos is None:
             # store initial values for reset
+            self._init_gravity = model.opt.gravity.copy()
+            self._init_geom_solref = model.geom_solref.copy()
             self._init_body_ipos = model.body_ipos.copy()
             self._init_body_mass = model.body_mass.copy()
             self._init_dof_frictionloss = model.dof_frictionloss.copy()
@@ -100,14 +130,17 @@ class DefaultRandomizer(DomainRandomizer):
             self._init_dof_armature = model.dof_armature.copy()
 
         # update different randomization parameters
+        gravity, carry = self._sample_gravity(model, carry, backend)
         geom_friction, carry = self._sample_geom_friction(model, carry, backend)
+        geom_damping, geom_stiffness, carry = self._sample_geom_damping_and_stiffness(model, carry, backend)
+        base_mass_to_add, carry = self._sample_base_mass(model, carry, backend)
         com_displacement, carry = self._sample_com_displacement(model, carry, backend)
         link_mass_multipliers, carry = self._sample_link_mass_multipliers(model, carry, backend)
         joint_friction_loss, carry = self._sample_joint_friction_loss(model, carry, backend)
         joint_damping, carry = self._sample_joint_damping(model, carry, backend)
         joint_armature, carry = self._sample_joint_armature(model, carry, backend)
 
-        if "PDControl" in str(env._control_func):
+        if isinstance(env._control_func, PDControl):
             control_func_state = carry.control_func_state
 
             p_noise, carry = self._sample_p_gains_noise(env, model, carry, backend)
@@ -119,7 +152,11 @@ class DefaultRandomizer(DomainRandomizer):
 
 
 
-        carry = carry.replace(domain_randomizer_state=domain_randomizer_state.replace(geom_friction=geom_friction, 
+        carry = carry.replace(domain_randomizer_state=domain_randomizer_state.replace(gravity=gravity,
+                                                                                      geom_friction=geom_friction,
+                                                                                      geom_stiffness=geom_stiffness,
+                                                                                      geom_damping=geom_damping,
+                                                                                      base_mass_to_add=base_mass_to_add,
                                                                                       com_displacement=com_displacement,
                                                                                       link_mass_multipliers=link_mass_multipliers,
                                                                                       joint_friction_loss=joint_friction_loss,
@@ -127,10 +164,10 @@ class DefaultRandomizer(DomainRandomizer):
                                                                                       joint_armature=joint_armature,
                                                                                       ))
 
-
         return data, carry
 
-    def update(self, env: Any,
+    def update(self,
+               env: Any,
                model: Union[MjModel, Model],
                data: Union[MjData, Data],
                carry: Any,
@@ -147,41 +184,71 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             Tuple[Union[MjModel, Model], Union[MjData, Data], Any]: The updated simulation model, data, and carry.
+
         """
+
         assert_backend_is_supported(backend)
-        info_props = env._get_all_info_properties()
-        root_body_name = info_props["root_body_name"]
-        root_body_id = mujoco.mj_name2id(env._model, mujoco.mjtObj.mjOBJ_BODY, root_body_name)
+
         domrand_state = carry.domain_randomizer_state
 
+        sampled_base_mass_multiplier = domrand_state.link_mass_multipliers[0]
+        sampled_other_bodies_mass_multipliers = domrand_state.link_mass_multipliers[1:]
+
+        root_body_id = self._root_body_id
+        other_body_masks = self._other_body_masks
+
         if backend == jnp:
+            geom_solref = model.geom_solref.at[:, 0].set(-domrand_state.geom_stiffness)
+            geom_solref = geom_solref.at[:, 1].set(-domrand_state.geom_damping)
             body_ipos = model.body_ipos.at[root_body_id].set(model.body_ipos[root_body_id] + domrand_state.com_displacement)
-            body_mass = model.body_mass.at[root_body_id:].set(model.body_mass[root_body_id:] * domrand_state.link_mass_multipliers)
+            body_mass = model.body_mass.at[root_body_id].set(model.body_mass[root_body_id] * sampled_base_mass_multiplier)
+            body_mass = body_mass.at[root_body_id].set(body_mass[root_body_id] + domrand_state.base_mass_to_add)
+            body_mass = body_mass.at[other_body_masks].set(body_mass[other_body_masks] * sampled_other_bodies_mass_multipliers)
             dof_frictionloss = model.dof_frictionloss.at[6:].set(domrand_state.joint_friction_loss)
             dof_damping = model.dof_damping.at[6:].set(domrand_state.joint_damping)
             dof_armature = model.dof_armature.at[6:].set(domrand_state.joint_armature)
+            if self.rand_conf["randomize_gravity"]:
+                model = self._set_attribute_in_model(model, "opt.gravity", domrand_state.gravity, backend)
         else:
+            geom_solref = self._init_geom_solref.copy()
+            geom_solref[:, 0] = -domrand_state.geom_stiffness
+            geom_solref[:, 1] = -domrand_state.geom_damping
             body_ipos = self._init_body_ipos.copy()
             body_ipos[root_body_id] += domrand_state.com_displacement
             body_mass = self._init_body_mass.copy()
-            body_mass[root_body_id:] *= domrand_state.link_mass_multipliers
+            body_mass[root_body_id] *= sampled_base_mass_multiplier
+            body_mass[root_body_id] += domrand_state.base_mass_to_add
+            body_mass[other_body_masks] *= sampled_other_bodies_mass_multipliers
             dof_frictionloss = self._init_dof_frictionloss.copy()
             dof_frictionloss[6:] = domrand_state.joint_friction_loss
             dof_damping = self._init_dof_damping.copy()
             dof_damping[6:] = domrand_state.joint_damping
             dof_armature = self._init_dof_armature.copy()
             dof_armature[6:] = domrand_state.joint_armature
+            if self.rand_conf["randomize_gravity"]:
+                model.opt.gravity = domrand_state.gravity
 
-        model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
-        model = self._set_attribute_in_model(model, "body_ipos", body_ipos, backend)
-        model = self._set_attribute_in_model(model, "body_mass", body_mass, backend)
-        model = self._set_attribute_in_model(model, "dof_frictionloss", dof_frictionloss, backend)
-        model = self._set_attribute_in_model(model, "dof_damping", dof_damping ,backend)
-        model = self._set_attribute_in_model(model, "dof_armature", dof_armature, backend)
+        if (self.rand_conf["randomize_geom_friction_tangential"] or self.rand_conf["randomize_geom_friction_torsional"]
+                or self.rand_conf["randomize_geom_friction_rolling"]):
+            model = self._set_attribute_in_model(model, "geom_friction", domrand_state.geom_friction, backend)
+        if self.rand_conf["randomize_geom_damping"] or self.rand_conf["randomize_geom_stiffness"]:
+            model = self._set_attribute_in_model(model, "geom_solref", geom_solref, backend)
+            print("randomize geom damping and stiffness:", self.rand_conf["randomize_geom_damping"], self.rand_conf["randomize_geom_stiffness"])
+        if self.rand_conf["randomize_com_displacement"]:
+            model = self._set_attribute_in_model(model, "body_ipos", body_ipos, backend)
+        if self.rand_conf["randomize_link_mass"] or self.rand_conf["randomize_base_mass"]:
+            model = self._set_attribute_in_model(model, "body_mass", body_mass, backend)
+        if self.rand_conf["randomize_joint_friction_loss"]:
+            model = self._set_attribute_in_model(model, "dof_frictionloss", dof_frictionloss, backend)
+        if self.rand_conf["randomize_joint_damping"]:
+            model = self._set_attribute_in_model(model, "dof_damping", dof_damping ,backend)
+        if self.rand_conf["randomize_joint_armature"]:
+            model = self._set_attribute_in_model(model, "dof_armature", dof_armature, backend)
 
         return model, data, carry
 
-    def update_observation(self, env: Any,
+    def update_observation(self,
+                           env: Any,
                            obs: Union[np.ndarray, jnp.ndarray],
                            model: Union[MjModel, Model],
                            data: Union[MjData, Data],
@@ -200,7 +267,9 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             Tuple[Union[np.ndarray, jnp.ndarray], Any]: The updated observation and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         # get indices of all the observation components
@@ -300,13 +369,14 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             Tuple[Union[np.ndarray, jnp.ndarray], Any]: The updated action and carry.
+
         """
+
         assert_backend_is_supported(backend)
         return action, carry
-    
-    ########################Geoms related randomization##########################################
 
-    def _sample_geom_friction(self, model: Union[MjModel, Model],
+    def _sample_geom_friction(self,
+                              model: Union[MjModel, Model],
                               carry: Any,
                               backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
@@ -319,7 +389,9 @@ class DefaultRandomizer(DomainRandomizer):
 
         Returns:
             Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry friction parameters and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         fric_tan_min, fric_tan_max = self.rand_conf["geom_friction_tangential_range"]
@@ -357,9 +429,11 @@ class DefaultRandomizer(DomainRandomizer):
 
         return geom_friction, carry
 
-    def _sample_geom_damping_and_stiffness(self, model: Union[MjModel, Model],
+    def _sample_geom_damping_and_stiffness(self,
+                                           model: Union[MjModel, Model],
                                            carry: Any,
-                                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
+                                           backend: ModuleType) \
+            -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
         """
         Samples the geometry damping and stiffness parameters.
 
@@ -371,7 +445,9 @@ class DefaultRandomizer(DomainRandomizer):
         Returns:
             Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry damping
             and stiffness parameters and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         damping_min, damping_max = self.rand_conf["geom_damping_range"]
@@ -381,12 +457,12 @@ class DefaultRandomizer(DomainRandomizer):
         if backend == jnp:
             key = carry.key
             key, _k_damp, _k_stiff = jax.random.split(key, 3)
-            interpolation_damping = jax.random.uniform(_k_damp, shape=(len(n_geoms),))
-            interpolation_stiff = jax.random.uniform(_k_stiff, shape=(len(n_geoms),))
+            interpolation_damping = jax.random.uniform(_k_damp, shape=(n_geoms,))
+            interpolation_stiff = jax.random.uniform(_k_stiff, shape=(n_geoms,))
             carry = carry.replace(key=key)
         else:
-            interpolation_damping = np.random.uniform(size=(len(n_geoms),))
-            interpolation_stiff = np.random.uniform(size=(len(n_geoms),))
+            interpolation_damping = np.random.uniform(size=(n_geoms,))
+            interpolation_stiff = np.random.uniform(size=(n_geoms,))
 
         sampled_damping = (
             damping_min + (damping_max - damping_min) * interpolation_damping
@@ -401,11 +477,12 @@ class DefaultRandomizer(DomainRandomizer):
 
         return sampled_damping, sampled_stiffness, carry
     
-    def _sample_joint_friction_loss(self, model: Union[MjModel, Model],
-                                           carry: Any,
-                                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
+    def _sample_joint_friction_loss(self,
+                                    model: Union[MjModel, Model],
+                                    carry: Any,
+                                    backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the joint friction and stiffness parameters.
+        Samples the joint friction loss parameters.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -413,9 +490,10 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry damping
-            and stiffness parameters and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized joint friction loss parameters.
+
         """
+
         assert_backend_is_supported(backend)
 
         friction_min, friction_max = self.rand_conf["joint_friction_loss_range"]
@@ -438,10 +516,10 @@ class DefaultRandomizer(DomainRandomizer):
         return sampled_friction_loss, carry
     
     def _sample_joint_damping(self, model: Union[MjModel, Model],
-                                           carry: Any,
-                                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
+                              carry: Any,
+                              backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the joint friction and stiffness parameters.
+        Samples the joint damping parameters.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -449,9 +527,10 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry damping
-            and stiffness parameters and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized joint damping and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         damping_min, damping_max = self.rand_conf["joint_damping_range"]
@@ -473,11 +552,12 @@ class DefaultRandomizer(DomainRandomizer):
 
         return sampled_damping, carry
     
-    def _sample_joint_armature(self, model: Union[MjModel, Model],
-                                           carry: Any,
-                                           backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]:
+    def _sample_joint_armature(self,
+                               model: Union[MjModel, Model],
+                               carry: Any,
+                               backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the joint friction and stiffness parameters.
+        Samples the joint armature parameters.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -485,9 +565,10 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry damping
-            and stiffness parameters and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized joint aramture paramters and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         armature_min, armature_max = self.rand_conf["joint_armature_range"]
@@ -501,19 +582,90 @@ class DefaultRandomizer(DomainRandomizer):
         else:
             interpolation = np.random.uniform(size=(n_dofs,))
 
-        sampled_damping = (
+        sampled_armature = (
             armature_min + (armature_max - armature_min) * interpolation
             if self.rand_conf["randomize_joint_armature"]
             else model.dof_armature[6:]
         )
 
-        return sampled_damping, carry
+        return sampled_armature, carry
 
-    def _sample_com_displacement(self, model: Union[MjModel, Model],
-                              carry: Any,
-                              backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+    def _sample_gravity(self,
+                        model: Union[MjModel, Model],
+                        carry: Any, backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the geometry friction parameters.
+         Samples the gravity vector.
+
+         Args:
+            model (Union[MjModel, Model]): The simulation model.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized gravity vector and carry.
+
+        """
+
+        assert_backend_is_supported(backend)
+
+        gravity_min, gravity_max = self.rand_conf["gravity_range"]
+
+        if backend == jnp:
+            key = carry.key
+            key, _k = jax.random.split(key)
+            interpolation = jax.random.uniform(_k)
+            carry = carry.replace(key=key)
+        else:
+            interpolation = np.random.uniform()
+
+        sampled_gravity_z = (
+            gravity_min + (gravity_max - gravity_min) * interpolation
+            if self.rand_conf["randomize_gravity"]
+            else model.opt.gravity[2])
+
+        return backend.array([0.0, 0.0, -sampled_gravity_z]), carry
+
+    def _sample_base_mass(self,
+                          model: Union[MjModel, Model],
+                          carry: Any, backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+         Samples a base mass to add to the robot.
+
+         Args:
+            model (Union[MjModel, Model]): The simulation model.
+            carry (Any): Carry instance with additional state information.
+            backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+
+        Returns:
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized gravity vector and carry.
+
+        """
+
+        assert_backend_is_supported(backend)
+
+        base_mass_min, base_mass_max = self.rand_conf["base_mass_to_add_range"]
+
+        if backend == jnp:
+            key = carry.key
+            key, _k = jax.random.split(key)
+            interpolation = jax.random.uniform(_k)
+            carry = carry.replace(key=key)
+        else:
+            interpolation = np.random.uniform()
+
+        sampled_base_mass = (
+            base_mass_min + (base_mass_max - base_mass_min) * interpolation
+            if self.rand_conf["randomize_base_mass"]
+            else 0.0)
+
+        return sampled_base_mass, carry
+
+    def _sample_com_displacement(self,
+                                 model: Union[MjModel, Model],
+                                 carry: Any,
+                                 backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+        """
+        Samples a center-of-mass (COM) displace.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -521,7 +673,8 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry friction parameters and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized COM displacement vector and carry.
+
         """
         assert_backend_is_supported(backend)
 
@@ -543,11 +696,12 @@ class DefaultRandomizer(DomainRandomizer):
 
         return sampled_com_displacement, carry
     
-    def _sample_link_mass_multipliers(self, model: Union[MjModel, Model],
-                              carry: Any,
-                              backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
+    def _sample_link_mass_multipliers(self,
+                                      model: Union[MjModel, Model],
+                                      carry: Any,
+                                      backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the geometry friction parameters.
+        Samples the link mass multipliers.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -555,14 +709,15 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized geometry friction parameters and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The randomized link mass multipliers and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         multiplier_dict = self.rand_conf["link_mass_multiplier_range"]
 
         mult_base_min, mult_base_max = multiplier_dict["root_body"]
-
         mult_other_min, mult_other_max = multiplier_dict["other_bodies"]
 
         if backend == jnp:
@@ -571,7 +726,7 @@ class DefaultRandomizer(DomainRandomizer):
             interpolation = jax.random.uniform(_k, shape=(model.nbody-1,)) #exclude worldbody 
             carry = carry.replace(key=key)
         else:
-            interpolation = np.random.uniform(size=1)
+            interpolation = np.random.uniform(size=model.nbody-1)
 
         sampled_base_mass_multiplier = (
             mult_base_min + (mult_base_max - mult_base_min) * interpolation[0]
@@ -594,11 +749,12 @@ class DefaultRandomizer(DomainRandomizer):
 
         return mass_multipliers, carry
     
-    def _sample_p_gains_noise(self, env, model: Union[MjModel, Model],
+    def _sample_p_gains_noise(self,
+                              env, model: Union[MjModel, Model],
                               carry: Any,
                               backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples the p_gains_noise.
+        Samples p_gains_noise for the PDControl control function.
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -632,11 +788,12 @@ class DefaultRandomizer(DomainRandomizer):
 
         return p_noise, carry
     
-    def _sample_d_gains_noise(self, env, model: Union[MjModel, Model],
+    def _sample_d_gains_noise(self,
+                              env, model: Union[MjModel, Model],
                               carry: Any,
                               backend: ModuleType) -> Tuple[Union[np.ndarray, jnp.ndarray], Any]:
         """
-        Samples d_gains_noise.
+        Samples d_gains_noise for the PDControl control function..
 
         Args:
             model (Union[MjModel, Model]): The simulation model.
@@ -644,8 +801,10 @@ class DefaultRandomizer(DomainRandomizer):
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
 
         Returns:
-            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The d_noise and carry.
+            Tuple[Union[np.ndarray, jnp.ndarray], Any]: The d_gains_noise and carry.
+
         """
+
         assert_backend_is_supported(backend)
 
         init_d_gain = env._control_func._init_d_gain

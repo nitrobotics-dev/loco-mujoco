@@ -125,7 +125,7 @@ class Mujoco:
 
         # setup domain randomization
         domain_randomization_params = {} if domain_randomization_params is None else domain_randomization_params
-        self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](**domain_randomization_params)
+        self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](self, **domain_randomization_params)
 
         # setup initial state handler
         if init_state_params is None:
