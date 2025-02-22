@@ -16,7 +16,7 @@ class DefaultDatasetConf:
 
     """
 
-    task: str = "walk"
+    task: Union[str, list]  = "walk"
     dataset_type: str = "mocap"
     debug: bool = False
 

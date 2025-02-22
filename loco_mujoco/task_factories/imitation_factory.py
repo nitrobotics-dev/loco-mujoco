@@ -117,25 +117,35 @@ class ImitationFactory(TaskFactory):
         env_name = env.__class__.__name__
         if "Mjx" in env_name:
             env_name = env_name.replace("Mjx", "")
-        filename = f"DefaultDatasets/{default_dataset_conf.dataset_type}/{env_name}/{default_dataset_conf.task}.npz"
 
-        file_path = hf_hub_download(
-            repo_id="robfiras/loco-mujoco-datasets",
-            filename=filename,
-            repo_type="dataset"
-        )
+        if isinstance(default_dataset_conf.task, str):
+            default_dataset_conf.task = [default_dataset_conf.task]
 
-        traj = Trajectory.load(file_path)
+        trajs = []
+        for task in default_dataset_conf.task:
+            filename = f"DefaultDatasets/{default_dataset_conf.dataset_type}/{env_name}/{task}.npz"
 
-        # extend the motion to the desired length
-        if not traj.data.is_complete:
-            traj = extend_motion(env_name, load_robot_conf_file(env_name), traj)
+            file_path = hf_hub_download(
+                repo_id="robfiras/loco-mujoco-datasets",
+                filename=filename,
+                repo_type="dataset"
+            )
 
-        # pass the default trajectory through a TrajectoryHandler to interpolate it to the environment frequency
-        # and to filter out or add necessary entities is needed
-        default_th = TrajectoryHandler(env.model, control_dt=env.dt, traj=traj)
+            traj = Trajectory.load(file_path)
 
-        return default_th.traj
+            # extend the motion to the desired length
+            if not traj.data.is_complete:
+                traj = extend_motion(env_name, load_robot_conf_file(env_name), traj)
+
+            # pass the default trajectory through a TrajectoryHandler to interpolate it to the environment frequency
+            # and to filter out or add necessary entities is needed
+            default_th = TrajectoryHandler(env.model, control_dt=env.dt, traj=traj)
+
+            trajs.append(default_th.traj)
+
+        trajs = Trajectory.concatenate(trajs)
+
+        return trajs
 
     @staticmethod
     def get_amass_traj(env, amass_dataset_conf: AMASSDatasetConf) -> Trajectory:
