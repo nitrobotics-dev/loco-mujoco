@@ -21,7 +21,7 @@ wandb:
 
 experiment:
   task_factory:
-    name: AMASSImitationFactory
+    name: ImitationFactory
     params:
       dataset_group: AMASS_LOCOMOTION_DATASETS
   env_params:

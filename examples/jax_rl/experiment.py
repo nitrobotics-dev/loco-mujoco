@@ -52,6 +52,7 @@ def experiment(config: DictConfig):
         # save agent state
         agent_state = out["agent_state"]
         save_path = PPOJax.save_agent(result_dir, agent_conf, agent_state)
+        run.config.update({"agent_save_path": save_path})
 
         import time
         t_start = time.time()

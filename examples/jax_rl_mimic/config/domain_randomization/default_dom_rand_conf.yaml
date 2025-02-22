@@ -48,8 +48,13 @@ p_gains_noise_scale: 0.1
 d_gains_noise_scale: 0.1
 
 #Observation Noise
+add_joint_pos_noise: true
 joint_pos_noise_scale: 0.01
+add_joint_vel_noise: true
 joint_vel_noise_scale: 0.5
+add_gravity_noise: true
 gravity_noise_scale: 0.05
+add_free_joint_lin_vel_noise: true
 lin_vel_noise_scale: 0.1
+add_free_joint_ang_vel_noise: true
 ang_vel_noise_scale: 0.3          
