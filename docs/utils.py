@@ -127,6 +127,54 @@ def get_obs_space_table_docs(env, additional_info, remove=None):
     return make_table(grid), n_on_by_default
 
 
+
+def get_obs_space_table_docsv2(env_name):
+
+    env_cls = loco_mujoco.get_registered_envs()[env_name]
+    env = env_cls()
+
+    header = ["Index in Observation", "Name", "ObservationType",  "Min", "Max", "Dim"]
+    grid = [header]
+    for obs_name, obs_info in env.obs_container.items():
+        row = []
+        obs_dim = obs_info.obs_ind
+        if obs_dim.size > 0:
+            obs_dims = str(obs_dim[0]) + " - " + str(obs_dim[-1]) if len(obs_dim) > 1 else str(obs_dim[0])
+            row.append(obs_dims)
+            row.append(obs_info.name)
+            row.append(type(obs_info).__name__)
+
+            # limit min and max to 7 values, if more than 7 values, show the first 3 and last 3 values and ... in between
+            if len(obs_info.min) > 7:
+                row.append(str(obs_info.min[:3])[:-1] + " ... " + str(obs_info.min[-3:])[1:])
+                row.append(str(obs_info.max[:3])[:-1] + " ... " + str(obs_info.max[-3:])[1:])
+            else:
+                row.append(str(obs_info.min))
+                row.append(str(obs_info.max))
+
+            row.append(str(obs_info.dim))
+            grid.append(row)
+
+    return make_table(grid)
+
+def get_action_space_table_docsv2(env_name):
+
+    env_cls = loco_mujoco.get_registered_envs()[env_name]
+    env = env_cls(control_type="PDControl", control_params=dict(p_gain=1.0, d_gain=0.1, scale_action_to_jnt_limits=False))
+
+    header = ["Index in Action", "Min", "Max"]
+    grid = [header]
+    h, l = env.info.action_space.high, env.info.action_space.low
+    for i in range(len(h)):
+        row = []
+        row.append(str(i))
+        row.append(str(l[i]))
+        row.append(str(h[i]))
+        grid.append(row)
+
+    return make_table(grid)
+
+
 def get_action_space_table_docs(env, use_muscles=False):
 
     try:
@@ -166,6 +214,10 @@ if __name__ == "__main__":
     This file is used to auto-generate the observation space and action space tables used in the documentation.
     """
 
+    # H1
+    print(get_obs_space_table_docsv2("Apollo"))
+    print(get_action_space_table_docsv2("Apollo"))
+
     # # Talos
     # env = loco_mujoco.LocoEnv.make("Talos", disable_arms=False, disable_back=False)
     # additional_info = [["Mass of the Weight", "0.0", "inf", "Only Enabled for Carry Task", "1", "Mass [kg]"],
@@ -177,13 +229,13 @@ if __name__ == "__main__":
     #       "\nNumber of actions that are on by default: ", get_action_space_table_docs(env)[1])
 
     # MyoSkeleton
-    env = loco_mujoco.LocoEnv.make("MyoSkeleton")
-    additional_info = [["5x3D linear Forces between Right Foot and Floor", "0.0", "inf", "True", "15", "Force [N]"],
-                       ["5X3D linear Forces between Left Foot and Floor", "0.0", "inf", "True", "15", "Force [N]"]]
-    print(get_obs_space_table_docs(env, additional_info)[0],
-          "\nNumber of obs that are on by default: ", get_obs_space_table_docs(env, additional_info)[1], "\n")
-    print(get_action_space_table_docs(env)[0],
-          "\nNumber of actions that are on by default: ", get_action_space_table_docs(env)[1])
+    # env = loco_mujoco.LocoEnv.make("MyoSkeleton")
+    # additional_info = [["5x3D linear Forces between Right Foot and Floor", "0.0", "inf", "True", "15", "Force [N]"],
+    #                    ["5X3D linear Forces between Left Foot and Floor", "0.0", "inf", "True", "15", "Force [N]"]]
+    # print(get_obs_space_table_docs(env, additional_info)[0],
+    #       "\nNumber of obs that are on by default: ", get_obs_space_table_docs(env, additional_info)[1], "\n")
+    # print(get_action_space_table_docs(env)[0],
+    #       "\nNumber of actions that are on by default: ", get_action_space_table_docs(env)[1])
 
     # # Atlas
     # env = loco_mujoco.LocoEnv.make("Atlas", disable_arms=False, disable_back=False)
