@@ -51,8 +51,6 @@ MjxMyoSkeleton.register()
 # compatability with old names
 HumanoidTorque.register()
 HumanoidMuscle.register()
-HumanoidTorque4Ages.register()
-HumanoidMuscle4Ages.register()
 
 from gymnasium import register
 

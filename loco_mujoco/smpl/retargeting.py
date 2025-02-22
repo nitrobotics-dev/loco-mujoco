@@ -596,7 +596,7 @@ def motion_transfer_robot_to_robot(
         env.reset(key)
 
         # extend the trajectory to include more model-specific entities
-        traj_source = extend_motion(env_name_source, robot_conf_source, traj_source, logger)
+        traj_source = extend_motion(env_name_source, robot_conf_source.env_params, traj_source, logger)
 
         # load the source trajectory
         env.load_trajectory(traj_source, warn=False)
@@ -757,7 +757,7 @@ def motion_transfer_robot_to_robot(
 
 def extend_motion(
     env_name: str,
-    robot_conf: DictConfig,
+    env_params: DictConfig,
     traj: Trajectory,
     logger: logging.Logger = None
 ) -> Trajectory:
@@ -767,7 +767,7 @@ def extend_motion(
 
     Args:
         env_name (str): Name of the environment.
-        robot_conf (DictConfig): Configuration of the robot.
+        env_params (DictConfig): Environment params.
         traj (Trajectory): The original trajectory data.
         logger (logging.Logger): Logger for status updates.
 
@@ -776,7 +776,7 @@ def extend_motion(
 
     """
     env_cls = LocoEnv.registered_envs[env_name]
-    env = env_cls(**robot_conf.env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
+    env = env_cls(**env_params, th_params=dict(random_start=False, fixed_start_conf=(0, 0)))
 
     traj_data, traj_info = interpolate_trajectories(traj.data, traj.info, 1.0 / env.dt)
     traj = Trajectory(info=traj_info, data=traj_data)
@@ -878,7 +878,7 @@ def load_retargeted_amass_trajectory(
                 logger
             )
             logger.info("Using Mujoco to calculate other model-specific entities ...")
-            trajectory = extend_motion(env_name, robot_conf, trajectory, logger)
+            trajectory = extend_motion(env_name, robot_conf.env_params, trajectory, logger)
             trajectory.save(d_path)
             all_trajectories.append(trajectory)
         else:
