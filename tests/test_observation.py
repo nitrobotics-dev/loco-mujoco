@@ -4,6 +4,7 @@ import numpy as np
 from mujoco import MjSpec
 import jax.numpy as jnp
 import pytest
+from copy import deepcopy
 
 from loco_mujoco.core.observations import ObservationType
 from loco_mujoco.environments import LocoEnv
@@ -1065,14 +1066,8 @@ def test_LastAction(backend):
     key = jax.random.PRNGKey(seed)
 
     # Specify the observation space
-    observation_spec = [
-        {
-            "obs_name": "name_obs1",
-            "type": "LastAction",
-        }
-    ]
-
-    observation_spec.extend(OBSERVATION_SPACE)
+    observation_spec = deepcopy(OBSERVATION_SPACE)
+    observation_spec.append({"obs_name": "name_obs1", "type": "LastAction"})
 
     # Specify the name of the actuators of the XML
     action_spec = ["abdomen_y"]  # Use more motors if needed
@@ -1087,18 +1082,18 @@ def test_LastAction(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # Reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
 
         assert backend.all(obs == 0), "Initial last action should be zero"
     else:
         # Reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
         assert backend.all(obs_mjx == 0), "Initial last action should be zero"
 
@@ -1108,11 +1103,11 @@ def test_LastAction(backend):
     # Take a step in the environment with the chosen action
     if backend == np:
         next_obs, _, _, _, _ = mjx_env.step(action)
-        next_obs = next_obs[: backend.sum(dims)]
+        next_obs = next_obs[obs_ind]
     else:
         next_state = mjx_env.mjx_step(state, action)
         next_obs = next_state.observation
-        next_obs = next_obs[: backend.sum(dims)]
+        next_obs = next_obs[obs_ind]
 
     # Step 2: Check if LastAction in new observation matches the applied action
     assert backend.all(
