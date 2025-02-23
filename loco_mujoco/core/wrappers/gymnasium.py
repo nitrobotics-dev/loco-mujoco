@@ -1,7 +1,7 @@
 import numpy as np
 import jax
 
-from loco_mujoco import LocoEnv
+from loco_mujoco.task_factories import ImitationFactory
 
 from gymnasium import Env
 from gymnasium.utils import seeding
@@ -38,7 +38,7 @@ class GymnasiumWrapper(Env):
         else:
             kwargs["headless"] = True
 
-        self._env = LocoEnv.make(env_name, **kwargs)
+        self._env = ImitationFactory.make(env_name, **kwargs)
 
         self.metadata["render_fps"] = 1.0 / self._env.dt
 
@@ -76,10 +76,15 @@ class GymnasiumWrapper(Env):
         # Initialize the RNG if the seed is manually passed
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
+        else:
+            rng = np.random.default_rng()
+            seed = rng.integers(0, 2 ** 32 - 1, dtype=np.uint32)
 
-        # get a jax key
-        # todo: added randomly sampled seed for jax key as a temporary solution, this is not reproducible
-        key = jax.random.PRNGKey(np.random.randint(0, np.iinfo(np.int32).max))
+        # set global state
+        np.random.seed(seed) # todo: either start using _np_random in loco_mujoco or generate a rng state from a jax key
+
+        # get a jax key (not used yet)
+        key = jax.random.key(seed)
 
         return self._env.reset(key), {}
 
