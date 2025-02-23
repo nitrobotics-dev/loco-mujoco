@@ -453,8 +453,7 @@ class LocoEnv(Mjx):
             else:
                 nspe = n_steps_per_episode
 
-            pbar = range(nspe) if quiet else tqdm(range(nspe))
-            for j in pbar:
+            for j in tqdm(range(nspe), disable=quiet):
                 if callback_class is None:
                     self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
                     self._model, self._data, self._additional_carry = (
