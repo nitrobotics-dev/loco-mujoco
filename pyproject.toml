@@ -41,9 +41,7 @@ smpl = [
     "torch",
     "tqdm",
     "smplx @ git+https://github.com/ZhengyiLuo/smplx",
-    "easydict",
-    "joblib",
-    "lxml"
+    "joblib"
 ]
 
 [project.urls]

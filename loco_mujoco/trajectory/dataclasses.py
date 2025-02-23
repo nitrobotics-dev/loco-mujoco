@@ -638,6 +638,9 @@ class SingleData:
     site_xpos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
     site_xmat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
+    @property
+    def is_complete(self):
+        return all(getattr(self, field).size > 0 for field in self.__dataclass_fields__)
 
 @struct.dataclass
 class TrajectoryData(SingleData):

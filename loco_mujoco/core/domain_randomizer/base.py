@@ -21,11 +21,12 @@ class DomainRandomizer(StatefulObject):
 
     registered: Dict[str, type] = dict()
 
-    def __init__(self, **randomization_config: Any):
+    def __init__(self, env, **randomization_config: Any):
         """
         Initialize the DomainRandomizer class.
 
         Args:
+            env (Any): The environment instance.
             **randomization_config (Any): Configuration parameters for domain randomization.
         """
         self.rand_conf: Dict[str, Any] = randomization_config
@@ -173,7 +174,8 @@ class DomainRandomizer(StatefulObject):
     def _set_attribute_in_model(model: Union[MjModel, Model],
                                 attribute: str,
                                 value: Any,
-                                backend: ModuleType) -> Union[MjModel, Model]:
+                                backend: ModuleType,
+                                ind: Union[np.ndarray, jnp.ndarray, None] = None) -> Union[MjModel, Model]:
         """
         Set an attribute in the model. Works for both NumPy and JAX backends.
 
@@ -182,6 +184,7 @@ class DomainRandomizer(StatefulObject):
             attribute (str): The attribute to set.
             value (Any): The value to assign to the attribute.
             backend (ModuleType): Backend module used for calculation (e.g., numpy or jax.numpy).
+            ind (Union[np.ndarray, jnp.ndarray, None]): Indices to modify.
 
         Returns:
             Union[MjModel, Model]: The updated model.

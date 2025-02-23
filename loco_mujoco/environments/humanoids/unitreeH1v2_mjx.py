@@ -2,14 +2,10 @@ import mujoco
 from mujoco import MjSpec
 
 from .unitreeH1v2 import UnitreeH1v2
-from loco_mujoco.environments import ValidTaskConf
 
 
 class MjxUnitreeH1v2(UnitreeH1v2):
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"],
-                                     non_combinable=[("carry", None, "perfect")])
     mjx_enabled = True
     
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):

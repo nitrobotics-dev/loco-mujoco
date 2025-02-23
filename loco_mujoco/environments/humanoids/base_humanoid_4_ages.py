@@ -6,9 +6,7 @@ from copy import deepcopy
 # from mushroom_rl.utils.running_stats import *
 
 import loco_mujoco
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
-from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
 class BaseHumanoid4Ages(BaseSkeleton):

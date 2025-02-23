@@ -94,7 +94,7 @@
       <joint frictionloss="1" damping="1"/>
       <geom type="mesh" solref="0.001 1"/>
       <default class="visual">
-        <geom group="2" contype="0" conaffinity="0" density="0"/>
+        <geom group="0" contype="0" conaffinity="0" density="0"/>
       </default>
       <default class="collision">
         <geom group="3"/>
@@ -105,7 +105,7 @@
   <worldbody>
     <body name="base_link" pos="0 0 1.09" childclass="talos">
       <site name="pelvis_mimic" class="mimic" pos="0.0 0.0 -0.15"/>
-      <light name="spotlight" mode="trackcom" pos="0 -0.25 2"/>
+      <light name="spotlight" mode="trackcom" pos="0 -0.25 50"/>
       <freejoint name="reference"/>
       <inertial pos="-0.05709419 0.00153054 -0.0762521" mass="15.36284"
         fullinertia="0.20105075811 0.08411496729 0.2318908414 0.00023244734 0.0040167728 -0.00087206649"/>

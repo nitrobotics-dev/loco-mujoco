@@ -195,8 +195,17 @@ def add_mocap_bodies(mjspec: MjSpec,
 
             constraint_data = np.zeros(11)
             constraint_data[10] = torque_scale
-            mjspec.add_equality(type=eq_type, name1=b1, name2=b2,
+            e = mjspec.add_equality(type=eq_type, name1=b1, name2=b2,
                                 objtype=mujoco.mjtObj.mjOBJ_SITE, data=constraint_data)
+
+            if robot_conf is not None:
+                if hasattr(robot_conf.site_joint_matches[b1], "solref"):
+                    test = len(robot_conf.site_joint_matches[b1].solref)
+                    assert len(robot_conf.site_joint_matches[b1].solref) == 2, "solref must be a list of length 2"
+                    e.solref = robot_conf.site_joint_matches[b1].solref
+                if hasattr(robot_conf.site_joint_matches[b1], "solimp"):
+                    assert len(robot_conf.site_joint_matches[b1].solimp) == 5, "solimp must be a list of length 5"
+                    e.solimp = robot_conf.site_joint_matches[b1].solimp
 
     return mjspec
 

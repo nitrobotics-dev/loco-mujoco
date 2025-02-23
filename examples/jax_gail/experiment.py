@@ -73,6 +73,7 @@ def experiment(config: DictConfig):
         # save agent state
         agent_state = out["agent_state"]
         save_path = GAILJax.save_agent(result_dir, agent_conf, agent_state)
+        run.config.update({"agent_save_path": save_path})
 
         import time
         t_start = time.time()
@@ -119,6 +120,8 @@ def experiment(config: DictConfig):
                             step=int(training_metrics.max_timestep[i]))
 
         print(f"Time taken to log metrics: {time.time() - t_start}s")
+
+        wandb.finish()
 
     except Exception:
         traceback.print_exc(file=sys.stderr)

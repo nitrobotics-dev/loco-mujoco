@@ -1,14 +1,10 @@
 import mujoco
 
 from loco_mujoco.environments.humanoids.atlas import Atlas
-from loco_mujoco.environments import ValidTaskConf
 
 
 class MjxAtlas(Atlas):
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"],
-                                     non_combinable=[("carry", None, "perfect")])
     mjx_enabled = True
 
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):

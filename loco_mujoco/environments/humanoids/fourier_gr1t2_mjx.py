@@ -2,13 +2,10 @@ import mujoco
 from mujoco import MjSpec
 
 from .fourier_gr1t2 import FourierGR1T2
-from loco_mujoco.environments import ValidTaskConf
 
 
 class MjxFourierGR1T2(FourierGR1T2):
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"],
-                                     non_combinable=[("carry", None, "perfect")])
+
     mjx_enabled = True
 
     def __init__(self, timestep=0.002, n_substeps=5, **kwargs):

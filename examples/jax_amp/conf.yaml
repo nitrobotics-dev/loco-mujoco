@@ -8,18 +8,24 @@ hydra:
   hydra_logging: {}
   sweeper:
     params:
-      experiment.total_timesteps: 50e7, 100e7
+      experiment.total_timesteps: 500e6
+      experiment.proportion_env_reward: 0.0, 0.5
+      experiment.n_disc_epochs: 20, 35, 50
       # env_params
       experiment.env_params.env_name: MjxUnitreeH1
+      experiment.task_factory.params.default_dataset_conf.task: walk, run
+
+
 
 wandb:
   project: "amp"
 
 experiment:
   task_factory:
-    name: AMASSImitationFactory
+    name: ImitationFactory
     params:
-      dataset_group: AMASS_LOCOMOTION_DATASETS
+      default_dataset_conf:
+          task: walk
   env_params:
     env_name: MjxUnitreeH1
     disable_arms: false
@@ -48,10 +54,9 @@ experiment:
   num_steps: 100
   total_timesteps: 5e7
   update_epochs: 4
-  train_disc_interval: 1
   disc_minibatch_size: 2048
   proportion_env_reward: 0.5
-  n_disc_epochs: 10
+  n_disc_epochs: 50
   num_minibatches: 32
   gamma: 0.99
   gae_lambda: 0.95

@@ -6,7 +6,6 @@ import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.utils import check_validity_task_mode_dataset
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.core. utils import info_property
 
 
@@ -240,8 +239,6 @@ class UnitreeG1(BaseRobotHumanoid):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"])
     mjx_enabled = False
 
     def __init__(self, disable_arms=False, disable_back_joint=False, spec=None,

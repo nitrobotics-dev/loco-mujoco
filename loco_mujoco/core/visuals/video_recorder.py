@@ -85,6 +85,7 @@ class VideoRecorder(object):
                         "-crf", "23",  # Quality setting
                         "-an",  # Remove audio
                         "-r", "30",  # Frame rate
+                        "-y",  # Overwrite existing file
                         tmp_file  # Output file
                     ],
                     stdout=subprocess.DEVNULL,  # Suppress standard output

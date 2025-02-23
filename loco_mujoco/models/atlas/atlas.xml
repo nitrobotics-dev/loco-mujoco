@@ -62,7 +62,7 @@
         <body name="pelvis" pos="0 0 0.94">
             <site name="pelvis_mimic" class="mimic"/>
             <inertial pos="0.0111 0 0.0271" quat="0.698584 0.713914 0.0424837 -0.0224092" mass="9.509" diaginertia="0.124488 0.116646 0.0957666" />
-            <light name="spotlight" mode="trackcom" pos="0 -2 10" dir="0 0 -1"/>
+            <light name="spotlight" mode="trackcom" pos="0 -2 50" dir="0 0 -1"/>
             <camera name="track" mode="trackcom" pos="0 -4 0" xyaxes="1 0 0 0 0 1"/>
             <geom class="viz" mesh="pelvis"/>
             <geom type="cylinder" size="0.11 0.03" pos="0.046 0 0.01" quat="0.707107 0.707107 0 0" />
@@ -81,8 +81,8 @@
                     <geom class="viz" mesh="mtorso"/>
                     <geom type="cylinder" size="0.02 0.075" pos="0 0 -0.02" />
                     <body name="utorso" pos="0 0 0.05">
-                        <site name="upper_body_mimic" class="mimic" pos="0.0 0.0 0.3"/>
-                        <site name="head_mimic" class="mimic" pos="0.1 0.0 0.6"/>
+                        <site name="upper_body_mimic" class="mimic" pos="0.0 0.0 0.15"/>
+                        <site name="head_mimic" class="mimic" pos="0.1 0.0 0.5"/>
                         <inertial pos="-0.0622 0.0023 0.3157" quat="0.450601 -0.0341277 -0.0439518 0.89099" mass="84.409" diaginertia="1.62425 1.5673 0.552443" />
                         <joint name="back_bkx" stiffness="30" damping="10" axis="1 0 0" range="-0.523599 0.523599"/>
                         <geom class="viz" mesh="utorso"/>

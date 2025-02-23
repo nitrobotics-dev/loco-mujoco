@@ -47,7 +47,9 @@ class MujocoViewer:
     def __init__(self, model, dt, viewer_size=(1280, 720), start_paused=False,
                  custom_render_callback=None, record=False, camera_params=None,
                  default_camera_mode="static", hide_menu_on_startup=None,
-                 geom_group_visualization_on_startup=None, headless=False, recorder_params=None):
+                 geom_group_visualization_on_startup=None,
+                 mimic_site_visualization_on_startup=False,
+                 headless=False, recorder_params=None):
         """
         Constructor.
 
@@ -65,6 +67,7 @@ class MujocoViewer:
             hide_menu_on_startup (bool): If True, the menu is hidden on startup.
             geom_group_visualization_on_startup (int/list): int or list defining which geom group_ids should be
                 visualized on startup. If None, all are visualized.
+            mimic_site_visualization_on_startup (bool): If True, mimic sites are visualized on startup.
             headless (bool): If True, render will be done in headless mode.
             recorder_params (dict): Dictionary of parameters for the video recorder.
 
@@ -126,6 +129,8 @@ class MujocoViewer:
         self._scene = mujoco.MjvScene(self._model, 100000)
         self._user_scene = mujoco.MjvScene(self._model, 1000)
         self._scene_option = mujoco.MjvOption()
+        if mimic_site_visualization_on_startup:
+            self._scene_option.sitegroup[4] = True
         self._camera = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(model, self._camera)
         if camera_params is None:
@@ -285,17 +290,9 @@ class MujocoViewer:
         if key == glfw.KEY_5:
             self._scene_option.geomgroup[5] = not self._scene_option.geomgroup[5]
 
-        if key == glfw.KEY_6:
-            self._scene_option.geomgroup[6] = not self._scene_option.geomgroup[6]
-
-        if key == glfw.KEY_7:
-            self._scene_option.geomgroup[7] = not self._scene_option.geomgroup[7]
-
-        if key == glfw.KEY_8:
-            self._scene_option.geomgroup[8] = not self._scene_option.geomgroup[8]
-
-        if key == glfw.KEY_9:
-            self._scene_option.geomgroup[9] = not self._scene_option.geomgroup[9]
+        if key == glfw.KEY_M:
+            # mimic sites
+            self._scene_option.sitegroup[4] = not self._scene_option.sitegroup[4]
 
         if key == glfw.KEY_TAB:
             self._camera_mode_target = next(self._camera_mode_iter)
@@ -405,6 +402,10 @@ class MujocoViewer:
                                     carry.user_scene.geoms.pos[j],
                                     carry.user_scene.geoms.mat[j],
                                     carry.user_scene.geoms.rgba[j])
+                # set dataid to be able to identify the geom in the user scene
+                self._scene.geoms[carry_visual_start_idx + j].dataid = int(carry.user_scene.geoms.dataid[j]*2)
+                self._scene.geoms[carry_visual_start_idx + j].category =  mujoco.mjtCatBit.mjCAT_DECOR
+
                 self._scene.ngeom += 1
 
             self._add_user_scene_geoms()
@@ -509,6 +510,7 @@ class MujocoViewer:
         visual_geoms_pos[..., :2] += self._visual_geom_offsets
         visual_geoms_mat = np.array(mjx_state.additional_carry.user_scene.geoms.mat)
         visual_geoms_rgba = np.array(mjx_state.additional_carry.user_scene.geoms.rgba)
+        visual_geoms_dataid = np.array(mjx_state.additional_carry.user_scene.geoms.dataid)
         n_visual_geoms = mjx_state.additional_carry.user_scene.ngeoms[0]
 
         def render_all_inner_loop(self):
@@ -550,6 +552,11 @@ class MujocoViewer:
                                         visual_geoms_pos[i, j],
                                         visual_geoms_mat[i, j],
                                         visual_geoms_rgba[i, j])
+
+                    # set dataid to be able to identify the geom in the user scene
+                    self._scene.geoms[carry_visual_start_idx + j].dataid = int(visual_geoms_dataid[i, j] * 2)
+                    self._scene.geoms[carry_visual_start_idx + j].category = mujoco.mjtCatBit.mjCAT_DECOR
+
                     self._scene.ngeom += 1
 
             self._add_user_scene_geoms()
@@ -697,7 +704,11 @@ class MujocoViewer:
 
         add_overlay(
             topleft,
-            "Press 0-9 to disable/enable geom group visualization.")
+            "Press M for mimic sites visualization (if available).")
+
+        add_overlay(
+            topleft,
+            "Press 0-5 to disable/enable geom group visualization.")
 
         visualize_contact = "On" if self._scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] else "Off"
         add_overlay(

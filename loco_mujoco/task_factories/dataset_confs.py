@@ -16,7 +16,7 @@ class DefaultDatasetConf:
 
     """
 
-    task: str = "walk"
+    task: Union[str, list]  = "walk"
     dataset_type: str = "mocap"
     debug: bool = False
 
@@ -67,7 +67,7 @@ class LAFAN1DatasetConf:
 
 
 @dataclass
-class CustomTrajectoryConf:
+class CustomDatasetConf:
     """
     Configuration for loading custom trajectories.
 

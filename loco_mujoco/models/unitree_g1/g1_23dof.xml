@@ -100,7 +100,7 @@ Modified by Firas 2024:
   <worldbody>
     <body name="pelvis" pos="0 0 0.793">
       <site name="pelvis_mimic" class="mimic"/>
-      <light name="spotlight" mode="trackcom" pos="0 -2 10" dir="0 0 -1"/>
+      <light name="spotlight" mode="trackcom" pos="0 -2 50" dir="0 0 -1" />
       <inertial pos="0 0 -0.07605" quat="1 0 -0.000399148 0" mass="3.813"
         diaginertia="0.010549 0.0093089 0.0079184" />
       <freejoint name="root"/>

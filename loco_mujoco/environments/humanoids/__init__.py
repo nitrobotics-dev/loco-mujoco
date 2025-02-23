@@ -14,6 +14,8 @@ from .apptronik_apollo import Apollo
 from .apptronik_apollo_mjx import MjxApollo
 from .boostert1 import BoosterT1
 from .boostert1_mjx import MjxBoosterT1
+from .toddlerbot import ToddlerBot
+from .toddlerbot_mjx import MjxToddlerBot
 from .fourier_gr1t2 import FourierGR1T2
 from .fourier_gr1t2_mjx import MjxFourierGR1T2
 from .skeletons import (SkeletonTorque, MjxSkeletonTorque, HumanoidTorque, SkeletonMuscle, MjxSkeletonMuscle,
@@ -35,6 +37,8 @@ Apollo.register()
 MjxApollo.register()
 BoosterT1.register()
 MjxBoosterT1.register()
+ToddlerBot.register()
+MjxToddlerBot.register()
 FourierGR1T2.register()
 MjxFourierGR1T2.register()
 SkeletonTorque.register()
@@ -47,8 +51,6 @@ MjxMyoSkeleton.register()
 # compatability with old names
 HumanoidTorque.register()
 HumanoidMuscle.register()
-HumanoidTorque4Ages.register()
-HumanoidMuscle4Ages.register()
 
 from gymnasium import register
 

@@ -125,7 +125,7 @@ class Mujoco:
 
         # setup domain randomization
         domain_randomization_params = {} if domain_randomization_params is None else domain_randomization_params
-        self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](**domain_randomization_params)
+        self._domain_randomizer = DomainRandomizer.registered[domain_randomization_type](self, **domain_randomization_params)
 
         # setup initial state handler
         if init_state_params is None:
@@ -171,6 +171,7 @@ class Mujoco:
     def step(self, action):
         cur_info = self._info.copy()
         carry = self._additional_carry
+        carry = carry.replace(last_action=action)
 
         # preprocess action
         processed_action, carry = self._preprocess_action(action, self._model, self._data, carry)
@@ -210,7 +211,7 @@ class Mujoco:
 
         self._obs = cur_obs
         self._cur_step_in_episode += 1
-        self._additional_carry = carry.replace(last_action=action)
+        self._additional_carry = carry
 
         return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
@@ -685,7 +686,7 @@ class Mujoco:
     def data(self):
         return self._data
 
-    @property
+    @info_property
     def mjspec(self):
         return self._mjspec
 

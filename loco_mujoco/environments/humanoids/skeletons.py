@@ -6,8 +6,6 @@ from mujoco import MjSpec
 import loco_mujoco
 from loco_mujoco.environments.humanoids.base_skeleton import BaseSkeleton
 from loco_mujoco.environments.humanoids.base_humanoid_4_ages import BaseHumanoid4Ages
-from loco_mujoco.environments import ValidTaskConf
-from loco_mujoco.utils import check_validity_task_mode_dataset
 
 
 class SkeletonTorque(BaseSkeleton):
@@ -909,10 +907,6 @@ class HumanoidTorque4Ages(BaseSkeleton):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     modes=["all", "1", "2", "3", "4"],
-                                     data_types=["real", "perfect"])
-
     def __init__(self, **kwargs):
         """
         Constructor.
@@ -946,9 +940,6 @@ class HumanoidTorque4Ages(BaseSkeleton):
             An MDP of a set of Torque Humanoid of different sizes.
 
          """
-
-        check_validity_task_mode_dataset(HumanoidTorque4Ages.__name__, task, mode, dataset_type,
-                                         *HumanoidTorque4Ages.valid_task_confs.get_all())
 
         if task == "walk":
             if dataset_type == "real":
@@ -1016,10 +1007,6 @@ class HumanoidMuscle4Ages(BaseHumanoid4Ages):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     modes=["all", "1", "2", "3", "4"],
-                                     data_types=["real"])
-
     def __init__(self, **kwargs):
         """
                 Constructor.
@@ -1052,9 +1039,6 @@ class HumanoidMuscle4Ages(BaseHumanoid4Ages):
         Returns:
             An MDP of a set of Muscle Humanoid of different sizes.
          """
-
-        check_validity_task_mode_dataset(HumanoidMuscle4Ages.__name__, task, mode, dataset_type,
-                                         *HumanoidMuscle4Ages.valid_task_confs.get_all())
 
         if task == "walk":
             if dataset_type == "real":

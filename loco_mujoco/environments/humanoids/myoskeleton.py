@@ -3,7 +3,6 @@ import os
 import mujoco
 from mujoco import MjSpec
 from loco_mujoco.core import ObservationType
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils import info_property
 from loco_mujoco import PATH_TO_MODELS
@@ -1015,8 +1014,6 @@ class MyoSkeleton(LocoEnv):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real"])
     mjx_enabled = False
 
     def __init__(self, disable_fingers=True, spec=None, observation_spec=None, action_spec=None, **kwargs):
@@ -1144,9 +1141,10 @@ class MyoSkeleton(LocoEnv):
         # add mimic sites
         for body_name, site_name in self.body2sites_for_mimic.items():
             b = spec.find_body(body_name)
+            pos = [0.0, 0.0, 0.0]
             # todo: can not load mimic sites attributes for now, so I add them manually
             b.add_site(name=site_name, group=4, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
-                       rgba=[1.0, 0.0, 0.0, 0.5])
+                       rgba=[1.0, 0.0, 0.0, 0.5], pos=pos)
 
         if self._disable_fingers:
             for j in spec.joints:

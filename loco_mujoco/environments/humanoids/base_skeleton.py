@@ -3,7 +3,6 @@ import mujoco
 from mujoco import MjSpec
 
 from loco_mujoco.core import ObservationType
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils import info_property
 
@@ -13,9 +12,6 @@ class BaseSkeleton(LocoEnv):
     Mujoco environment of a base skeleton model.
 
     """
-
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real", "perfect"])
 
     mjx_enabled = False
 

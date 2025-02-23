@@ -4,7 +4,6 @@ from mujoco import MjSpec
 import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.core.utils import info_property
 
 
@@ -48,9 +47,6 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
     """
 
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real", "perfect"])
-
     mjx_enabled = False
 
     def __init__(self, disable_hands=True, spec=None,
@@ -88,6 +84,13 @@ class UnitreeH1v2(BaseRobotHumanoid):
             action_spec = [ac for ac in action_spec if ac not in actuators_to_remove]
             spec = self._delete_from_spec(spec, joints_to_remove,
                                           actuators_to_remove, equ_constraints_to_remove)
+
+        # uses PD control by default
+        if "control_type" not in kwargs.keys():
+            kwargs["control_type"] = "PDControl"
+            kwargs["control_params"] = dict(p_gain=[self.p_gains[act.name] for act in spec.actuators],
+                                            d_gain=[self.d_gains[act.name] for act in spec.actuators],
+                                            scale_action_to_jnt_limits=False)
 
         super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
                          **kwargs)
@@ -366,6 +369,122 @@ class UnitreeH1v2(BaseRobotHumanoid):
         ]
 
         return action_spec
+
+    @property
+    def p_gains(self):
+        p_gains = {
+            'left_hip_yaw_joint': 200.0,
+            'left_hip_pitch_joint': 200.0,
+            'left_hip_roll_joint': 200.0,
+            'left_knee_joint': 300.0,
+            'left_ankle_pitch_joint': 40.0,
+            'left_ankle_roll_joint': 40.0,
+            'right_hip_yaw_joint': 200.0,
+            'right_hip_pitch_joint': 200.0,
+            'right_hip_roll_joint': 200.0,
+            'right_knee_joint': 300.0,
+            'right_ankle_pitch_joint': 40.0,
+            'right_ankle_roll_joint': 40.0,
+            'torso_joint': 200.0,
+            'left_shoulder_pitch_joint': 40.0,
+            'left_shoulder_roll_joint': 40.0,
+            'left_shoulder_yaw_joint': 18.0,
+            'left_elbow_joint': 18.0,
+            'left_wrist_roll_joint': 19.0,
+            'left_wrist_pitch_joint': 19.0,
+            'left_wrist_yaw_joint': 19.0,
+            'right_shoulder_pitch_joint': 40.0,
+            'right_shoulder_roll_joint': 40.0,
+            'right_shoulder_yaw_joint': 18.0,
+            'right_elbow_joint': 18.0,
+            'right_wrist_roll_joint': 19.0,
+            'right_wrist_pitch_joint': 19.0,
+            'right_wrist_yaw_joint': 19.0,
+            'L_index_proximal_joint': 1.0,
+            'L_index_intermediate_joint': 1.0,
+            'L_middle_proximal_joint': 1.0,
+            'L_middle_intermediate_joint': 1.0,
+            'L_ring_proximal_joint': 1.0,
+            'L_ring_intermediate_joint': 1.0,
+            'L_pinky_proximal_joint': 1.0,
+            'L_pinky_intermediate_joint': 1.0,
+            'L_thumb_proximal_yaw_joint': 1.0,
+            'L_thumb_proximal_pitch_joint': 1.0,
+            'L_thumb_intermediate_joint': 1.0,
+            'L_thumb_distal_joint': 1.0,
+            'R_index_proximal_joint': 1.0,
+            'R_index_intermediate_joint': 1.0,
+            'R_middle_proximal_joint': 1.0,
+            'R_middle_intermediate_joint': 1.0,
+            'R_ring_proximal_joint': 1.0,
+            'R_ring_intermediate_joint': 1.0,
+            'R_pinky_proximal_joint': 1.0,
+            'R_pinky_intermediate_joint': 1.0,
+            'R_thumb_proximal_yaw_joint': 1.0,
+            'R_thumb_proximal_pitch_joint': 1.0,
+            'R_thumb_intermediate_joint': 1.0,
+            'R_thumb_distal_joint': 1.0,
+        }
+
+        return p_gains
+
+    @property
+    def d_gains(self):
+        d_gains = {
+            'left_hip_yaw_joint': 2.5,
+            'left_hip_pitch_joint': 2.5,
+            'left_hip_roll_joint': 2.5,
+            'left_knee_joint': 4.0,
+            'left_ankle_pitch_joint': 2.0,
+            'left_ankle_roll_joint': 2.0,
+            'right_hip_yaw_joint': 2.5,
+            'right_hip_pitch_joint': 2.5,
+            'right_hip_roll_joint': 2.5,
+            'right_knee_joint': 4.0,
+            'right_ankle_pitch_joint': 2.0,
+            'right_ankle_roll_joint': 2.0,
+            'torso_joint': 2.5,
+            'left_shoulder_pitch_joint': 2.0,
+            'left_shoulder_roll_joint': 2.0,
+            'left_shoulder_yaw_joint': 1.8,
+            'left_elbow_joint': 1.8,
+            'left_wrist_roll_joint': 1.9,
+            'left_wrist_pitch_joint': 1.9,
+            'left_wrist_yaw_joint': 1.9,
+            'right_shoulder_pitch_joint': 2.0,
+            'right_shoulder_roll_joint': 2.0,
+            'right_shoulder_yaw_joint': 1.8,
+            'right_elbow_joint': 1.8,
+            'right_wrist_roll_joint': 1.9,
+            'right_wrist_pitch_joint': 1.9,
+            'right_wrist_yaw_joint': 1.9,
+            'L_index_proximal_joint': 0.1,
+            'L_index_intermediate_joint': 0.1,
+            'L_middle_proximal_joint': 0.1,
+            'L_middle_intermediate_joint': 0.1,
+            'L_ring_proximal_joint': 0.1,
+            'L_ring_intermediate_joint': 0.1,
+            'L_pinky_proximal_joint': 0.1,
+            'L_pinky_intermediate_joint': 0.1,
+            'L_thumb_proximal_yaw_joint': 0.1,
+            'L_thumb_proximal_pitch_joint': 0.1,
+            'L_thumb_intermediate_joint': 0.1,
+            'L_thumb_distal_joint': 0.1,
+            'R_index_proximal_joint': 0.1,
+            'R_index_intermediate_joint': 0.1,
+            'R_middle_proximal_joint': 0.1,
+            'R_middle_intermediate_joint': 0.1,
+            'R_ring_proximal_joint': 0.1,
+            'R_ring_intermediate_joint': 0.1,
+            'R_pinky_proximal_joint': 0.1,
+            'R_pinky_intermediate_joint': 0.1,
+            'R_thumb_proximal_yaw_joint': 0.1,
+            'R_thumb_proximal_pitch_joint': 0.1,
+            'R_thumb_intermediate_joint': 0.1,
+            'R_thumb_distal_joint': 0.1,
+        }
+
+        return d_gains
 
     @classmethod
     def get_default_xml_file_path(cls):

@@ -1,14 +1,10 @@
 import mujoco
 from mujoco import MjSpec
 
-from loco_mujoco.environments import ValidTaskConf
 from .unitreeA1 import UnitreeA1
 
 
 class MjxUnitreeA1(UnitreeA1):
-
-    valid_task_confs = ValidTaskConf(tasks=["simple", "hard"],
-                                     data_types=["real", "perfect"])
 
     mjx_enabled = True
 

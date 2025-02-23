@@ -4,7 +4,6 @@ from mujoco import MjSpec
 import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
-from loco_mujoco.environments import ValidTaskConf
 from loco_mujoco.core.utils import info_property
 
 
@@ -47,9 +46,6 @@ class Apollo(BaseRobotHumanoid):
     ---------
 
     """
-
-    valid_task_confs = ValidTaskConf(tasks=["walk", "run"],
-                                     data_types=["real", "perfect"])
 
     mjx_enabled = False
 
@@ -213,8 +209,7 @@ class Apollo(BaseRobotHumanoid):
         """
         Returns the derivative gains for the default PD controller.
         """
-        return [15, 3, 3, 142, 165, 60, 171, 153, 92, 46, 11, 21, 171, 153, 92, 46, 11, 21, 26, 45, 21, 24, 15, 3, 3,
-                26, 45, 21, 24, 15, 3, 3]
+        return 0.0
 
     @info_property
     def grf_size(self):

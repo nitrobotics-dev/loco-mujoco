@@ -14,7 +14,7 @@ from jax.scipy.spatial.transform import Rotation as jnp_R
 from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.core.utils.mujoco import (mj_jnt_name2id, mj_jntname2qposid, mj_jntname2qvelid,
                                            mj_jntid2qposid, mj_jntid2qvelid)
-from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
+from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast, calculate_relative_site_quatities
 
 
 class ObservationIndexContainer:
@@ -394,7 +394,7 @@ class BodyRot(SimpleObs):
     dim = 4
 
     def _init_from_mj(self, env, model, data, current_obs_size):
-        dim = len(data.body(self.xml_name).cvel)
+        dim = len(data.body(self.xml_name).xquat)
         assert dim == self.dim
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
         self.data_type_ind = np.array(self.to_list(data.body(self.xml_name).id))
@@ -468,9 +468,9 @@ class EntryFromFreeJointPos(FreeJointPos):
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         super()._init_from_mj(None, model, data, current_obs_size)
-        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
-        self.data_type_ind = self.data_type_ind[self._entry_index]
-        self.obs_ind = self.obs_ind[0]
+        self.min, self.max = [self.min[self._entry_index]], [self.max[self._entry_index]]
+        self.data_type_ind = np.array([self.data_type_ind[self._entry_index]])
+        self.obs_ind = np.array([self.obs_ind[0]])
         self._initialized_from_mj = True
 
     @classmethod
@@ -606,9 +606,9 @@ class EntryFromFreeJointVel(FreeJointVel):
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         super()._init_from_mj(None, model, data, current_obs_size)
-        self.min, self.max = self.min[self._entry_index], self.max[self._entry_index]
-        self.data_type_ind = self.data_type_ind[self._entry_index]
-        self.obs_ind = self.obs_ind[0]
+        self.min, self.max = [self.min[self._entry_index]], [self.max[self._entry_index]]
+        self.data_type_ind = np.array([self.data_type_ind[self._entry_index]])
+        self.obs_ind = np.array([self.obs_ind[0]])
 
     @classmethod
     def data_type(cls):
@@ -911,6 +911,73 @@ class HeightMatrix(StatefulObservation):
         return backend.ravel(matrix), carry
 
 
+class RelativeSiteQuantaties(StatefulObservation):
+    """
+    Observation Type holding the position, rotation and velocity of all sites for mimic relatively to the main site.
+    This observation type is typically included in the observation space of imitation learning algorithms like
+    AMP or DeepMimic, where the agent is supposed to mimic the trajectory of a reference agent.
+
+    Args:
+        obs_name: The name of the observation.
+        site_names: List of site names to calculate the relative quantities from. The first site in the list is
+            considered as the main site. If None, the environment's sites for mimic are used instead.
+
+    See also:
+        :class:`Obs` for the base observation class.
+    """
+
+    def __init__(self, obs_name: str, site_names: List[str] = None):
+        self.site_names = site_names
+
+        # will be initialized in the _init_from_mj method
+        self.dim = None
+        self.rel_site_ids = None
+        self.site_bodyid = None
+        self.body_rootid = None
+        super().__init__(obs_name)
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        if self.site_names is None:
+            self.site_names = env.sites_for_mimic
+            assert len(self.site_names) > 0, "No sites for mimic are defined in the environment."
+        self.rel_site_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name) for name in self.site_names]
+        self.rel_site_ids = np.array(self.rel_site_ids)
+        self.site_bodyid = model.site_bodyid
+        self.body_rootid = model.body_rootid
+        n_sites = len(self.site_names) - 1
+        self.dim = (3 + 3 + 6) * n_sites    # 3 for position, 3 for rotation, 6 for velocity
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._initialized_from_mj = True
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        """
+        Get the observation and update the state.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            carry: The state carry.
+            backend: The backend to use, either np or jnp.
+
+        Returns:
+            The observation and the updated state.
+
+        """
+
+        rel_body_ids = self.site_bodyid[self.rel_site_ids]
+        site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(data, self.rel_site_ids, rel_body_ids,
+                                                                               self.body_rootid, backend)
+
+        site_obs = backend.concatenate([
+            backend.ravel(site_rpos),
+            backend.ravel(site_rangles),
+            backend.ravel(site_rvel)
+        ])
+
+        return backend.ravel(site_obs), carry
+
 class ObservationType:
     """
     Namespace for all observation types for easy access.
@@ -932,6 +999,7 @@ class ObservationType:
     ProjectedGravityVector = ProjectedGravityVector
     Force = Force
     LastAction = LastAction
+    RelativeSiteQuantaties = RelativeSiteQuantaties
 
     @classmethod
     def get(cls, obs_name):

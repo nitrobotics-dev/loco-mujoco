@@ -5,7 +5,6 @@ import loco_mujoco
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments.quadrupeds.base_robot_quadruped import BaseRobotQuadruped
 from loco_mujoco.core.utils import info_property
-from loco_mujoco.environments import ValidTaskConf
 
 
 class AnymalC(BaseRobotQuadruped):
@@ -46,9 +45,6 @@ class AnymalC(BaseRobotQuadruped):
     ---------
 
     """
-
-    valid_task_confs = ValidTaskConf(tasks=["simple", "hard"],
-                                     data_types=["real", "perfect"])
 
     mjx_enabled = False
 
