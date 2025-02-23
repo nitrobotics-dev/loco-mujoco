@@ -1,5 +1,9 @@
 from test_conf import *
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
 def test_HeightBasedTerminalStateHandler(standing_trajectory, falling_trajectory, backend):

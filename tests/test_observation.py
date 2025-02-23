@@ -29,6 +29,11 @@ OBSERVATION_SPACE = [
 ]
 
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
+
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
 def test_BodyPos(backend):
     seed = 0

@@ -4,8 +4,6 @@ from test_conf import *
 
 # set Jax-backend to CPU
 jax.config.update('jax_platform_name', 'cpu')
-jax.config.update('jax_exec_time_optimization_effort', 1.0)
-jax.config.update('jax_memory_fitting_effort', 1.0)
 print(f"Jax backend device: {jax.default_backend()} \n")
 
 

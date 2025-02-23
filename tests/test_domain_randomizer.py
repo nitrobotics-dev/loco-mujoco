@@ -14,6 +14,11 @@ from copy import deepcopy
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
+
 # load yaml as dict:
 path = parent_dir + "/tests/test_conf/default_dom_rand_conf.yaml"
 with open(path, "r") as file:

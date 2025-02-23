@@ -17,6 +17,10 @@ from loco_mujoco.trajectory import (
 
 from test_conf import *
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
 def test_trajectory_info_save_and_load(

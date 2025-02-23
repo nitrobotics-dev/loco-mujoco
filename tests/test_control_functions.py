@@ -4,6 +4,11 @@ from math import isclose
 from test_conf import *
 
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
+
 def _create_env(backend, control_type="DefaultControl", control_params=None):
     DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 

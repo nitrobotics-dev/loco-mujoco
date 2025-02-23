@@ -4,6 +4,10 @@ from loco_mujoco.core.utils import mj_jntname2qposid
 
 from test_conf import *
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
 
 def _create_env(backend, init_state_type, init_state_params=None, trajectory=None):
     DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
