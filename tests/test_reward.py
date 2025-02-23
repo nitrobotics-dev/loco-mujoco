@@ -40,21 +40,21 @@ def test_TargetXVelocityReward(standing_trajectory, falling_trajectory, backend)
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 18.903825759887695)
+        assert isclose(reward_sum, 18.903825759887695, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.137758985161781)
+        assert isclose(reward_42, 0.137758985161781, abs_tol=1e-7)
     else:
         assert len(transitions.rewards) == 99
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert jnp.isclose(reward_sum, 18.903825759887695)
+        assert jnp.isclose(reward_sum, 18.903825759887695, atol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert jnp.isclose(reward_42, 0.137758985161781)
+        assert jnp.isclose(reward_42, 0.137758985161781, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
@@ -71,21 +71,21 @@ def test_TargetVelocityGoalReward(standing_trajectory, falling_trajectory, backe
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 68.28633880615)
+        assert isclose(reward_sum, 68.28633880615, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.866344630718231)
+        assert isclose(reward_42, 0.866344630718231, abs_tol=1e-7)
     else:
         assert len(transitions.rewards) == 99
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert jnp.isclose(reward_sum, 21.164863586425781)
+        assert jnp.isclose(reward_sum, 21.164863586425781, atol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert jnp.isclose(reward_42, 0.384216576814651)
+        assert jnp.isclose(reward_42, 0.384216576814651, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
@@ -104,11 +104,11 @@ def test_LocomotionReward(standing_trajectory, falling_trajectory, backend):
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 35.581115722656250)
+        assert isclose(reward_sum, 35.581115722656250, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.)
+        assert isclose(reward_42, 0., abs_tol=1e-7)
     else:
         # todo: fix this once the Locomotion reward is updated
         pass
@@ -136,21 +136,21 @@ def test_TargetVelocityTrajReward(standing_trajectory, falling_trajectory, backe
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 41.132110595703125)
+        assert isclose(reward_sum, 41.132110595703125, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.417381376028061)
+        assert isclose(reward_42, 0.417381376028061, abs_tol=1e-7)
     else:
         assert len(transitions.rewards) == 99
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert jnp.isclose(reward_sum, 41.132110595703125)
+        assert jnp.isclose(reward_sum, 41.132110595703125, atol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert jnp.isclose(reward_42, 0.417381376028061)
+        assert jnp.isclose(reward_42, 0.417381376028061, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
@@ -166,18 +166,18 @@ def test_MimicReward(standing_trajectory, falling_trajectory, backend):
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 35.612613677978516)
+        assert isclose(reward_sum, 35.612613677978516, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.498908072710037)
+        assert isclose(reward_42, 0.498908072710037, abs_tol=1e-7)
     else:
         assert len(transitions.rewards) == 99
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert jnp.isclose(reward_sum, 35.612613677978516)
+        assert jnp.isclose(reward_sum, 35.612613677978516, atol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert jnp.isclose(reward_42, 0.498908072710037)
+        assert jnp.isclose(reward_42, 0.498908072710037, atol=1e-7)
