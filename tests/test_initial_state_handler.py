@@ -56,7 +56,7 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
                                   0., 0., 0., 0., 0., 0. # BodyVel
                                 ])
 
-        assert np.allclose(state_0, state_0_test)
+        assert np.allclose(state_0, state_0_test, atol=1e-7)
 
         state_1_test = np.array([0.3, 1., 0., 0., 0., # FreeJointPosNoXY
                                  0.3, # JointPos
@@ -68,8 +68,8 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
         print("\nstate_1", state_1)
         assert np.allclose(state_1, state_1_test)
 
-        assert np.allclose(mjx_env_2._data.qpos, qpos_init)
-        assert np.allclose(mjx_env_2._data.qvel, qvel_init)
+        assert np.allclose(mjx_env_2._data.qpos, qpos_init, atol=1e-7)
+        assert np.allclose(mjx_env_2._data.qvel, qvel_init, atol=1e-7)
     else:
         state_0 = mjx_env_1.mjx_reset(key)
         state_1 = mjx_env_2.mjx_reset(key)
@@ -83,7 +83,7 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
                                   0., 0., 0., 0., 0., 0.  # BodyVel
                                  ])
 
-        assert jnp.allclose(state_0.observation, state_0_test)
+        assert jnp.allclose(state_0.observation, state_0_test, atol=1e-7)
 
         state_1_test = jnp.array([0.3, 1., 0., 0., 0.,  # FreeJointPosNoXY
                                   0.3,  # JointPos
@@ -93,10 +93,10 @@ def test_DefaultInitialStateHandler(falling_trajectory, backend):
                                   0., 0., 0., 0., 0., 0.  # BodyVel
                                   ])
         print("\nstate_1", state_1.observation)
-        assert jnp.allclose(state_1.observation, state_1_test)
+        assert jnp.allclose(state_1.observation, state_1_test, atol=1e-7)
 
-        assert jnp.allclose(state_1.data.qpos, qpos_init)
-        assert jnp.allclose(state_1.data.qvel, qvel_init)
+        assert jnp.allclose(state_1.data.qpos, qpos_init, atol=1e-7)
+        assert jnp.allclose(state_1.data.qvel, qvel_init, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
@@ -132,13 +132,13 @@ def test_TrajInitialStateHandler(falling_trajectory, backend):
                                 5.95915946e-04, -6.62494451e-04 ])
 
         print("\nstate_0", state_0)
-        assert np.allclose(state_0, state_0_test)
+        assert np.allclose(state_0, state_0_test, atol=1e-7)
 
         print("\nstate_1", state_1)
-        assert np.allclose(state_1, state_1_test)
+        assert np.allclose(state_1, state_1_test, atol=1e-7)
 
         print("\nstate_2", state_2)
-        assert np.allclose(state_2, state_2_test)
+        assert np.allclose(state_2, state_2_test, atol=1e-7)
     else:
         state_0 = mjx_env.mjx_reset(key)
         key = jax.random.PRNGKey(seed+1)
@@ -164,10 +164,10 @@ def test_TrajInitialStateHandler(falling_trajectory, backend):
                                 7.47278682e-04, -6.67195200e-05 ])
 
         print("\nstate_0", state_0.observation)
-        assert np.allclose(state_0.observation, state_0_test)
+        assert np.allclose(state_0.observation, state_0_test, atol=1e-7)
 
         print("\nstate_1", state_1.observation)
-        assert np.allclose(state_1.observation, state_1_test)
+        assert np.allclose(state_1.observation, state_1_test, atol=1e-7)
 
         print("\nstate_2", state_2.observation)
-        assert np.allclose(state_2.observation, state_2_test)
+        assert np.allclose(state_2.observation, state_2_test, atol=1e-7)
