@@ -12,13 +12,13 @@ def test_HeightBasedTerminalStateHandler(standing_trajectory, falling_trajectory
     assert len(transitions.absorbings) == 999
 
     if backend == "numpy":
-        assert np.sum(transitions.absorbings) == 922
-        assert np.all(transitions.absorbings[0:77] == 0)
-        assert np.all(transitions.absorbings[77:] == 1)
+        assert np.sum(transitions.absorbings) == 927
+        assert np.all(transitions.absorbings[0:72] == 0)
+        assert np.all(transitions.absorbings[72:] == 1)
     else:
-        assert jnp.sum(transitions.absorbings) == 922
-        assert jnp.all(transitions.absorbings[0:77] == 0)
-        assert jnp.all(transitions.absorbings[77:] == 1)
+        assert jnp.sum(transitions.absorbings) == 927
+        assert jnp.all(transitions.absorbings[0:72] == 0)
+        assert jnp.all(transitions.absorbings[72:] == 1)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
@@ -51,10 +51,10 @@ def test_RootPoseTrajTerminalStateHandler(standing_trajectory, falling_trajector
     assert len(transitions.absorbings) == 999
 
     if backend == "numpy":
-        assert np.sum(transitions.absorbings) == 958
-        assert np.all(transitions.absorbings[0:41] == 0)
-        assert np.all(transitions.absorbings[41:] == 1)
+        assert np.sum(transitions.absorbings) == 941
+        assert np.all(transitions.absorbings[0:58] == 0)
+        assert np.all(transitions.absorbings[58:] == 1)
     else:
-        assert jnp.sum(transitions.absorbings) == 958
-        assert jnp.all(transitions.absorbings[0:41] == 0)
-        assert jnp.all(transitions.absorbings[41:] == 1)
+        assert jnp.sum(transitions.absorbings) == 941
+        assert jnp.all(transitions.absorbings[0:58] == 0)
+        assert jnp.all(transitions.absorbings[58:] == 1)
