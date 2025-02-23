@@ -380,7 +380,7 @@ class LocoEnv(Mjx):
                              "To create a dataset pass a trajectory first.")
 
     def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, from_velocity=False, render=True,
-                        record=False, recorder_params=None, callback_class=None, key=None):
+                        record=False, recorder_params=None, callback_class=None, quiet=False, key=None):
         """
         Plays a demo of the loaded trajectory by forcing the model
         positions to the ones in the trajectories at every step.
@@ -394,6 +394,7 @@ class LocoEnv(Mjx):
             record (bool): If True, the rendered trajectory will be recorded.
             recorder_params (dict): Dictionary containing the recorder parameters.
             callback_class (class): Class to be called at each step of the simulation.
+            quiet (bool): If True, disable tqdm
             key (jax.random.PRNGKey): Random key to use for the simulation.
 
         """
@@ -451,8 +452,9 @@ class LocoEnv(Mjx):
                         self._additional_carry.traj_state.subtraj_step_no)
             else:
                 nspe = n_steps_per_episode
-            for j in tqdm(range(nspe)):
 
+            pbar = range(nspe) if quiet else tqdm(range(nspe))
+            for j in pbar:
                 if callback_class is None:
                     self._data = self.set_sim_state_from_traj_data(self._data, traj_data_sample, self._additional_carry)
                     self._model, self._data, self._additional_carry = (
