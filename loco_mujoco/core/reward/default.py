@@ -52,7 +52,7 @@ class NoReward(Reward):
             Tuple[float, Any]: The reward for the current transition and the updated carry.
 
         """
-        return 0, carry
+        return 0.0, carry
 
 
 class TargetXVelocityReward(Reward):

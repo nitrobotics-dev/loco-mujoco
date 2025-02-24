@@ -1,7 +1,7 @@
 import numpy as np
 import jax
 
-from loco_mujoco.task_factories import ImitationFactory
+from loco_mujoco.task_factories import RLFactory, ImitationFactory
 
 from gymnasium import Env
 from gymnasium.utils import seeding
@@ -38,7 +38,12 @@ class GymnasiumWrapper(Env):
         else:
             kwargs["headless"] = True
 
-        self._env = ImitationFactory.make(env_name, **kwargs)
+        dataset_confs = ["default_dataset_conf", "amass_dataset_conf", "lafan1_dataset_conf", "custom_dataset_conf"]
+
+        if any(conf in kwargs for conf in dataset_confs):
+            self._env = ImitationFactory.make(env_name, **kwargs)
+        else:
+            self._env = RLFactory.make(env_name, **kwargs)
 
         self.metadata["render_fps"] = 1.0 / self._env.dt
 

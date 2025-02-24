@@ -1,11 +1,11 @@
 import pytest
 import jax
 
-from huggingface_hub import list_repo_files
-
+import loco_mujoco
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco import RLFactory, ImitationFactory
 from loco_mujoco.task_factories import DefaultDatasetConf, LAFAN1DatasetConf, CustomDatasetConf
+import gymnasium as gym
 
 from test_conf import *
 
@@ -15,33 +15,6 @@ jax.config.update('jax_platform_name', 'cpu')
 jax.config.update('jax_enable_compilation_cache', False)
 jax.config.update('jax_disable_jit', True)
 print(f"Jax backend device: {jax.default_backend()} \n")
-
-
-def get_numpy_env_names():
-    """Generates a list of numpy env_names for testing."""
-    np_env_list = []
-    for env_name in LocoEnv.registered_envs.keys():
-        if "Mjx" not in env_name:
-            np_env_list.append(env_name)
-    return np_env_list
-
-
-def get_numpy_env_names_default_dataset_conf():
-    """Generates a list of numpy env_names for testing (only for envs that have uploaded datasets). """
-    repo_id = "robfiras/loco-mujoco-datasets"
-    all_files = list_repo_files(repo_id, repo_type="dataset")
-    directory = "DefaultDatasets/mocap"  # Adjust to your dataset structure
-    np_env_list = set([f.split("/")[-2] for f in all_files if f.startswith(directory)])
-    return np_env_list
-
-
-def get_numpy_env_names_lafan1_dataset_conf():
-    """Generates a list of numpy env_names for testing (only for envs that have uploaded datasets). """
-    repo_id = "robfiras/loco-mujoco-datasets"
-    all_files = list_repo_files(repo_id, repo_type="dataset")
-    directory = "Lafan1/mocap"  # Adjust to your dataset structure
-    np_env_list = set([f.split("/")[-2] for f in all_files if f.startswith(directory)])
-    return np_env_list
 
 
 def get_custom_traj(env_name):
@@ -89,11 +62,18 @@ def test_RLFactory(env_name):
     assert isinstance(env, LocoEnv.registered_envs[env_name])
 
 
+@pytest.mark.parametrize("env_name", get_numpy_env_names())
+def test_Gymasium(env_name):
+    env = gym.make("LocoMujoco", env_name=env_name)
+    assert isinstance(env.unwrapped, LocoEnv.registered_envs[env_name])
+
+
 @pytest.mark.parametrize("env_name", get_numpy_env_names_default_dataset_conf())
 def test_ImitationFactoryDefaultDatasetConf(env_name):
     task = "balance"
     env = ImitationFactory.make(env_name, default_dataset_conf=DefaultDatasetConf(task))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
+    env.create_dataset()
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names_lafan1_dataset_conf())
@@ -101,6 +81,7 @@ def test_ImitationFactorLafan1(env_name):
     dataset_name = "walk1_subject1"
     env = ImitationFactory.make(env_name, lafan1_dataset_conf=LAFAN1DatasetConf(dataset_name))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
+    env.create_dataset()
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names())
@@ -108,4 +89,4 @@ def test_ImitationFactoryCustomDataset(env_name):
     traj = get_custom_traj(env_name)
     env = ImitationFactory.make(env_name, custom_dataset_conf=CustomDatasetConf(traj))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-
+    env.create_dataset()
