@@ -767,17 +767,17 @@ class DefaultRandomizer(DomainRandomizer):
 
         init_p_gain = env._control_func._init_p_gain
 
+        noise_shape = (len(init_p_gain),) if init_p_gain.size > 1 else (1,)
+
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            interpolation = jax.random.uniform(_k, shape=(len(init_p_gain),), minval=-1.0, maxval=1.0)
+            interpolation = jax.random.uniform(_k, shape=noise_shape, minval=-1.0, maxval=1.0)
             carry = carry.replace(key=key)
         else:
-            interpolation = np.random.normal(size=len(init_p_gain))
+            interpolation = np.random.uniform(size=noise_shape, low=-1.0, high=1.0)
 
         p_noise_scale = self.rand_conf["p_gains_noise_scale"]
-
-        p_noise = interpolation * (p_noise_scale * init_p_gain)
 
         p_noise = (
             interpolation * (p_noise_scale * init_p_gain) 
@@ -808,13 +808,15 @@ class DefaultRandomizer(DomainRandomizer):
 
         init_d_gain = env._control_func._init_d_gain
 
+        noise_shape = (len(init_d_gain),) if init_d_gain.size > 1 else (1,)
+
         if backend == jnp:
             key = carry.key
             key, _k = jax.random.split(key)
-            interpolation = jax.random.uniform(_k, shape=(len(init_d_gain),), minval=-1.0, maxval=1.0)
+            interpolation = jax.random.uniform(_k, shape=noise_shape, minval=-1.0, maxval=1.0)
             carry = carry.replace(key=key)
         else:
-            interpolation = np.random.uniform(size=len(init_d_gain), low=-1.0, high=1.0)
+            interpolation = np.random.uniform(size=noise_shape, low=-1.0, high=1.0)
 
         d_noise_scale = self.rand_conf["d_gains_noise_scale"]
 
