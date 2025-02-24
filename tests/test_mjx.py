@@ -9,6 +9,9 @@ N_STEPS = 1000
 N_EPISODES_REP = 5
 N_STEPS_REP = 500
 
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
 
 def test_mjx_simto_mujoco():
     """
