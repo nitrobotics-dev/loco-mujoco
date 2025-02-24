@@ -1,7 +1,6 @@
-import gc
-from itertools import product
 import pytest
 import jax
+
 from huggingface_hub import list_repo_files
 
 from loco_mujoco.environments import LocoEnv
@@ -13,8 +12,6 @@ from test_conf import *
 
 # Set Jax-backend to CPU
 jax.config.update('jax_platform_name', 'cpu')
-# jax.config.update('jax_exec_time_optimization_effort', 1.0)
-# jax.config.update('jax_memory_fitting_effort', 1.0)
 jax.config.update('jax_enable_compilation_cache', False)
 jax.config.update('jax_disable_jit', True)
 print(f"Jax backend device: {jax.default_backend()} \n")
@@ -73,7 +70,7 @@ def get_custom_traj(env_name):
 
     # create a trajectory info -- this stores basic information about the trajectory
     njnt = model.njnt
-    jnt_type = model.jnt_type
+    jnt_type = model.jnt_type.copy()
     jnt_names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)]
     traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / env.dt)
 
@@ -90,9 +87,6 @@ def get_custom_traj(env_name):
 def test_RLFactory(env_name):
     env = RLFactory.make(env_name)
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    del env
-    jax.clear_caches()
-    gc.collect()
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names_default_dataset_conf())
@@ -100,25 +94,18 @@ def test_ImitationFactoryDefaultDatasetConf(env_name):
     task = "balance"
     env = ImitationFactory.make(env_name, default_dataset_conf=DefaultDatasetConf(task))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    del env
-    jax.clear_caches()
-    gc.collect()
+
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names_lafan1_dataset_conf())
 def test_ImitationFactorLafan1(env_name):
     dataset_name = "walk1_subject1"
     env = ImitationFactory.make(env_name, lafan1_dataset_conf=LAFAN1DatasetConf(dataset_name))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    del env
-    jax.clear_caches()
-    gc.collect()
+
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names())
 def test_ImitationFactoryCustomDataset(env_name):
     traj = get_custom_traj(env_name)
     env = ImitationFactory.make(env_name, custom_dataset_conf=CustomDatasetConf(traj))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    del env
-    del traj
-    jax.clear_caches()
-    gc.collect()
+

@@ -712,8 +712,6 @@ class GoalTrajRootVelocity(Goal, RootVelocityArrowVisualizer):
         return 6
 
 
-
-
 class GoalTrajMimic(Goal):
     """
     A class representing a trajectory goal in keypoint space (defined by sites) and joint properties.
@@ -771,7 +769,6 @@ class GoalTrajMimic(Goal):
             site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
             self._rel_site_ids.append(site_id)
 
-        root_body_name = self._info_props["root_body_name"]
         n_joints = model.njnt
         n_sites = len(self._info_props["sites_for_mimic"]) - 1
         size_for_joint_pos = (5 + (n_joints - 1)) * self.n_step_lookahead
@@ -971,19 +968,11 @@ class GoalTrajMimicv2(GoalTrajMimic):
                  target_geom_rgba: Tuple[float, float, float, float] = (0.471, 0.38, 0.812, 0.5),
                  **kwargs):
 
-        self.n_step_lookahead = 1   # todo: implement n_step_lookahead
-        n_visual_geoms = len(info_props["sites_for_mimic"]) if \
-            ("visualize_goal" in kwargs.keys() and kwargs["visualize_goal"]) else 0
-
-        self.mjspec = info_props["mjspec"]
-        n_visual_geoms = 0
+        self.n_step_lookahead = 1
         self._geom_group_to_include = 0
         self._geom_ids_to_exclude = (0,)  # worldbody
         self._target_geom_rgba = target_geom_rgba
-        for i, geom in enumerate(self.mjspec.geoms):
-            if i not in self._geom_ids_to_exclude and geom.group == self._geom_group_to_include:
-                n_visual_geoms += 1
-        super(GoalTrajMimic, self).__init__(info_props, n_visual_geoms=n_visual_geoms, **kwargs)
+        super(GoalTrajMimic, self).__init__(info_props, **kwargs)
 
         self.main_body_name = self._info_props["upper_body_xml_name"]
         self._qpos_ind = None
@@ -998,12 +987,20 @@ class GoalTrajMimicv2(GoalTrajMimic):
         self._site_bodyid = None
         self._dim = None
 
-
     def _init_from_mj(self,
                       env: Any,
                       model: Union[MjModel, Model],
                       data: Union[MjData, Data],
                       current_obs_size: int):
+        """
+        Initialize the goal from Mujoco model and data.
+
+        Args:
+            env (Any): The environment instance.
+            model (Union[MjModel, Model]): The Mujoco model.
+            data (Union[MjData, Data]): The Mujoco data.
+            current_obs_size (int): Current observation size.
+        """
 
         super()._init_from_mj(env, model, data, current_obs_size)
 
@@ -1032,6 +1029,10 @@ class GoalTrajMimicv2(GoalTrajMimic):
         self._geom_rgba = np.array(geom_rgba)
         self._geom_dataid = np.array(geom_dataid).reshape(-1, 1)
         self._geom_group = np.array(geom_group).reshape(-1, 1)
+
+        for i, geom in enumerate(env.mjspec.geoms):
+            if i not in self._geom_ids_to_exclude and geom.group == self._geom_group_to_include:
+                self.n_visual_geoms += 1
 
     def set_visuals(self,
                     env: Any,

@@ -146,14 +146,11 @@ class Mujoco:
         self._added_carry_visual_to_user_scene = False
         self._added_carry_visual_start_idx = None
 
-        atexit.register(self.stop)
-
     def seed(self, seed):
         np.random.seed(seed)
 
     def reset(self, key):
         key, subkey = jax.random.split(key)
-        self._model = deepcopy(self._init_model)    # todo: this is not efficient, think about a better way
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
@@ -216,9 +213,13 @@ class Mujoco:
         return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
     def render(self, record=False):
+
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
 
+            if not self._viewer_params["headless"]:
+                # register stop function to be called at exit
+                atexit.register(self.stop)
 
         if self._terrain.is_dynamic:
             terrain_state = self._additional_carry.terrain_state
@@ -602,7 +603,7 @@ class Mujoco:
         # create data
         data = mujoco.MjData(model)
 
-        return model, deepcopy(model), data, spec
+        return model, model, data, spec
 
     def reload_mujoco(self, xml_file):
         """
@@ -654,7 +655,7 @@ class Mujoco:
         for attr_name in dir(self):
             attr_value = getattr(self.__class__, attr_name, None)
             if isinstance(attr_value, property) and getattr(attr_value.fget, '_is_info_property', False):
-                info_props[attr_name] = getattr(self, attr_name)
+                info_props[attr_name] = deepcopy(getattr(self, attr_name))
         return info_props
 
     @staticmethod
@@ -686,7 +687,7 @@ class Mujoco:
     def data(self):
         return self._data
 
-    @info_property
+    @property
     def mjspec(self):
         return self._mjspec
 
