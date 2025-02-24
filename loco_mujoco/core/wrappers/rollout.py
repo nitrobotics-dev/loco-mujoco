@@ -68,6 +68,7 @@ class RolloutWrapper:
                 obs = self.env.reset(rng_reset)
                 first_state_in_episode = True
             else:
+                obs = next_obs
                 first_state_in_episode = False
 
         return (np.array(all_obs), np.array(all_action), np.array(all_reward), np.array(all_next_obs),
@@ -117,13 +118,13 @@ class MjxRolloutWrapper:
             absorbing = next_state.absorbing
             done = next_state.done
 
-            next_obs = jnp.where(done, next_state.final_observation, next_obs)
+            next_obs = jnp.where(done, next_state.additional_carry.final_observation, next_obs)
 
             cum_reward = cum_reward + reward * valid_mask
             new_valid_mask = valid_mask * (1 - done)
 
             carry = [
-                obs,
+                next_obs,
                 next_state,
                 policy_params,
                 rng,
