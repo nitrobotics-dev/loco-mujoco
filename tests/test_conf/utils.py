@@ -12,6 +12,15 @@ def get_numpy_env_names():
     return np_env_list
 
 
+def get_jax_env_names():
+    """Generates a list of jax env_names for testing."""
+    jax_env_list = []
+    for env_name in LocoEnv.registered_envs.keys():
+        if "Mjx" in env_name:
+            jax_env_list.append(env_name)
+    return jax_env_list
+
+
 def get_numpy_env_names_default_dataset_conf():
     """Generates a list of numpy env_names for testing (only for envs that have uploaded datasets). """
     repo_id = "robfiras/loco-mujoco-datasets"

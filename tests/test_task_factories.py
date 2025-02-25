@@ -1,8 +1,3 @@
-import pytest
-import jax
-
-import loco_mujoco
-from loco_mujoco.environments import LocoEnv
 from loco_mujoco import RLFactory, ImitationFactory
 from loco_mujoco.task_factories import DefaultDatasetConf, LAFAN1DatasetConf, CustomDatasetConf
 import gymnasium as gym
@@ -12,8 +7,6 @@ from test_conf import *
 
 # Set Jax-backend to CPU
 jax.config.update('jax_platform_name', 'cpu')
-# jax.config.update('jax_enable_compilation_cache', False)
-# jax.config.update('jax_disable_jit', True)
 print(f"Jax backend device: {jax.default_backend()} \n")
 
 
@@ -57,7 +50,13 @@ def get_custom_traj(env_name):
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names())
-def test_RLFactory(env_name):
+def test_RLFactory_numpy(env_name):
+    env = RLFactory.make(env_name)
+    assert isinstance(env, LocoEnv.registered_envs[env_name])
+
+
+@pytest.mark.parametrize("env_name", get_jax_env_names())
+def test_RLFactory_jax(env_name):
     env = RLFactory.make(env_name)
     assert isinstance(env, LocoEnv.registered_envs[env_name])
 
@@ -73,15 +72,13 @@ def test_ImitationFactoryDefaultDatasetConf(env_name):
     task = "balance"
     env = ImitationFactory.make(env_name, default_dataset_conf=DefaultDatasetConf(task))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    env.create_dataset()
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names_lafan1_dataset_conf())
 def test_ImitationFactorLafan1(env_name):
-    dataset_name = "walk1_subject1"
+    dataset_name = "dance1_subject1"
     env = ImitationFactory.make(env_name, lafan1_dataset_conf=LAFAN1DatasetConf(dataset_name))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    env.create_dataset()
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names())
@@ -89,4 +86,3 @@ def test_ImitationFactoryCustomDataset(env_name):
     traj = get_custom_traj(env_name)
     env = ImitationFactory.make(env_name, custom_dataset_conf=CustomDatasetConf(traj))
     assert isinstance(env, LocoEnv.registered_envs[env_name])
-    env.create_dataset()

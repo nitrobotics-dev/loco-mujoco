@@ -5,7 +5,7 @@ import numpy as np
 import mujoco
 from mujoco import MjModel, MjData
 from pathlib import Path
-import gc
+from omegaconf import OmegaConf
 
 import jax.random as jr
 import numpy.random as nr
@@ -474,3 +474,13 @@ def mock_random(monkeypatch):
         "randn",
         lambda *args: np.full(args if args else (), 0.2),
     )
+
+
+@pytest.fixture
+def ppo_rl_config():
+    return OmegaConf.load(Path(__file__).resolve().parent / 'algorithm_confs/ppo.yaml')
+
+
+@pytest.fixture
+def imitation_config():
+    return OmegaConf.load(Path(__file__).resolve().parent / 'algorithm_confs/gail_amp.yaml')
