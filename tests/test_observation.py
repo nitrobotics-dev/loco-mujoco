@@ -11,6 +11,8 @@ from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils.math import quat_scalarfirst2scalarlast
 from scipy.spatial.transform import Rotation as np_R
 from jax.scipy.spatial.transform import Rotation as jnp_R
+from loco_mujoco.core.utils.math import calculate_relative_site_quatities
+
 
 from test_conf import DummyHumamoidEnv
 
@@ -1118,3 +1120,71 @@ def test_LastAction(backend):
     assert backend.all(
         next_obs == action
     ), "LastAction should match the previous action"
+
+
+@pytest.mark.parametrize("backend", ["jax", "numpy"])
+def test_RelativeSiteQuantaties(backend):
+    seed = 0
+    key = jax.random.PRNGKey(seed)
+
+    # Specify the observation space
+    observation_spec = deepcopy(OBSERVATION_SPACE)
+    observation_spec.append({"obs_name": "name_obs1", "type": "RelativeSiteQuantaties"})
+
+    # Specify the name of the actuators of the XML
+    action_spec = ["abdomen_y"]  # Use more motors if needed
+
+    # Define a simple Mjx environment
+    mjx_env = DummyHumamoidEnv(
+        enable_mjx=True,
+        actuation_spec=action_spec,
+        observation_spec=observation_spec,
+        **DEFAULTS,
+    )
+
+    backend = jnp if backend == "jax" else np
+    # index the correct observation dims
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
+    if backend == np:
+        # Reset the environment in Mujoco
+        obs = mjx_env.reset(key)
+        obs = obs[obs_ind]
+
+        print(obs)
+    else:
+        # Reset the environment in Mjx
+        state = mjx_env.mjx_reset(key)
+        obs_mjx = state.observation
+        obs_mjx = obs_mjx[obs_ind]
+
+        print(obs_mjx)
+
+    # Get the Mujoco model and data
+    model = mjx_env.get_model()
+    data = mjx_env.get_data()
+    
+    # Retrieve relative site IDs and compute expected observations
+    site_names = mjx_env.obs_container["name_obs1"].site_names
+    rel_site_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name) for name in site_names]
+    rel_body_ids = model.site_bodyid[rel_site_ids]
+    body_rootid = model.body_rootid
+    
+    site_rpos, site_rangles, site_rvel = calculate_relative_site_quatities(
+        data, np.array(rel_site_ids), rel_body_ids, body_rootid, backend
+    )
+
+    expected_obs = backend.concatenate([
+        backend.ravel(site_rpos),
+        backend.ravel(site_rangles),
+        backend.ravel(site_rvel)
+    ])
+
+    # Check the observation against expected values
+    if backend == np:
+        np.testing.assert_allclose(
+            obs, expected_obs, err_msg="Mismatch between Mujoco observation and expected values", atol=1e-6
+        )
+    else:
+        np.testing.assert_allclose(
+            obs_mjx, expected_obs, err_msg="Mismatch between Mjx observation and expected values", atol=1e-6
+        )

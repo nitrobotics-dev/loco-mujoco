@@ -6,6 +6,9 @@ import mujoco
 from mujoco import MjModel, MjData
 from pathlib import Path
 
+import jax.random as jr
+import numpy.random as nr
+
 from loco_mujoco.trajectory import (
     Trajectory,
     TrajectoryInfo,
@@ -420,3 +423,53 @@ def falling_trajectory() -> Trajectory:
     traj = Trajectory(traj_info, traj_data)
 
     return traj
+
+
+@pytest.fixture
+def mock_random(monkeypatch):
+    monkeypatch.setattr(
+        jr,
+        "normal",
+        lambda key, shape=(), dtype=jnp.float32: jnp.full(shape, 0.5, dtype=dtype),
+    )
+    monkeypatch.setattr(
+        jr,
+        "uniform",
+        lambda key, shape=(), dtype=jnp.float32, minval=0.0, maxval=1.0: jnp.full(
+            shape, minval + (maxval - minval) * 0.3, dtype=dtype
+        ),
+    )
+    monkeypatch.setattr(
+        jr,
+        "randint",
+        lambda key, shape, minval, maxval, dtype=jnp.int32: jnp.full(
+            shape, minval + (maxval - minval) // 2, dtype=dtype  # Middle value
+        ),
+    )
+    monkeypatch.setattr(
+        nr,
+        "normal",
+        lambda loc=0.0, scale=1.0, size=None: np.full(size, loc + 0.5 * scale),
+    )
+    monkeypatch.setattr(
+        nr,
+        "uniform",
+        lambda low=0.0, high=1.0, size=None: np.full(size 
+                                                     if np.isscalar(low) and np.isscalar(high) 
+                                                     else np.broadcast(low, high).size, 
+                                                     np.asarray(low) + (np.asarray(high) - np.asarray(low)) * 0.3),
+    )
+    monkeypatch.setattr(
+        nr,
+        "randint",
+        lambda low, high=None, size=None, dtype=int: np.full(
+            size if size else (), 
+            (low + (high - 1)) // 2 if high is not None else low,  # Middle of range or just 'low'
+            dtype=dtype
+        ),
+    )
+    monkeypatch.setattr(
+        nr,
+        "randn",
+        lambda *args: np.full(args if args else (), 0.2),
+    )
