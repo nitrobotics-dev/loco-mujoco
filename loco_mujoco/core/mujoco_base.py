@@ -646,9 +646,9 @@ class Mujoco:
         return spec, goal
 
     def _reward(self,
-                state: np.ndarray,
+                obs: np.ndarray,
                 action: np.ndarray,
-                next_state: np.ndarray,
+                next_obs: np.ndarray,
                 absorbing: bool,
                 info: Dict,
                 model: MjModel,
@@ -658,9 +658,9 @@ class Mujoco:
         Computes the reward for the current transition.
 
         Args:
-            state (np.ndarray): The current state of the environment.
+            obs (np.ndarray): The current state of the environment.
             action (np.ndarray): The action taken.
-            next_state (np.ndarray): The resulting next state.
+            next_obs (np.ndarray): The resulting next state.
             absorbing (bool): Whether the state is absorbing.
             info (Dict): Additional information dictionary.
             model (MjModel): The Mujoco model.
@@ -670,7 +670,7 @@ class Mujoco:
         Returns:
             Tuple[float, AdditionalCarry]: The computed reward and updated carry.
         """
-        return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
+        return self._reward_function(obs, action, next_obs, absorbing, info, self, model, data, carry, np)
 
     def _create_observation(self,
                             model: MjModel,
