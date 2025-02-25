@@ -161,6 +161,7 @@ def input_trajectory_data() -> TrajectoryData:
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
+        mujoco.mj_forward(mujoco_model, data)
         N_steps = 1000
 
         qpos = data.qpos
@@ -214,6 +215,7 @@ def input_trajectory_data_2() -> TrajectoryData:
         mujoco_model = MjModel.from_xml_path(model_path)
 
         data = MjData(mujoco_model)
+        mujoco.mj_forward(mujoco_model, data)
         N_steps = 1000
 
         # Generate data for trajectory 1

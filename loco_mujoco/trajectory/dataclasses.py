@@ -1061,6 +1061,7 @@ class TrajectoryData(SingleData):
             dic[key] = jnp.array(value)
         return TrajectoryData(**dic)
 
+
 def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float, backend=jnp):
     """
     Interpolate the trajectories to a new frequency.
@@ -1108,7 +1109,7 @@ def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInf
 
         """
         xmats_interpolated = []
-        for i in  range(traj_data_slice.site_xmat.shape[1]):
+        for i in range(traj_data_slice.site_xmat.shape[1]):
             xmat = xmats[:, i, :].reshape(-1, 3, 3)
             xquat = Rotation.from_matrix(xmat).as_quat()
             xquat_interpolated = slerp_batch(xquat, times, new_times)
