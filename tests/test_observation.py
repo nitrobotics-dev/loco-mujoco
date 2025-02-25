@@ -64,18 +64,17 @@ def test_BodyPos(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1",
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     # get the body position from data
     model = mjx_env.get_model()
@@ -137,18 +136,17 @@ def test_BodyRot(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1",
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     # get the body xquat from data
     model = mjx_env.get_model()
@@ -210,18 +208,17 @@ def test_BodyVel(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1", 
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     # get the body cvel from data
     model = mjx_env.get_model()
@@ -281,16 +278,16 @@ def test_FreeJointPos(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     # get the joint pos from data
     model = mjx_env.get_model()
@@ -348,16 +345,16 @@ def test_EntryFromFreeJointPos(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the joint position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -408,16 +405,16 @@ def test_FreeJointPosNoXY(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the body position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -470,18 +467,17 @@ def test_JointPos(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1",
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the body position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -542,16 +538,16 @@ def test_JointPosArray(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the joint position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -607,16 +603,16 @@ def test_FreeJointVel(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the body position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -673,16 +669,16 @@ def test_EntryFromFreeJointVel(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     model = mjx_env.get_model()
     joint_ids = []
     joint_ids.append(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name))
@@ -742,18 +738,17 @@ def test_JointVel(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1", 
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the joint position from data
     model = mjx_env.get_model()
     joint_ids = []
@@ -814,16 +809,16 @@ def test_JointVelArray(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     model = mjx_env.get_model()
     joint_ids = []
     for name in [joint_name1, joint_name2]:
@@ -878,18 +873,17 @@ def test_SitePos(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1", 
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
     # get the site position from data
     model = mjx_env.get_model()
     site_ids = []
@@ -956,18 +950,17 @@ def test_SiteRot(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array(
-        [mjx_env.obs_container[name].dim for name in ["name_obs1", "name_obs2"]]
-    )
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1", 
+                                                                                    "name_obs2"]])
     if backend == np:
         # reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     model = mjx_env.get_model()
     site_ids = []
@@ -1029,16 +1022,16 @@ def test_ProjectedGravityVector(backend):
 
     backend = jnp if backend == "jax" else np
     # index the correct observation dims
-    dims = backend.array([mjx_env.obs_container[name].dim for name in ["name_obs1"]])
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
     if backend == np:
         # Reset the environment in Mujoco
         obs = mjx_env.reset(key)
-        obs = obs[0 : backend.sum(dims)]
+        obs = obs[obs_ind]
     else:
         # Reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
-        obs_mjx = obs_mjx[0 : backend.sum(dims)]
+        obs_mjx = obs_mjx[obs_ind]
 
     model = mjx_env.get_model()
     joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
@@ -1149,17 +1142,12 @@ def test_RelativeSiteQuantaties(backend):
         # Reset the environment in Mujoco
         obs = mjx_env.reset(key)
         obs = obs[obs_ind]
-
-        print(obs)
     else:
         # Reset the environment in Mjx
         state = mjx_env.mjx_reset(key)
         obs_mjx = state.observation
         obs_mjx = obs_mjx[obs_ind]
 
-        print(obs_mjx)
-
-    # Get the Mujoco model and data
     model = mjx_env.get_model()
     data = mjx_env.get_data()
     
@@ -1179,12 +1167,13 @@ def test_RelativeSiteQuantaties(backend):
         backend.ravel(site_rvel)
     ])
 
-    # Check the observation against expected values
     if backend == np:
         np.testing.assert_allclose(
-            obs, expected_obs, err_msg="Mismatch between Mujoco observation and expected values", atol=1e-6
+            obs, expected_obs, err_msg="Mismatch between Mujoco observation and expected values", 
+                                                                                        atol=1e-6
         )
     else:
         np.testing.assert_allclose(
-            obs_mjx, expected_obs, err_msg="Mismatch between Mjx observation and expected values", atol=1e-6
+            obs_mjx, expected_obs, err_msg="Mismatch between Mjx observation and expected values", 
+                                                                                        atol=1e-6
         )
