@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 import mujoco
 from mujoco import mjx
+from mujoco.mjx import Model, Data
 from flax import struct
 import numpy as np
 import jax
@@ -57,7 +58,7 @@ class Mjx(Mujoco):
 
         carry = self._init_additional_carry(key, self._model, data, jnp)
 
-        data, carry = self._mjx_reset_init_data_and_model(self.sys, data, carry)
+        data, carry = self._mjx_reset_carry(self.sys, data, carry)
 
         # reset all stateful entities
         data, carry = self.obs_container.reset_state(self, self._model, data, carry, jnp)
@@ -78,7 +79,7 @@ class Mjx(Mujoco):
         # reset data
         data = self._first_data
 
-        data, carry = self._mjx_reset_init_data_and_model(self.sys, data, carry)
+        data, carry = self._mjx_reset_carry(self.sys, data, carry)
 
         # reset carry
         carry = carry.replace(cur_step_in_episode=1,
@@ -230,17 +231,18 @@ class Mjx(Mujoco):
         action, carry = self._control_func.generate_action(self, action, model, data, carry, jnp)
         return action, carry
 
-    def _mjx_reset_init_data_and_model(self, model, data, carry):
+    def _mjx_reset_carry(self, model: Model, data: Data, carry: AdditionalCarry):
         """
-        Initializes the data and model at the beginning of the reset.
+        Resets the additional carry. Also allows modification to the MjData.
 
         Args:
-            model: Mujoco model.
-            data: Mujoco data structure.
-            carry: Additional carry information.
+            model (Model): Mujoco model.
+            data (Data): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
 
         Returns:
-            The updated model, data and carry.
+            The updated carry and data.
+
         """
         data, carry = self._terminal_state_handler.reset(self, model, data, carry, jnp)
         data, carry = self._terrain.reset(self, model, data, carry, jnp)

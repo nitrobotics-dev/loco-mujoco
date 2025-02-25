@@ -322,7 +322,7 @@ class LocoEnv(Mjx):
                     data = self.set_sim_state_from_traj_data(data, traj_data_single, carry)
                     mujoco.mj_forward(model, data)
 
-                    data, carry = self._reset_init_data_and_model(model, data, carry)
+                    data, carry = self._reset_carry(model, data, carry)
                     data, carry = (
                         self.obs_container.reset_state(self, model, data, carry, np))
                     obs, carry = self._create_observation(model, data, carry)
@@ -582,7 +582,7 @@ class LocoEnv(Mjx):
                              "Please call the <your_env_name>.th.to_jax() function on your environment first.")
         return super().mjx_reset(key)
 
-    def _reset_init_data_and_model(self, model, data, carry):
+    def _reset_carry(self, model, data, carry):
 
         # reset trajectory state
         if self.th is not None:
@@ -590,11 +590,11 @@ class LocoEnv(Mjx):
                 if self.th is not None else (data, carry)
 
         # call parent to apply domain randomization and terrain
-        data, carry = super()._reset_init_data_and_model(model, data, carry)
+        data, carry = super()._reset_carry(model, data, carry)
 
         return data, carry
 
-    def _mjx_reset_init_data_and_model(self, model, data, carry):
+    def _mjx_reset_carry(self, model, data, carry):
 
         # reset trajectory state
         if self.th is not None:
@@ -602,7 +602,7 @@ class LocoEnv(Mjx):
                 if self.th is not None else (data, carry)
 
         # call parent to apply domain randomization and terrain
-        data, carry = super()._mjx_reset_init_data_and_model(model, data, carry)
+        data, carry = super()._mjx_reset_carry(model, data, carry)
 
         return data, carry
 
@@ -623,18 +623,6 @@ class LocoEnv(Mjx):
 
         idx = self.obs_container[key].obs_ind
         return obs[idx]
-
-    def _len_qpos_qvel(self):
-        """
-        Returns the lengths of the joint position vector and the joint velocity vector, including x and y.
-
-        """
-
-        keys = self.get_all_observation_keys()
-        len_qpos = len([key for key in keys if key.startswith("q_")])
-        len_qvel = len([key for key in keys if key.startswith("dq_")])
-
-        return len_qpos, len_qvel
 
     def _has_fallen(self, obs, info, data, return_err_msg=False):
         """
