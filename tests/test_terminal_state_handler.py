@@ -6,7 +6,7 @@ print(f"Jax backend device: {jax.default_backend()} \n")
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_HeightBasedTerminalStateHandler(standing_trajectory, falling_trajectory, backend):
+def test_HeightBasedTerminalStateHandler(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -26,7 +26,7 @@ def test_HeightBasedTerminalStateHandler(standing_trajectory, falling_trajectory
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_NoTerminalStateHandler(standing_trajectory, falling_trajectory, backend):
+def test_NoTerminalStateHandler(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -44,7 +44,7 @@ def test_NoTerminalStateHandler(standing_trajectory, falling_trajectory, backend
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_RootPoseTrajTerminalStateHandler(standing_trajectory, falling_trajectory, backend):
+def test_RootPoseTrajTerminalStateHandler(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 

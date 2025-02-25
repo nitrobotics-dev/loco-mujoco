@@ -24,7 +24,7 @@ def test_NoReward(standing_trajectory, falling_trajectory, backend):
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_TargetXVelocityReward(standing_trajectory, falling_trajectory, backend):
+def test_TargetXVelocityReward(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -56,7 +56,7 @@ def test_TargetXVelocityReward(standing_trajectory, falling_trajectory, backend)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_TargetVelocityGoalReward(standing_trajectory, falling_trajectory, backend):
+def test_TargetVelocityGoalReward(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -69,25 +69,25 @@ def test_TargetVelocityGoalReward(standing_trajectory, falling_trajectory, backe
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 68.28633880615, abs_tol=1e-7)
+        assert isclose(reward_sum, 40.183032989501953, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert isclose(reward_42, 0.866344630718231, abs_tol=1e-7)
+        assert isclose(reward_42, 0.805188059806824, abs_tol=1e-7)
     else:
         assert len(transitions.rewards) == 99
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert jnp.isclose(reward_sum, 21.164863586425781, atol=1e-7)
+        assert jnp.isclose(reward_sum, 40.183040618896484, atol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
-        assert jnp.isclose(reward_42, 0.384216576814651, atol=1e-7)
+        assert jnp.isclose(reward_42, 0.805188119411469, atol=1e-7)
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_LocomotionReward(standing_trajectory, falling_trajectory, backend):
+def test_LocomotionReward(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -102,7 +102,7 @@ def test_LocomotionReward(standing_trajectory, falling_trajectory, backend):
 
         reward_sum = transitions.rewards.sum()
         print("\nreward_sum: {0:.15f}".format(reward_sum))
-        assert isclose(reward_sum, 35.581115722656250, abs_tol=1e-7)
+        assert isclose(reward_sum, 17.714370727539062, abs_tol=1e-7)
 
         reward_42 = transitions.rewards[42]
         print("reward_42: {0:.15f}".format(reward_42))
@@ -122,7 +122,7 @@ def test_LocomotionReward(standing_trajectory, falling_trajectory, backend):
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_TargetVelocityTrajReward(standing_trajectory, falling_trajectory, backend):
+def test_TargetVelocityTrajReward(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
@@ -152,7 +152,7 @@ def test_TargetVelocityTrajReward(standing_trajectory, falling_trajectory, backe
 
 
 @pytest.mark.parametrize("backend", ["numpy", "jax"])
-def test_MimicReward(standing_trajectory, falling_trajectory, backend):
+def test_MimicReward(standing_trajectory, falling_trajectory, backend, mock_random):
     expert_traj: Trajectory = standing_trajectory
     nominal_traj: Trajectory = falling_trajectory
 
