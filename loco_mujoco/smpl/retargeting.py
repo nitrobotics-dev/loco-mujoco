@@ -19,12 +19,13 @@ try:
     from torch.autograd import Variable
     from smplx.lbs import transform_mat
     import joblib
+    from loco_mujoco.smpl import SMPLH_Parser
     _OPTIONAL_IMPORT_INSTALLED = True
 except ImportError:
     _OPTIONAL_IMPORT_INSTALLED = False
 
 import loco_mujoco
-from loco_mujoco.smpl import SMPLH_Parser, SMPLH_BONE_ORDER_NAMES
+from loco_mujoco.smpl import SMPLH_BONE_ORDER_NAMES
 from loco_mujoco.smpl.utils.smoothing import gaussian_filter_1d_batch
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils.math import quat_scalarlast2scalarfirst, quat_scalarfirst2scalarlast
@@ -47,7 +48,9 @@ OPTIMIZED_SHAPE_FILE_NAME = "shape_optimized.pkl"
 
 def check_optional_imports():
     if not _OPTIONAL_IMPORT_INSTALLED:
-        raise ImportError("[LocoMuJoCo] Optional smpl depencies not installed. Checkout the README for installation instructions.")
+        raise ImportError("[LocoMuJoCo] Optional smpl depencies not installed. "
+                          "Checkout the README for installation instructions.")
+
 
 def get_amass_dataset_path():
     path_to_conf = loco_mujoco.PATH_TO_VARIABLES

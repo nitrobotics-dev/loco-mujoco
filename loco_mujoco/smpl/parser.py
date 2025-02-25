@@ -14,7 +14,11 @@ try:
     from smplx.lbs import blend_shapes, vertices2joints, batch_rodrigues, batch_rigid_transform, transform_mat
 
 except ImportError:
-    pass
+    # what can i do here?
+    _SMPL = None
+    _SMPLH = None
+    _MANO = None
+    torch = None
 
 
 class SMPL_Parser(_SMPL):
@@ -115,7 +119,11 @@ class SMPL_Parser(_SMPL):
         joints = smpl_output.joints[:, :24]
         return vertices, joints
 
-    def get_offsets(self, v_template=None, zero_pose=None, betas=torch.zeros(1, 10).float()):
+    def get_offsets(self, v_template=None, zero_pose=None, betas=None):
+
+        if betas is None:
+            betas = torch.zeros(1, 10).float()
+
         with torch.no_grad():
             if zero_pose is None:
                 verts, Jtr = self.get_joints_verts(self.zero_pose, th_betas=betas)
@@ -143,7 +151,10 @@ class SMPL_Parser(_SMPL):
             return (verts[0], jts_np[0], skin_weights, self.joint_names, joint_offsets, parents_dict, channels,
                     self.joint_range)
 
-    def get_mesh_offsets(self, zero_pose=None, betas=torch.zeros(1, 10), flatfoot=False):
+    def get_mesh_offsets(self, zero_pose=None, betas=None, flatfoot=False):
+        if betas is None:
+            betas = torch.zeros(1, 10)
+
         with torch.no_grad():
             joint_names = self.joint_names
             if zero_pose is None:
@@ -181,7 +192,10 @@ class SMPL_Parser(_SMPL):
                 self.conaffinity,
             )
 
-    def get_mesh_offsets_batch(self, betas=torch.zeros(1, 10), flatfoot=False):
+    def get_mesh_offsets_batch(self, betas=None, flatfoot=False):
+        if betas is None:
+            betas = torch.zeros(1, 10)
+
         with torch.no_grad():
             joint_names = self.joint_names
             verts, Jtr = self.get_joints_verts(self.zero_pose.repeat(betas.shape[0], 1), th_betas=betas)
