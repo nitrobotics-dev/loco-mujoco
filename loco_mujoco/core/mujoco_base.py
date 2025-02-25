@@ -1,10 +1,10 @@
 import atexit
 from copy import deepcopy
-from typing import Union
+from typing import Union, List, Dict, Tuple
 
 from functools import partial
 import mujoco
-from mujoco import MjSpec
+from mujoco import MjSpec, MjModel, MjData
 import numpy as np
 from flax import struct
 import jax
@@ -18,9 +18,7 @@ from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
 from loco_mujoco.core.initial_state_handler import InitialStateHandler
 from loco_mujoco.core.terminal_state_handler.base import TerminalStateHandler
-from loco_mujoco.core.stateful_object import StatefulObject
 from loco_mujoco.core.visuals import MjvScene, MujocoViewer
-
 
 
 @struct.dataclass
@@ -28,34 +26,77 @@ class AdditionalCarry:
     key: jax.Array
     cur_step_in_episode: int
     last_action: Union[np.ndarray, jax.Array]
-    # todo: these should be the respective state dataclasses
-    observation_states: Union[np.ndarray, jax.Array]
-    reward_state: Union[np.ndarray, jax.Array]
-    domain_randomizer_state: Union[np.ndarray, jax.Array]
-    terrain_state: Union[np.ndarray, jax.Array]
-    init_state_handler_state: Union[np.ndarray, jax.Array]
-    terminal_state_handler_state: Union[np.ndarray, jax.Array]
-    control_func_state: Union[np.ndarray, jax.Array]
+    observation_states: struct.PyTreeNode
+    reward_state: struct.PyTreeNode
+    domain_randomizer_state: struct.PyTreeNode
+    terrain_state: struct.PyTreeNode
+    init_state_handler_state: struct.PyTreeNode
+    terminal_state_handler_state: struct.PyTreeNode
+    control_func_state: struct.PyTreeNode
     user_scene: MjvScene
 
 
 class Mujoco:
     """
-        This is the base class for all Mujoco environments, CPU and MjX.
+    Base class for all Mujoco environments, supporting both CPU-based Mujoco and MjX.
 
-    """
+    Attributes:
+        registered_envs (dict): A registry of Mujoco environments.
+
+    Args:
+        spec (Union[MjSpec, str]): Mujoco Specification. Either a MjSpec object or a path to a Mujoco XML file.
+        actuation_spec (List[str]): List of actuator names from the Mujoco XML.
+        observation_spec (List[ObservationType]): Specification of the observation space.
+        gamma (float): Discount factor for reinforcement learning.
+        horizon (int): Maximum number of steps per episode.
+        n_environments (int, optional): Number of parallel environments. Defaults to 1.
+        timestep (int, optional): Simulation timestep. If None, it's read from the model.
+        n_substeps (int, optional): Number of substeps per simulation step. Defaults to 1.
+        model_option_conf (Dict, optional): Changes to apply to the Mujoco option config.
+        reward_type (str, optional): The type of reward function. Defaults to "NoReward".
+        reward_params (Dict, optional): Parameters for the reward function. Defaults to None.
+        goal_type (str, optional): The type of goal specification. Defaults to "NoGoal".
+        goal_params (Dict, optional): Parameters for the goal specification. Defaults to None.
+        terminal_state_type (str, optional): The type of terminal state handler. Defaults to "NoTerminalStateHandler".
+        terminal_state_params (Dict, optional): Parameters for the terminal state handler. Defaults to None.
+        domain_randomization_type (str, optional): Type of domain randomization. Defaults to "NoDomainRandomization".
+        domain_randomization_params (Dict, optional): Parameters for domain randomization. Defaults to None.
+        terrain_type (str, optional): The type of terrain used. Defaults to "StaticTerrain".
+        terrain_params (Dict, optional): Parameters for the terrain configuration. Defaults to None.
+        init_state_type (str, optional): Initial state handler type. Defaults to "DefaultInitialStateHandler".
+        init_state_params (Dict, optional): Parameters for the initial state handler. Defaults to None.
+        control_type (str, optional): Type of control function. Defaults to "DefaultControl".
+        control_params (Dict, optional): Parameters for the control function. Defaults to None.
+        **viewer_params: Additional parameters for the Mujoco viewer.
+
+        """
 
     registered_envs = dict()
 
-    def __init__(self, spec, actuation_spec, observation_spec, gamma, horizon,
-                 n_environments=1, timestep=None, n_substeps=1, model_option_conf=None,
-                 reward_type="NoReward", reward_params=None,
-                 goal_type="NoGoal", goal_params=None,
-                 terminal_state_type="NoTerminalStateHandler", terminal_state_params=None,
-                 domain_randomization_type="NoDomainRandomization", domain_randomization_params=None,
-                 terrain_type="StaticTerrain", terrain_params=None,
-                 init_state_type="DefaultInitialStateHandler", init_state_params=None,
-                 control_type="DefaultControl", control_params=None,
+    def __init__(self,
+                 spec: Union[MjSpec, str],
+                 actuation_spec: List[str],
+                 observation_spec: List[ObservationType],
+                 gamma: float,
+                 horizon: int,
+                 n_environments: int = 1,
+                 timestep: int = None,
+                 n_substeps: int = 1,
+                 model_option_conf: Dict = None,
+                 reward_type: str = "NoReward",
+                 reward_params: Dict = None,
+                 goal_type: str = "NoGoal",
+                 goal_params: Dict = None,
+                 terminal_state_type: str = "NoTerminalStateHandler",
+                 terminal_state_params: Dict = None,
+                 domain_randomization_type: str = "NoDomainRandomization",
+                 domain_randomization_params: Dict = None,
+                 terrain_type: str = "StaticTerrain",
+                 terrain_params: Dict = None,
+                 init_state_type: str = "DefaultInitialStateHandler",
+                 init_state_params: Dict = None,
+                 control_type: str = "DefaultControl",
+                 control_params: Dict = None,
                  **viewer_params):
 
         # set the timestep if provided, else read it from model
@@ -146,17 +187,28 @@ class Mujoco:
         self._added_carry_visual_to_user_scene = False
         self._added_carry_visual_start_idx = None
 
-    def seed(self, seed):
-        np.random.seed(seed)
+    def reset(self, key=None) -> np.ndarray:
+        """
+        Resets the environment to the initial state.
 
-    def reset(self, key):
+        Args:
+            key: Random key. For now, not used in the Mujoco environment.
+                Could be used in future to set the numpy seed.
+
+        Returns:
+            The initial observation as a numpy array.
+
+        """
+
+        if key is None:
+            key = jax.random.key(0)
         key, subkey = jax.random.split(key)
         mujoco.mj_resetData(self._model, self._data)
         mujoco.mj_forward(self._model, self._data)
         # todo: replace all cur_step_in_episode to use additional info!
         self._additional_carry = self._init_additional_carry(key, self._model, self._data, np)
         self._data, self._additional_carry =\
-            self._reset_init_data_and_model(self._model, self._data, self._additional_carry)
+            self._reset_carry(self._model, self._data, self._additional_carry)
 
         # reset all stateful entities
         self._data, self._additional_carry = self.obs_container.reset_state(self, self._model, self._data,
@@ -165,7 +217,19 @@ class Mujoco:
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
         return self._obs
 
-    def step(self, action):
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+        """
+        Takes a step in the environment.
+
+        Args:
+            action (np.ndarray): The action to take in the environment.
+
+        Returns:
+            A tuple containing the next observation, the reward, a flag indicating whether the state is absorbing,
+            a flag indicating whether the episode is done, and a dictionary containing additional information.
+
+        """
+
         cur_info = self._info.copy()
         carry = self._additional_carry
         carry = carry.replace(last_action=action)
@@ -212,7 +276,17 @@ class Mujoco:
 
         return np.asarray(cur_obs), reward, absorbing, done, cur_info
 
-    def render(self, record=False):
+    def render(self, record: bool = False) -> np.ndarray:
+        """
+        Renders the current state of the environment.
+
+        Args:
+            record (bool): A flag indicating whether to record the video or not.
+
+        Returns:
+            The rendered image as a numpy array.
+
+        """
 
         if self._viewer is None:
             self._viewer = MujocoViewer(self._model, self.dt, record=record, **self._viewer_params)
@@ -234,32 +308,46 @@ class Mujoco:
 
         return self._viewer.render(self._data, self._additional_carry, record)
 
-    def stop(self):
+    def stop(self) -> None:
+        """
+        Stops the rendering of the environment. Disable glfw and delete the viewer.
+
+        """
         if self._viewer is not None:
             self._video_file_path = self._viewer.stop()
             del self._viewer
             self._viewer = None
 
-    @property
-    def viewer(self):
-        return self._viewer
-
     @partial(jax.jit, static_argnums=(0,))
-    def sample_action_space(self, key):
+    def sample_action_space(self, key: jax.Array) -> jax.Array:
+        """
+        Samples an action from the action space using jax.
+
+        Args:
+            key: Random key.
+
+        Returns:
+            The sampled action.
+
+        """
+
         action_dim = self.info.action_space.shape[0]
         action = jax.random.uniform(key, minval=self.info.action_space.low, maxval=self.info.action_space.high,
                                     shape=(action_dim,))
         return action
 
-    def get_all_observation_keys(self):
-        return [k for k, elem in self.obs_container.items() if not issubclass(elem.__class__, Goal)]
-
-    def _is_absorbing(self, obs, info, data, carry):
+    def _is_absorbing(self, obs: np.ndarray,
+                      info: Dict,
+                      data: MjData,
+                      carry: AdditionalCarry) -> Tuple[bool, AdditionalCarry]:
         """
         Check whether the given state is an absorbing state or not.
 
         Args:
             obs (np.array): the state of the system.
+            info (dict): additional information.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
 
         Returns:
             A boolean flag indicating whether this state is absorbing or not.
@@ -267,21 +355,43 @@ class Mujoco:
         """
         return self._terminal_state_handler.is_absorbing(self, obs, info, data, carry)
 
-    def _is_done(self, obs, absorbing, info, data, carry):
+    def _is_done(self, obs: np.ndarray,
+                 absorbing: bool,
+                 info: Dict,
+                 data: MjData,
+                 carry: AdditionalCarry) -> bool:
+        """
+        Check whether the episode is done or not.
+
+        Args:
+            obs (np.array): the state of the system.
+            absorbing (bool): flag indicating whether the state is absorbing or not.
+            info (dict): additional information.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            A boolean flag indicating whether the episode is done or not.
+
+        """
+
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
         return done
 
-    def _reset_init_data_and_model(self, model, data, carry):
+    def _reset_carry(self, model: MjModel,
+                     data: MjData,
+                     carry: AdditionalCarry) -> Tuple[MjData, AdditionalCarry]:
         """
-        Initializes the data and model at the beginning of the reset.
+        Resets the additional carry. Also allows modification to the MjData.
 
         Args:
-            model: Mujoco model.
-            data: Mujoco data structure.
-            carry: Additional carry information.
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
 
         Returns:
-            The updated model, data and carry.
+            The updated carry and data.
+
         """
         data, carry = self._terminal_state_handler.reset(self, model, data, carry, np)
         data, carry = self._terrain.reset(self, model, data, carry, np)
@@ -291,47 +401,102 @@ class Mujoco:
 
         return data, carry
 
-    def _step_finalize(self, obs, model, data, info, carry):
+    def _step_finalize(self, obs: np.ndarray,
+                       model: MjModel,
+                       data: MjData,
+                       info: Dict,
+                       carry: AdditionalCarry) -> Tuple[np.ndarray, MjData, Dict, AdditionalCarry]:
         """
-        Allows information to be accessed at the end of a step.
+        Allows information to be accessed at the end of the step function.
+
+        Args:
+            obs (np.array): the state of the system.
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            info (dict): additional information.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated observation, data, info, and carry.
+
         """
+
         obs, carry = self._domain_randomizer.update_observation(self, obs, model, data, carry, np)
+
         return obs, data, info, carry
 
-    def _reset_info_dictionary(self, obs, data, key):
+    def _reset_info_dictionary(self, obs: np.ndarray,
+                               data: MjData,
+                               key: jax.Array) -> Dict:
+        """
+        Resets the info dictionary.
+
+        Args:
+            obs (np.array): the state of the system.
+            data (MjData): Mujoco data structure.
+            key: Random key.
+
+        Returns:
+            A dictionary containing the updated information.
+
+        """
         return {}
 
-    def _update_info_dictionary(self, info, obs, data, carry):
+    def _update_info_dictionary(self, info: Dict,
+                                obs: np.ndarray,
+                                data: MjData,
+                                carry: AdditionalCarry) -> Dict:
+        """
+        Updates the info dictionary.
+
+        Args:
+            info (Dict): the current information dictionary.
+            obs (np.ndarray): the current state.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated information dictionary.
+
+        """
         return info
 
-    def _preprocess_action(self, action, model, data, carry):
+    def _preprocess_action(self, action: np.ndarray,
+                           model: MjModel,
+                           data: MjData,
+                           carry: AdditionalCarry) -> Tuple[np.ndarray, AdditionalCarry]:
         """
         Compute a transformation of the action provided to the
-        environment.
+        environment. This is done once in the beginning of the step function.
 
         Args:
             action (np.ndarray): numpy array with the actions
                 provided to the environment.
-            model: Mujoco model.
-            data: Mujoco data structure.
-            carry: Additional carry information.
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
 
         Returns:
             The action to be used for the current step and the updated carry.
+
         """
         action, carry = self._domain_randomizer.update_action(self, action, model, data, carry, np)
         return action, carry
 
-    def _compute_action(self, action, model, data, carry):
+    def _compute_action(self, action: np.ndarray,
+                        model: MjModel,
+                        data: MjData,
+                        carry: AdditionalCarry) -> Tuple[np.ndarray, AdditionalCarry]:
         """
         Compute a transformation of the action at every intermediate step.
         Useful to add control signals simulated directly in python.
 
         Args:
-            action (np.ndarray): numpy array with the actions, provided at every step.
-            model: Mujoco model.
-            data: Mujoco data structure.
-            carry: Additional carry information.
+            action (np.ndarray): numpy array with the actions
+                provided to the environment.
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
 
         Returns:
             The action to be used for the current step and the updated carry.
@@ -340,43 +505,61 @@ class Mujoco:
         action, carry = self._control_func.generate_action(self, action, model, data, carry, np)
         return action, carry
 
-    def _simulation_pre_step(self, model, data, carry):
+    def _simulation_pre_step(self, model: MjModel,
+                             data: MjData,
+                             carry: AdditionalCarry) -> Tuple[MjModel, MjData, AdditionalCarry]:
         """
-        Allows information to be accessed and changed at every intermediate step
-        before taking a step in the mujoco simulation.
+        Allows to access and modify the model, data and carry to be modified before the main simulation step.
+        Here, this function is used to modify the model and data before the simulation step using domain randomization.
+
+        Args:
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated model, data and carry.
 
         """
         model, data, carry = self._terrain.update(self, model, data, carry, np)
         model, data, carry = self._domain_randomizer.update(self, model, data, carry, np)
         return model, data, carry
 
-    def _simulation_post_step(self, model, data, carry):
+    def _simulation_post_step(self, model: MjModel,
+                              data: MjData,
+                              carry: AdditionalCarry) -> Tuple[MjData, AdditionalCarry]:
         """
-        Allows information to be accessed at every intermediate step
-        after taking a step in the mujoco simulation.
-        Can be useful to average forces over all intermediate steps.
+        Allows to access and modify the model, data and carry to be modified after the main simulation step.
+
+        Args:
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated model, data and carry.
 
         """
         return data, carry
 
-    def set_actuation_spec(self, actuation_spec):
+    def set_actuation_spec(self, actuation_spec: List[str]) -> None:
         """
-        Sets the actuation of the environment to overwrite the default one.
+        Updates the action space of the environment.
 
         Args:
-            actuation_spec (list): A list of actuator names.
+            actuation_spec (List[str]): A list of actuator names.
 
         """
         self._action_indices = self.get_action_indices(self._model, self._data, actuation_spec)
         self._mdp_info.action_space = Box(*self._control_func.action_limits)
         self.action_dim = len(actuation_spec)
 
-    def set_observation_spec(self, observation_spec):
+    def set_observation_spec(self, observation_spec: List[ObservationType]) -> None:
         """
-        Sets the observation of the environment to overwrite the default one.
+        Sets the observation space of the environment including the obs_container.
 
         Args:
-            observation_spec (list): A list of observation types.
+            observation_spec (List[ObservationType]): A list of observation types.
 
         """
         # update the obs_container and the data_indices and obs_indices
@@ -386,7 +569,10 @@ class Mujoco:
         # update the observation space
         self._mdp_info.observation_space = Box(*self._get_obs_limits())
 
-    def _setup_observations(self, observation_spec, model, data):
+    def _setup_observations(self, observation_spec: List[ObservationType],
+                            model: MjModel,
+                            data: MjData)\
+            -> Tuple[ObservationContainer, ObservationIndexContainer, ObservationIndexContainer]:
         """
         Sets up the observation space for the environment. It generates a dictionary containing all the observation
         types and their corresponding information, as well as two dataclasses containing the indices in the
@@ -394,9 +580,9 @@ class Mujoco:
         in the observation array (obs_indices).
 
         Args:
-            observation_spec (list): A list of observation types.
-            model: Mujoco model.
-            data: Mujoco data structure.
+            observation_spec (List[ObservationType]): A list of observation types.
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
 
         Returns:
             A dictionary containing all the observation types and their corresponding information, as well as two
@@ -430,18 +616,21 @@ class Mujoco:
         
         return obs_container, data_ind, obs_ind
 
-    def _setup_goal(self, spec, goal_type, goal_params):
+    def _setup_goal(self, spec: MjSpec,
+                    goal_type: str,
+                    goal_params: Dict) -> Tuple[MjSpec, Goal]:
         """
         Setup the goal.
 
         Args:
             spec (MjSpec): Specification of the environment.
             goal_type (str): Type of the goal.
-            goal_params (dict): Parameters of the goal.
+            goal_params (Dict): Parameters of the goal.
 
         Returns:
             MjSpec: Modified specification.
             Goal: Goal
+
         """
         # collect all info properties of the env (dict all @info_properties decorated function returns)
         info_props = self._get_all_info_properties()
@@ -456,29 +645,74 @@ class Mujoco:
 
         return spec, goal
 
-    def _reward(self, state, action, next_state, absorbing, info, model, data, carry):
+    def _reward(self,
+                state: np.ndarray,
+                action: np.ndarray,
+                next_state: np.ndarray,
+                absorbing: bool,
+                info: Dict,
+                model: MjModel,
+                data: MjData,
+                carry: AdditionalCarry) -> Tuple[float, AdditionalCarry]:
         """
-        Calls the reward function of the environment.
+        Computes the reward for the current transition.
 
+        Args:
+            state (np.ndarray): The current state of the environment.
+            action (np.ndarray): The action taken.
+            next_state (np.ndarray): The resulting next state.
+            absorbing (bool): Whether the state is absorbing.
+            info (Dict): Additional information dictionary.
+            model (MjModel): The Mujoco model.
+            data (MjData): The Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            Tuple[float, AdditionalCarry]: The computed reward and updated carry.
         """
         return self._reward_function(state, action, next_state, absorbing, info, self, model, data, carry, np)
 
-    def _create_observation(self, model, data, carry):
+    def _create_observation(self,
+                            model: MjModel,
+                            data: MjData,
+                            carry: AdditionalCarry) -> Tuple[np.ndarray, AdditionalCarry]:
+        """
+        Creates the observation array based on the current Mujoco state.
+
+        Args:
+            model (MjModel): The Mujoco model.
+            data (MjData): The Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            Tuple[np.ndarray, AdditionalCarry]: The observation array and updated carry.
+        """
         return self._create_observation_compat(model, data, carry, np)
 
-    def _create_observation_compat(self, model, data, carry, backend):
+    def _create_observation_compat(self,
+                                   model: MjModel,
+                                   data: MjData,
+                                   carry: AdditionalCarry,
+                                   backend: Union[np, jnp]) -> Tuple[np.ndarray, AdditionalCarry]:
         """
-        Creates the observation array by concatenating the observation extracted from all observation types.
+        Creates the observation array by concatenating extracted observations from all types.
+
+        Args:
+            model (MjModel): The Mujoco model.
+            data (MjData): The Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+            backend (Union[np, jnp]): The numerical backend to use (NumPy or JAX NumPy).
+
+        Returns:
+            Tuple[np.ndarray, AdditionalCarry]: The observation array and updated carry.
         """
-        # fast getter for all simple non-stateful observations
         obs_not_stateful = backend.concatenate([
             obs_type.get_all_obs_of_type(self, model, data, self._data_indices, backend)
-            for obs_type in ObservationType.list_all_non_stateful()])
+            for obs_type in ObservationType.list_all_non_stateful()
+        ])
 
-        # order non-stateful obs the way they were in obs_spec
         obs_not_stateful = obs_not_stateful[self._obs_indices.concatenated_indices]
 
-        # get all stateful observations
         obs_stateful = []
         for obs in self.obs_container.list_all_stateful():
             obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, backend)
@@ -487,74 +721,88 @@ class Mujoco:
         return backend.concatenate([obs_not_stateful, *obs_stateful]), carry
 
     @staticmethod
-    def set_sim_state_from_traj_data(data, traj_data, carry):
+    def set_sim_state_from_traj_data(data: MjData,
+                                     traj_data,
+                                     carry: AdditionalCarry) -> MjData:
         """
         Sets the Mujoco datastructure to the state specified in the trajectory data.
 
         Args:
-            data: Mujoco data structure.
-            traj_data: Trajectory data.
-            carry: Additional carry information.
+            data (MjData): The Mujoco data structure.
+            traj_data: The trajectory data containing state information.
+            carry (AdditionalCarry): Additional carry information.
 
+        Returns:
+            MjData: The updated Mujoco data structure.
         """
-        # set the body pos
         if traj_data.xpos.size > 0:
             data.xpos = traj_data.xpos
-        # set the body orientation
         if traj_data.xquat.size > 0:
             data.xquat = traj_data.xquat
-        # set the body velocity
         if traj_data.cvel.size > 0:
             data.cvel = traj_data.cvel
-        # set the joint positions
         if traj_data.qpos.size > 0:
             data.qpos = traj_data.qpos
-        # set the joint velocities
         if traj_data.qvel.size > 0:
             data.qvel = traj_data.qvel
 
         return data
 
-    def _set_sim_state_from_obs(self, data, obs):
+    def _set_sim_state_from_obs(self,
+                                data: MjData,
+                                obs: np.ndarray) -> MjData:
         """
         Sets the Mujoco datastructure to the state specified in the observation.
 
         Args:
-            data: Mujoco data structure.
-            obs: Observation array.
+            data (MjData): The Mujoco data structure.
+            obs (np.ndarray): The observation array.
 
+        Returns:
+            MjData: The updated Mujoco data structure.
         """
-
-        # set the body pos
         data.xpos[self._data_indices.body_xpos, :] = obs[self._obs_indices.body_xpos].reshape(-1, 3)
-        # set the body orientation
         data.xquat[self._data_indices.body_xquat, :] = obs[self._obs_indices.body_xquat].reshape(-1, 4)
-        # set the body velocity
         data.cvel[self._data_indices.body_cvel, :] = obs[self._obs_indices.body_cvel].reshape(-1, 6)
-        # set the free joint positions
         data.qpos[self._data_indices.free_joint_qpos] = obs[self._obs_indices.free_joint_qpos]
-        # set the free joint velocities
         data.qvel[self._data_indices.free_joint_qvel] = obs[self._obs_indices.free_joint_qvel]
-        # set the joint positions
         data.qpos[self._data_indices.joint_qpos] = obs[self._obs_indices.joint_qpos]
-        # set the joint velocities
         data.qvel[self._data_indices.joint_qvel] = obs[self._obs_indices.joint_qvel]
-        # set the site positions
         data.site_xpos[self._data_indices.site_xpos, :] = obs[self._obs_indices.site_xpos].reshape(-1, 3)
-        # set the site rotation
         data.site_xmat[self._data_indices.site_xmat, :] = obs[self._obs_indices.site_xmat].reshape(-1, 9)
 
         return data
 
-    def _get_obs_limits(self):
+    def _get_obs_limits(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Computes the minimum and maximum limits for the observation space.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: The minimum and maximum values of the observation space.
+        """
         obs_min = np.concatenate([np.array(entry.min) for entry in self.obs_container.values()])
         obs_max = np.concatenate([np.array(entry.max) for entry in self.obs_container.values()])
         return obs_min, obs_max
 
-    def _init_additional_carry(self, key, model, data, backend):
+    def _init_additional_carry(self,
+                               key: jax.Array,
+                               model: MjModel,
+                               data: MjData,
+                               backend: Union[np, jnp]) -> AdditionalCarry:
+        """
+        Initializes the additional carry structure.
+
+        Args:
+            key (jax.Array): Random key for JAX operations.
+            model (MjModel): The Mujoco model.
+            data (MjData): The Mujoco data structure.
+            backend (Union[np, jnp]): The numerical backend to use (NumPy or JAX NumPy).
+
+        Returns:
+            AdditionalCarry: The initialized additional carry structure.
+        """
         key, _k1, _k2, _k3, _k4, _k5, _k6, _k7 = jax.random.split(key, 8)
 
-        # create additional carry
         carry = AdditionalCarry(
             key=key,
             cur_step_in_episode=1,
@@ -570,31 +818,43 @@ class Mujoco:
 
         return carry
 
-    def get_model(self):
-        return deepcopy(self._model)
-
-    def get_data(self):
-        return deepcopy(self._data)
-
-    def load_mujoco(self, xml_file, model_option_conf=None):
+    def get_model(self) -> MjModel:
         """
-        Takes a xml_file and compiles and loads the model.
-
-        Args:
-            xml_file (str/MjSpec): A string with a path to the xml or a Mujoco specification.
+        Returns a deep copy of the Mujoco model.
 
         Returns:
-            Mujoco model and the specification.
-
+            MjModel: A deep copy of the Mujoco model.
         """
-        if type(xml_file) == MjSpec:
-            # compile from specification
+        return deepcopy(self._model)
+
+    def get_data(self) -> MjData:
+        """
+        Returns a deep copy of the Mujoco data structure.
+
+        Returns:
+            MjData: A deep copy of the Mujoco data structure.
+        """
+        return deepcopy(self._data)
+
+    def load_mujoco(self,
+                    xml_file: Union[str, MjSpec],
+                    model_option_conf: Dict = None) -> Tuple[MjModel, MjModel, MjData, MjSpec]:
+        """
+        Loads and compiles the Mujoco model from an XML file or MjSpec object.
+
+        Args:
+            xml_file (Union[str, MjSpec]): Path to the XML file or a Mujoco specification object.
+            model_option_conf (Dict, optional): Configuration options for the model. Defaults to None.
+
+        Returns:
+            Tuple[MjModel, MjModel, MjData, MjSpec]: The compiled Mujoco model, duplicate model, data, and spec.
+        """
+        if isinstance(xml_file, MjSpec):
             if model_option_conf is not None:
                 xml_file = self._modify_option_spec(xml_file, model_option_conf)
             model = xml_file.compile()
             spec = xml_file
-        elif type(xml_file) == str:
-            # load from path
+        elif isinstance(xml_file, str):
             spec = mujoco.MjSpec.from_file(xml_file)
             if model_option_conf is not None:
                 spec = self._modify_option_spec(spec, model_option_conf)
@@ -602,43 +862,49 @@ class Mujoco:
         else:
             raise ValueError(f"Unsupported type for xml_file {type(xml_file)}.")
 
-        # create data
         data = mujoco.MjData(model)
-
         return model, model, data, spec
 
-    def reload_mujoco(self, xml_file):
+    def reload_mujoco(self, xml_file: Union[str, MjSpec]) -> None:
         """
-        Reloads the Mujoco model from the xml file.
+        Reloads the Mujoco model from the XML file or MjSpec object.
 
         Args:
-            xml_file (str/MjSpec): A string with a path to the xml or a Mujoco specification.
-
+            xml_file (Union[str, MjSpec]): Path to the XML file or a Mujoco specification object.
         """
         self._init_model, self._model, self._data, self._mjspec = self.load_mujoco(xml_file)
 
     @staticmethod
-    def _modify_option_spec(spec, option_config):
+    def _modify_option_spec(spec: MjSpec, option_config: Dict) -> MjSpec:
+        """
+        Modifies the Mujoco specification options.
+
+        Args:
+            spec (MjSpec): The Mujoco specification.
+            option_config (Dict): Dictionary of options to modify.
+
+        Returns:
+            MjSpec: The modified Mujoco specification.
+        """
         if option_config is not None:
             for key, value in option_config.items():
                 setattr(spec.option, key, value)
         return spec
 
     @staticmethod
-    def get_action_indices(model, data, actuation_spec):
+    def get_action_indices(model: MjModel, data: MjData, actuation_spec: List[str]) -> List[int]:
         """
-        Returns the action indices given the MuJoCo model, data, and actuation_spec.
+        Returns the action indices given the MuJoCo model, data, and actuation specification.
 
         Args:
-            model: MuJoCo model.
-            data: MuJoCo data structure.
-             actuation_spec (list): A list specifying the names of the joints
+            model (MjModel): The MuJoCo model.
+            data (MjData): The MuJoCo data structure.
+            actuation_spec (List[str]): A list specifying the names of the joints
                 which should be controllable by the agent. Can be left empty
-                when all actuators should be used;
+                when all actuators should be used.
 
         Returns:
-            A list of actuator indices.
-
+            List[int]: A list of actuator indices.
         """
         if len(actuation_spec) == 0:
             action_indices = [i for i in range(0, len(data.actuator_force))]
@@ -648,10 +914,12 @@ class Mujoco:
                 action_indices.append(model.actuator(name).id)
         return action_indices
 
-    def _get_all_info_properties(self):
+    def _get_all_info_properties(self) -> Dict:
         """
         Returns all info properties of the environment. (decorated with @info_property)
 
+        Returns:
+            Dict: A dictionary containing all info properties of the environment.
         """
         info_props = {}
         for attr_name in dir(self):
@@ -661,94 +929,150 @@ class Mujoco:
         return info_props
 
     @staticmethod
-    def parse_observation_spec(obs_spec: list):
+    def parse_observation_spec(obs_spec: List[Dict]) -> List[ObservationType]:
         """
         Parse the observation specification.
 
         Args:
-            obs_spec (list): List of observation specifications. Each observation specification is a dictionary
-                containing the following: name (str), type (str), and additional parameters.
+            obs_spec (List[Dict]): List of observation specifications. Each observation specification
+                consists of an ObservationType object.
 
         Returns:
-            list: List of observation types.
+            List[ObservationType]: List of observation types.
 
         """
         observation_spec = []
         for obs in obs_spec:
             obs_type = ObservationType.get(obs["type"])
-            # all other element in dict are params
+            # all other elements in dict are params
             obs_params = {k: v for k, v in obs.items() if k != "type"}
             observation_spec.append(obs_type(**obs_params))
         return observation_spec
 
     @property
-    def model(self):
+    def model(self) -> MjModel:
+        """
+        Returns the Mujoco model.
+
+        Returns:
+            MjModel: The Mujoco model.
+        """
         return self._model
 
     @property
-    def data(self):
+    def data(self) -> MjData:
+        """
+        Returns the Mujoco data structure.
+
+        Returns:
+            MjData: The Mujoco data structure.
+        """
         return self._data
 
     @property
-    def mjspec(self):
+    def mjspec(self) -> MjSpec:
+        """
+        Returns the Mujoco specification.
+
+        Returns:
+            MjSpec: The Mujoco specification.
+        """
         return self._mjspec
 
     @property
-    def cur_step_in_episode(self):
+    def cur_step_in_episode(self) -> int:
+        """
+        Returns the current step in the episode.
+
+        Returns:
+            int: The current step in the episode.
+        """
         return self._cur_step_in_episode
 
     @property
-    def mdp_info(self):
+    def mdp_info(self) -> MDPInfo:
+        """
+        Returns the MDP information.
+
+        Returns:
+            MDPInfo: The MDP information.
+        """
         return self._mdp_info
 
     @staticmethod
-    def user_warning_raise_exception(warning):
+    def user_warning_raise_exception(warning: str) -> None:
         """
         Detects warnings in Mujoco and raises the respective exception.
 
         Args:
-            warning: Mujoco warning.
+            warning (str): Mujoco warning message.
 
+        Raises:
+            RuntimeError: If a Mujoco warning is detected.
         """
         if 'Pre-allocated constraint buffer is full' in warning:
-            raise RuntimeError(warning + 'Increase njmax in mujoco XML')
+            raise RuntimeError(warning + ' Increase njmax in mujoco XML')
         elif 'Pre-allocated contact buffer is full' in warning:
-            raise RuntimeError(warning + 'Increase njconmax in mujoco XML')
+            raise RuntimeError(warning + ' Increase njconmax in mujoco XML')
         elif 'Unknown warning type' in warning:
-            raise RuntimeError(warning + 'Check for NaN in simulation.')
+            raise RuntimeError(warning + ' Check for NaN in simulation.')
         else:
             raise RuntimeError('Got MuJoCo Warning: ' + warning)
 
     @property
-    def video_file_path(self):
+    def video_file_path(self) -> str:
         """
+        Returns the path to the recorded video file if it exists.
+
         Returns:
-             The path to the recorded video file if it exists.
+            str: The path to the recorded video file.
         """
         return self._video_file_path
 
     @property
-    def info(self):
+    def info(self) -> MDPInfo:
         """
-        Returns:
-             An object containing the info of the environment.
+        Returns an object containing the info of the environment.
 
+        Returns:
+            MDPInfo: The info of the environment.
         """
         return self._mdp_info
 
+    @property
+    def viewer(self) -> MujocoViewer:
+        """
+        Returns the Mujoco viewer.
+
+        Returns:
+            MujocoViewer: The Mujoco viewer.
+        """
+        return self._viewer
+
     @info_property
-    def simulation_dt(self):
+    def simulation_dt(self) -> float:
+        """
+        Returns the simulation timestep.
+
+        Returns:
+            float: The simulation timestep.
+        """
         return self._model.opt.timestep
 
     @info_property
-    def dt(self):
+    def dt(self) -> float:
+        """
+        Returns the effective timestep considering intermediate steps and substeps.
+
+        Returns:
+            float: The effective timestep.
+        """
         return self.simulation_dt * self._n_intermediate_steps * self._n_substeps
 
     @classmethod
-    def register(cls):
+    def register(cls) -> None:
         """
         Register an environment in the environment list.
-
         """
         env_name = cls.__name__
 
@@ -756,35 +1080,32 @@ class Mujoco:
             Mujoco.registered_envs[env_name] = cls
 
     @staticmethod
-    def list_registered():
+    def list_registered() -> List[str]:
         """
         List registered environments.
 
         Returns:
-             The list of the registered environments.
-
+            List[str]: The list of the registered environments.
         """
         return list(Mujoco.registered_envs.keys())
 
     @staticmethod
-    def make(env_name, *args, **kwargs):
+    def make(env_name: str, *args, **kwargs) -> 'Mujoco':
         """
         Generate an environment given an environment name and parameters.
         The environment is created using the generate method, if available. Otherwise, the constructor is used.
         The generate method has a simpler interface than the constructor, making it easier to generate a standard
-        version of the environment. If the environment name contains a '.' separator, the string is splitted, the first
+        version of the environment. If the environment name contains a '.' separator, the string is split, the first
         element is used to select the environment and the other elements are passed as positional parameters.
 
         Args:
-            env_name (str): Name of the environment,
-            *args: positional arguments to be provided to the environment generator;
-            **kwargs: keyword arguments to be provided to the environment generator.
+            env_name (str): Name of the environment.
+            *args: Positional arguments to be provided to the environment generator.
+            **kwargs: Keyword arguments to be provided to the environment generator.
 
         Returns:
-            An instance of the constructed environment.
-
+            Mujoco: An instance of the constructed environment.
         """
-
         if '.' in env_name:
             env_data = env_name.split('.')
             env_name = env_data[0]
@@ -796,3 +1117,4 @@ class Mujoco:
             return env.generate(*args, **kwargs)
         else:
             return env(*args, **kwargs)
+
