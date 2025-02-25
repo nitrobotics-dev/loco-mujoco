@@ -2,6 +2,8 @@ import numpy as np
 from loco_mujoco import LocoEnv
 import gymnasium as gym
 
+from loco_mujoco.task_factories import DefaultDatasetConf, LAFAN1DatasetConf
+
 # create the environment and task
 env = gym.make("LocoMujoco", env_name="SkeletonTorque", render_mode="human",
                default_dataset_conf=DefaultDatasetConf("walk"),
@@ -10,7 +12,7 @@ env = gym.make("LocoMujoco", env_name="SkeletonTorque", render_mode="human",
                reward_type="MimicReward")
 
 # get the dataset for the chosen environment and task --> useful for GAIL or AMP
-expert_data = env.create_dataset()
+expert_data = env.unwrapped.create_dataset()
 
 action_dim = env.action_space.shape[0]
 
