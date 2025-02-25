@@ -5,6 +5,7 @@ import numpy as np
 import mujoco
 from mujoco import MjModel, MjData
 from pathlib import Path
+import gc
 
 import jax.random as jr
 import numpy.random as nr
@@ -320,18 +321,18 @@ def standing_trajectory() -> Trajectory:
     mjx_env.reset(key)
 
     # get the model and data of the environment
-    model = mjx_env.get_model()
-    data = mjx_env.get_data()
+    model = mjx_env.model
+    data = mjx_env.data
 
     # get the initial qpos and qvel of the environment
-    qpos = data.qpos
-    qvel = data.qvel
-    xpos = data.xpos
-    xquat = data.xquat
-    cvel = data.cvel
-    subtree_com = data.subtree_com
-    site_xpos = data.site_xpos
-    site_xmat = data.site_xmat
+    qpos = data.qpos.copy()
+    qvel = data.qvel.copy()
+    xpos = data.xpos.copy()
+    xquat = data.xquat.copy()
+    cvel = data.cvel.copy()
+    subtree_com = data.subtree_com.copy()
+    site_xpos = data.site_xpos.copy()
+    site_xmat = data.site_xmat.copy()
 
     # stack qpos and qvel to a trajectory
     qpos = np.tile(qpos, (N_steps, 1))
@@ -345,7 +346,7 @@ def standing_trajectory() -> Trajectory:
 
     # create a trajectory info -- this stores basic information about the trajectory
     njnt = model.njnt
-    jnt_type = model.jnt_type
+    jnt_type = model.jnt_type.copy()
     jnt_names = [mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(njnt)]
     traj_info = TrajectoryInfo(jnt_names, model=TrajectoryModel(njnt, jnp.array(jnt_type)), frequency=1 / mjx_env.dt)
 

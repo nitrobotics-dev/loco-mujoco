@@ -17,6 +17,11 @@ from loco_mujoco.core.utils.math import calculate_relative_site_quatities
 from test_conf import DummyHumamoidEnv
 
 
+# set Jax-backend to CPU
+jax.config.update('jax_platform_name', 'cpu')
+print(f"Jax backend device: {jax.default_backend()} \n")
+
+
 DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 
 OBSERVATION_SPACE = [

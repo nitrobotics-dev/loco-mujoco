@@ -12,8 +12,8 @@ from test_conf import *
 
 # Set Jax-backend to CPU
 jax.config.update('jax_platform_name', 'cpu')
-jax.config.update('jax_enable_compilation_cache', False)
-jax.config.update('jax_disable_jit', True)
+# jax.config.update('jax_enable_compilation_cache', False)
+# jax.config.update('jax_disable_jit', True)
 print(f"Jax backend device: {jax.default_backend()} \n")
 
 
