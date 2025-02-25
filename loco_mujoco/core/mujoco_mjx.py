@@ -14,21 +14,6 @@ from loco_mujoco.trajectory import TrajectoryData
 
 
 @struct.dataclass
-class MjxState:
-    """
-    State of the Mjx environment.
-
-    """
-    data: mjx.Data
-    observation: jax.Array
-    reward: float
-    absorbing: bool
-    done: bool
-    additional_carry: Any
-    info: Dict[str, Any] = struct.field(default_factory=dict)
-
-
-@struct.dataclass
 class MjxAdditionalCarry(AdditionalCarry):
     """
     Additional carry for the Mjx environment.
@@ -36,6 +21,30 @@ class MjxAdditionalCarry(AdditionalCarry):
     """
     final_observation: jax.Array
     final_info: Dict[str, Any]
+
+
+@struct.dataclass
+class MjxState:
+    """
+    State of the Mjx environment.
+
+    Args:
+        data (mjx.Data): Mjx data structure.
+        observation (jax.Array): Observation of the environment.
+        reward (float): Reward of the environment.
+        absorbing (bool): Whether the state is absorbing.
+        done (bool): Whether the episode is done.
+        additional_carry (Any): Additional carry information.
+        info (Dict[str, Any]): Information dictionary.
+
+    """
+    data: mjx.Data
+    observation: jax.Array
+    reward: float
+    absorbing: bool
+    done: bool
+    additional_carry: MjxAdditionalCarry
+    info: Dict[str, Any] = struct.field(default_factory=dict)
 
 
 class Mjx(Mujoco):
@@ -211,7 +220,9 @@ class Mjx(Mujoco):
 
         return state
 
-    def _mjx_create_observation(self, model: Model, data: Data, carry: MjxAdditionalCarry) -> jax.Array:
+    def _mjx_create_observation(self, model: Model,
+                                data: Data,
+                                carry: MjxAdditionalCarry) -> jax.Array:
         """
         Creates the observation for the environment.
 
