@@ -57,11 +57,11 @@ def test_RLFactory_numpy(env_name):
     assert isinstance(env, LocoEnv.registered_envs[env_name])
 
 
-# @pytest.mark.parametrize("env_name", get_jax_env_names())
-# def test_RLFactory_jax(env_name):
-#     gc.collect()
-#     env = RLFactory.make(env_name)
-#     assert isinstance(env, LocoEnv.registered_envs[env_name])
+@pytest.mark.parametrize("env_name", get_jax_env_names())
+def test_RLFactory_jax(env_name):
+    gc.collect()
+    env = RLFactory.make(env_name)
+    assert isinstance(env, LocoEnv.registered_envs[env_name])
 
 
 @pytest.mark.parametrize("env_name", get_numpy_env_names())
