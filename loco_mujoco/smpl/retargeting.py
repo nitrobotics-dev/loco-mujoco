@@ -21,7 +21,8 @@ try:
     import joblib
     from loco_mujoco.smpl import SMPLH_Parser
     _OPTIONAL_IMPORT_INSTALLED = True
-except ImportError:
+except ImportError as e:
+    print(f"[LocoMuJoCo] Optional smpl dependencies not installed. {e}")
     _OPTIONAL_IMPORT_INSTALLED = False
 
 import loco_mujoco
