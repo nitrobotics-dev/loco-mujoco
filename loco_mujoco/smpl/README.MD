@@ -61,14 +61,14 @@ loco-mujoco-set-conv-amass-path --path $HOME/amass_conv
 1. Visit the [AMASS website](https://amass.is.tue.mpg.de/index.html).
 2. Register and download the datasets you wish to use.
 3. Select the `SMPL-H G` version of each dataset.
-4. Extract and place them in the directory specified above, e.g., `/path/to/amass/data`.
+4. Extract and place them in the directory specified above, e.g., `$HOME/amass`.
 
 ### 3. Downloading the SMPL-H Models
 1. Go to the [MANO website](https://mano.is.tue.mpg.de/download.php).
 2. Register and download the following:
    - **Extended SMPL+H model** (includes the SMPL-H model w/o hands).
    - **Models & Code** (includes the hand models).
-3. Extract and place them in the directory specified above, e.g., `/path/to/smpl/models`.
+3. Extract and place them in the directory specified above, e.g., `$HOME/smpl`.
 
 ---
 
