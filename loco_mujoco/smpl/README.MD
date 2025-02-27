@@ -29,7 +29,7 @@ Before downloading the datasets and models, specify the directory where you’d 
 
 
 ```bash
-mkdir <path to folder for the amass datasets>
+mkdir <path to folder storing the amass datasets>
 loco-mujoco-set-amass-path --path <path to folder storing the amass datasets>
 mkdir <path to folder storing the smpl models>
 loco-mujoco-set-smpl-model-path --path <path to folder storing the smpl models>
