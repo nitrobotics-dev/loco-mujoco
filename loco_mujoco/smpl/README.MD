@@ -80,10 +80,10 @@ To combine the body and hand models into a single `SMPLH_NEUTRAL.PKL` file, foll
 
 ### Automatic Method (Recommended; Requires Anaconda)
 
-To resolve dependency issues with deprecated packages, we provide an automated [scipt](./install_smplh.sh). This script uses a Conda environment to manage dependencies and ensure proper installation.
+To resolve dependency issues with deprecated packages, we provide an automated [script](./install_smplh.sh). This script uses a Conda environment to manage dependencies and ensure proper installation.
 
 1. Ensure [Anaconda](https://www.anaconda.com/) is installed.
-2. Copy and paste the [scipt](./install_smplh.sh) somewhere.
+2. Copy and paste the [script](./install_smplh.sh) somewhere.
 3. Run the script:
    ```bash
    chmod u+x install_smplh.sh   # this is using the original name of the script
