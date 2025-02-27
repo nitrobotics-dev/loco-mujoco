@@ -33,6 +33,8 @@ class DummyHumamoidEnv(LocoEnv):
     default_data_mjx = None
     default_first_data_mjx = None
 
+    mjx_enabled = False
+
     def __init__(self, observation_spec=None, actuation_spec=None, spec=None, **kwargs):
 
         # load the model specification
@@ -55,7 +57,7 @@ class DummyHumamoidEnv(LocoEnv):
         if actuation_spec is None:
             actuation_spec = self._get_action_specification(spec)
 
-        self._using_jax = kwargs["enable_mjx"]
+        self.mjx_enabled = kwargs["enable_mjx"]
 
         super(DummyHumamoidEnv, self).__init__(spec, actuation_spec, observation_spec, **kwargs)
 
