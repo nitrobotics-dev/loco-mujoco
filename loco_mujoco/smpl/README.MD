@@ -26,16 +26,36 @@ pip install -e '.[smpl]'
 ### 1. Setting the Storage Directory
 Before downloading the datasets and models, specify the directory where you’d like to store them:
 
+
+
 ```bash
-loco-mujoco-set-amass-path --path "/path/to/amass/data"
-loco-mujoco-set-smpl-model-path --path "/path/to/smpl/models"
+mkdir <path to folder for the amass datasets>
+loco-mujoco-set-amass-path --path <path to folder for the amass datasets>
+mkdir <path to folder for the smpl models>
+loco-mujoco-set-smpl-model-path --path <path to folder for the smpl models>
+```
+
+For example, to install the datasets in your home folder, you can run:
+
+```bash
+mkdir $HOME/amass
+loco-mujoco-set-amass-path --path $HOME/amass
+mkdir $HOME/smpl
+loco-mujoco-set-smpl-model-path --path $HOME/smpl
 ```
 
 Also, set the path to which the converted datasets (after retargeting) will be stored:
 
 ```bash
-loco-mujoco-set-conv-amass-path --path "/path/to/conv/amass/data"
+loco-mujoco-set-conv-amass-path --path <path to converted amass data>
 ```
+
+For example, to set the path into the home directory, you can run:
+
+```bash
+loco-mujoco-set-conv-amass-path --path $HOME/amass_conv
+```
+
 
 ### 2. Downloading the AMASS Dataset
 1. Visit the [AMASS website](https://amass.is.tue.mpg.de/index.html).
@@ -104,5 +124,15 @@ If you don’t have Conda installed or prefer a manual setup, follow these steps
    deactivate
    ```
 ---
+
+### Test the datasets
+You can test the SMPL model by running the script in examples/replay_datasets/
+
+```bash
+python smpl_example.py
+```
+
+WARNING! The script assumes that you have downloaded the DanceDB dataset. You can try the script with different datasets by specifying a different dataset file
+
 
 

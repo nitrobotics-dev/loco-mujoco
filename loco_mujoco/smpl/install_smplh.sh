@@ -15,7 +15,7 @@ LOCO_MUJOCO_PATH=$(get_loco_mujoco_path)
 
 # Define paths based on LOCO_MUJOCO_PATH
 GENERATE_SCRIPT_PATH="$LOCO_MUJOCO_PATH/smpl/generate_smplh_model.py"
-SMPL_CONF_PATH="$LOCO_MUJOCO_PATH/smpl/conf_paths.yaml"
+SMPL_CONF_PATH="$LOCO_MUJOCO_PATH/LOCOMUJOCO_VARIABLES.yaml"
 
 # Check if the SMPL configuration file exists
 if [ ! -f "$SMPL_CONF_PATH" ]; then
