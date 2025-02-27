@@ -126,13 +126,13 @@ If you don’t have Conda installed or prefer a manual setup, follow these steps
 ---
 
 ### Test the datasets
-You can test the SMPL model by running the script in examples/replay_datasets/
+You can test the SMPL model by running the script in `examples/replay_datasets/`:
 
 ```bash
 python smpl_example.py
 ```
 
-WARNING! The script assumes that you have downloaded the DanceDB dataset. You can try the script with different datasets by specifying a different dataset file
+**WARNING!** The script assumes that you have downloaded the `DanceDB` dataset. You can try the script with different datasets by specifying a different dataset file
 
 
 
