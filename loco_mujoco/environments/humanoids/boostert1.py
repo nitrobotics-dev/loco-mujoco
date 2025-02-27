@@ -81,8 +81,7 @@ class BoosterT1(BaseRobotHumanoid):
         if self.mjx_enabled:
             spec = self._modify_spec_for_mjx(spec)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
-                         **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     @staticmethod
     def _get_observation_specification(spec: MjSpec):

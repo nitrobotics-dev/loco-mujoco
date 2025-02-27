@@ -279,8 +279,7 @@ class UnitreeG1(BaseRobotHumanoid):
             if disable_arms:
                 spec = self._reorient_arms(spec)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
-                         **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     @info_property
     def grf_size(self):

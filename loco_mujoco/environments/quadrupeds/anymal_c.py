@@ -88,7 +88,7 @@ class AnymalC(BaseRobotQuadruped):
             camera_params = dict(follow=dict(distance=3.5, elevation=-20.0, azimuth=90.0))
 
         super().__init__(spec, action_spec, observation_spec,
-                         camera_params=camera_params, enable_mjx=self.mjx_enabled, **kwargs)
+                         camera_params=camera_params, **kwargs)
 
     @staticmethod
     def _get_observation_specification(spec: MjSpec):

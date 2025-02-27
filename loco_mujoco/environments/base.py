@@ -1,11 +1,8 @@
-import os
-import yaml
+from typing import List, Tuple, Dict, Any, Union
+from types import ModuleType
+
 import warnings
-from pathlib import Path
 from copy import deepcopy
-from tempfile import mkdtemp
-from itertools import product
-from functools import partial
 from tqdm import tqdm
 from dataclasses import replace
 
@@ -14,12 +11,13 @@ import jax.numpy as jnp
 import numpy as np
 from flax import struct
 import mujoco
-from mujoco import MjSpec
+from mujoco import MjSpec, MjModel, MjData
+from mujoco.mjx import Model, Data
 from scipy.spatial.transform import Rotation as np_R
 
-import loco_mujoco
 from loco_mujoco.core.stateful_object import EmptyState
-from loco_mujoco.core.mujoco_mjx import Mjx, MjxAdditionalCarry
+from loco_mujoco.core.observations import Observation
+from loco_mujoco.core.mujoco_mjx import Mjx, MjxAdditionalCarry, MjxState
 from loco_mujoco.core.visuals import VideoRecorder
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils import info_property
@@ -28,76 +26,63 @@ from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
 
 @struct.dataclass
 class LocoCarry(MjxAdditionalCarry):
+    """
+    Additional carry for the LocoEnv.
+
+    Args:
+        traj_state (TrajState): Trajectory state.
+    """
     traj_state: TrajState
 
 
 class LocoEnv(Mjx):
     """
-    Base class for all kinds of locomotion environments.
+    Base class for all kinds of environments.
+
+    Args:
+        mjx_enabled (bool): If True, the environment is enabled for the MJX backend.
 
     """
 
     mjx_enabled = False
 
-    def __init__(self, spec, action_spec, observation_spec, enable_mjx=False,
-                 n_envs=1, gamma=0.99, horizon=1000, n_substeps=10, th_params=None,
-                 traj_params=None, timestep=0.001, default_camera_mode="follow",
-                 model_option_conf=None, **core_params):
+    def __init__(self, spec: MjSpec,
+                 action_spec: List[str],
+                 observation_spec: List[Observation],
+                 n_envs: int = 1,
+                 gamma: float = 0.99,
+                 horizon: int = 1000,
+                 n_substeps: int = 10,
+                 th_params: Dict = None,
+                 traj_params: Dict = None,
+                 timestep: float = 0.001,
+                 default_camera_mode: str = "follow",
+                 model_option_conf: Dict = None,
+                 **core_params):
         """
         Constructor.
 
         Args:
             spec (MjSpec): MuJoCo specification.
-            actuation_spec (list): A list specifying the names of the joints
-                which should be controllable by the agent. Can be left empty
-                when all actuators should be used;
-            observation_spec (list): A list containing the names of data that
-                should be made available to the agent as an observation and
-                their type (ObservationType). They are combined with a key,
-                which is used to access the data. An entry in the list
-                is given by: (key, name, type). The name can later be used
-                to retrieve specific observations;
-            enable_mjx (bool): Flag specifying whether Mjx simulation is enabled or not.
-            n_envs (int): Number of environment to run in parallel when using Mjx.
-            gamma (float): The discounting factor of the environment;
-            horizon (int): The maximum horizon for the environment;
-            n_substeps (int): The number of substeps to use by the MuJoCo
-                simulator. An action given by the agent will be applied for
-                n_substeps before the agent receives the next observation and
-                can act accordingly;
-            reward_type (string): Type of reward function to be used.
-            reward_params (dict): Dictionary of parameters corresponding to
-                the chosen reward function;
-            traj_params (dict): Dictionary of parameters to construct trajectories.
-            random_start (bool): If True, a random sample from the trajectories
-                is chosen at the beginning of each time step and initializes the
-                simulation according to that. This requires traj_params to be passed!
-            fixed_start_conf (tuple(int)): Tuple of two ints defining the trajectory index and within that
-                trajectory the sample to be used for initializing the simulation. Default is None.
-                If both, random_start is False and fixed_start_conf is None, then the default initial starting
-                position (all qpos=0) is used.
-            the If set, the respective sample from the trajectories
-                is taken to initialize the simulation;
-            timestep (float): The timestep used by the MuJoCo simulator. If None, the
-                default timestep specified in the XML will be used;
-            use_foot_forces (bool): If True, foot forces are computed and added to
-                the observation space;
-            default_camera_mode (str): String defining the default camera mode. Available modes are "static",
-                "follow", and "top_static".
-            use_absorbing_states (bool): If True, absorbing states are defined for each environment. This means
-                that episodes can terminate earlier.
-            domain_randomization_config (str): Path to the domain/dynamics randomization config file.
-            parallel_dom_rand (bool): If True and a domain_randomization_config file is passed, the domain
-                randomization will run in parallel to speed up simulation run-time.
-            N_worker_per_xml_dom_rand (int): Number of workers used per xml-file for parallel domain randomization.
-                If parallel is set to True, this number has to be greater 1.
+            action_spec (List[str]): A list specifying the names of motors which should be controllable by the agent.
+            observation_spec (List[Observation]): A list of observations that should be made available to the agent.
+            n_envs (int): Number of environments to run in parallel when using MJX.
+            gamma (float): The discounting factor of the environment.
+            horizon (int): The maximum horizon for the environment.
+            n_substeps (int): The number of substeps to use by the MuJoCo simulator.
+            th_params (Dict): Dictionary of parameters for the trajectory handler.
+            traj_params (Dict): Dictionary of parameters to load trajectories.
+            timestep (float): The timestep used by the MuJoCo simulator.
+            default_camera_mode (str): String defining the default camera mode.
+            model_option_conf (Dict): Dictionary of model options.
+            core_params (Dict): Dictionary of other core parameters.
 
         """
 
         if "geom_group_visualization_on_startup" not in core_params.keys():
             core_params["geom_group_visualization_on_startup"] = [0, 2]   # enable robot geom [0] and floor visual [2]
 
-        if enable_mjx:
+        if self.mjx_enabled:
             # call parent (Mjx) constructor
             super(LocoEnv, self).__init__(n_envs, spec=spec, actuation_spec=action_spec,
                                           observation_spec=observation_spec, gamma=gamma,
@@ -106,7 +91,6 @@ class LocoEnv(Mjx):
                                           default_camera_mode=default_camera_mode,
                                           model_option_conf=model_option_conf, **core_params)
         else:
-            assert n_envs == 1, "Mjx not enabled, setting the number of environments > 1 is not allowed."
             # call grandparent constructor (Mujoco (CPU) environment)
             super(Mjx, self).__init__(spec=spec, actuation_spec=action_spec,
                                       observation_spec=observation_spec, gamma=gamma,
@@ -114,9 +98,6 @@ class LocoEnv(Mjx):
                                       timestep=timestep,
                                       default_camera_mode=default_camera_mode,
                                       model_option_conf=model_option_conf, **core_params)
-
-        # the action space is supposed to be between -1 and 1, so we normalize it
-        self._scale_action_space()
 
         # dataset dummy
         self._dataset = None
@@ -130,20 +111,9 @@ class LocoEnv(Mjx):
 
         self._th_params = th_params
 
-    def set_actuation_spec(self, actuation_spec):
-        """
-        Sets the actuation of the environment to overwrite the default one.
-
-        Args:
-            actuation_spec (list): A list of actuator names.
-
-        """
-        super().set_actuation_spec(actuation_spec)
-
-        # the action space is supposed to be between -1 and 1, so we normalize it
-        self._scale_action_space()
-
-    def load_trajectory(self,  traj: Trajectory = None, traj_path=None, warn=True):
+    def load_trajectory(self, traj: Trajectory = None,
+                        traj_path: str = None,
+                        warn: bool = True) -> None:
         """
         Loads trajectories. If there were trajectories loaded already, this function overrides the latter.
 
@@ -176,19 +146,59 @@ class LocoEnv(Mjx):
         self._goal.init_from_traj(self.th)
         self._terminal_state_handler.init_from_traj(self.th)
 
-    def _scale_action_space(self):
+    def _is_done(self, obs: np.ndarray,
+                 absorbing: bool,
+                 info: Dict,
+                 data: MjData,
+                 carry: LocoCarry) -> bool:
         """
-        Scale the action space to be between -1 and 1. The action mean and delta are used to rescale the actions
-        before sending them back to the environment.
+        Check whether the episode is done or not.
+
+        Args:
+            obs (np.array): the state of the system.
+            absorbing (bool): flag indicating whether the state is absorbing or not.
+            info (dict): additional information.
+            data (MjData): Mujoco data structure.
+            carry (LocoCarry): Additional carry information.
+
+        Returns:
+            A boolean flag indicating whether the episode is done or not.
 
         """
-        low, high = self.info.action_space.low.copy(), self.info.action_space.high.copy()
-        self.norm_act_mean = (high + low) / 2.0
-        self.norm_act_delta = (high - low) / 2.0
-        self.info.action_space.low[:] = -1.0
-        self.info.action_space.high[:] = 1.0
+        done = super()._is_done(obs, absorbing, info, data, carry)
 
-    def _mjx_is_done(self, obs, absorbing, info, data, carry):
+        if self._goal.requires_trajectory or self._reward_function.requires_trajectory:
+            # either the goal or the reward function requires the trajectory at each step, so we need to check
+            # if the end of the trajectory is reached, if so, we set done to True
+            traj_state = carry.traj_state
+            if traj_state.subtraj_step_no >= self.th.len_trajectory(traj_state.traj_no) - 1:
+                done |= True
+            else:
+                done |= False
+
+            # goals can terminate an episode
+            done |= self._goal.is_done(self, self._model, data, carry, np)
+
+        return done
+
+    def _mjx_is_done(self, obs: jnp.ndarray,
+                     absorbing: bool,
+                     info: Dict,
+                     data: Data,
+                     carry: LocoCarry) -> bool:
+        """
+        Determines if the episode is done.
+
+        Args:
+            obs (jnp.ndarray): Current observation.
+            absorbing (bool): Whether the next state is absorbing.
+            info (Dict): Information dictionary.
+            data (Data): Mujoco data structure.
+            carry (LocoCarry): Additional carry information.
+
+        Returns:
+            bool: True if the episode is done, False otherwise.
+        """
         done = super()._mjx_is_done(obs, absorbing, info, data, carry)
 
         if self._goal.requires_trajectory or self._reward_function.requires_trajectory:
@@ -204,26 +214,19 @@ class LocoEnv(Mjx):
 
         return done
 
-    def _is_done(self, obs, absorbing, info, data, carry):
-        done = super()._is_done(obs, absorbing, info, data, carry)
-
-        if self._goal.requires_trajectory or self._reward_function.requires_trajectory:
-            # either the goal or the reward function requires the trajectory at each step, so we need to check
-            # if the end of the trajectory is reached, if so, we set done to True
-            traj_state = carry.traj_state
-            if traj_state.subtraj_step_no >= self.th.len_trajectory(traj_state.traj_no) - 1:
-                done != True
-            else:
-                done != False
-
-            # goals can terminate an episode
-            done != self._goal.is_done(self, self._model, data, carry, np)
-
-        return done
-
-    def _simulation_post_step(self, model, data, carry):
+    def _simulation_post_step(self, model: MjModel,
+                              data: MjData,
+                              carry: LocoCarry) -> Tuple[MjData, LocoCarry]:
         """
-        Update trajectory state if needed.
+        Allows to access and modify the model, data and carry to be modified after the main simulation step.
+
+        Args:
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated model, data and carry.
 
         """
         # call parent to update domain randomization and terrain
@@ -235,10 +238,19 @@ class LocoEnv(Mjx):
 
         return data, carry
 
-    def _mjx_simulation_post_step(self, model, data, carry):
+    def _mjx_simulation_post_step(self, model: Model,
+                                  data: Data,
+                                  carry: LocoCarry) -> Tuple[Data, LocoCarry]:
         """
-        Update trajectory state if needed.
+        Applies post-step modifications to the data and carry.
 
+        Args:
+            model (Model): Mujoco model.
+            data (Data): Mujoco data structure.
+            carry (LocoCarry): Additional carry information.
+
+        Returns:
+            Tuple[Data, LocoCarry]: Updated data and carry.
         """
         # call parent to update domain randomization and terrain
         data, carry = super()._mjx_simulation_post_step(model, data, carry)
@@ -249,7 +261,7 @@ class LocoEnv(Mjx):
 
         return data, carry
 
-    def create_dataset(self, rng_key=None):
+    def create_dataset(self, rng_key=None) -> TrajectoryTransitions:
         """
         Generates a dataset from the specified trajectories without including actions.
 
@@ -266,10 +278,10 @@ class LocoEnv(Mjx):
           `reset()` and `step()` methods.
 
         Args:
-        rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
+            rng_key (jax.random.PRNGKey, optional): A random key for reproducibility. Defaults to None.
 
         Returns:
-        TrajectoryTransitions: A dictionary containing the following:
+        TrajectoryTransitions: A dataclass containing the following fields:
             - observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
             - next_observations (array): An array of shape (N_traj x (N_samples_per_traj-1), dim_state).
             - absorbing (array): A flag array of shape (N_traj x (N_samples_per_traj-1)), indicating absorbing states.
@@ -379,8 +391,15 @@ class LocoEnv(Mjx):
             raise ValueError("No trajectory was passed to the environment. "
                              "To create a dataset pass a trajectory first.")
 
-    def play_trajectory(self, n_episodes=None, n_steps_per_episode=None, from_velocity=False, render=True,
-                        record=False, recorder_params=None, callback_class=None, quiet=False, key=None):
+    def play_trajectory(self, n_episodes: int = None,
+                        n_steps_per_episode: int = None,
+                        from_velocity: bool = False,
+                        render: bool = True,
+                        record: bool = False,
+                        recorder_params: Dict = None,
+                        callback_class=None,
+                        quiet: bool = False,
+                        key: jax.random.PRNGKey = None) -> None:
         """
         Plays a demo of the loaded trajectory by forcing the model
         positions to the ones in the trajectories at every step.
@@ -393,8 +412,8 @@ class LocoEnv(Mjx):
             render (bool): If True, trajectory will be rendered.
             record (bool): If True, the rendered trajectory will be recorded.
             recorder_params (dict): Dictionary containing the recorder parameters.
-            callback_class (class): Class to be called at each step of the simulation.
-            quiet (bool): If True, disable tqdm
+            callback_class: Object to be called at each step of the simulation.
+            quiet (bool): If True, disable tqdm.
             key (jax.random.PRNGKey): Random key to use for the simulation.
 
         """
@@ -479,16 +498,14 @@ class LocoEnv(Mjx):
                     # Apply the incremental rotation to the current quaternion orientation
                     new_qpos = delta_q * np_R.from_quat(qpos_quat)
 
-                    #new_qpos = np_R.from_euler("xyz", self.dt * qvel[is_free_joint_qvel_rotvec]) * np_R.from_quat(qpos_quat)
                     qpos_quat = new_qpos.as_quat()
-
-                    # qpos_quat = np_R.from_euler("xyz", qpos_rotvec).as_quat()
 
                     # todo: implement for more than one free joint
                     assert len(qpos_quat) <= 4, "currently only one free joints per scene is supported for replay."
 
-                    qpos[~is_free_joint_qpos_quat] = [qp + self.dt * qv for qp, qv in zip(self._data.qpos[~is_free_joint_qpos_quat],
-                                                                                          qvel[~is_free_joint_qvel_rotvec])]
+                    qpos[~is_free_joint_qpos_quat] = [qp + self.dt * qv
+                                                      for qp, qv in zip(self._data.qpos[~is_free_joint_qpos_quat],
+                                                                        qvel[~is_free_joint_qvel_rotvec])]
                     qpos[is_free_joint_qpos_quat] = qpos_quat
                     traj_data_sample = traj_data_sample.replace(qpos=jnp.array(qpos))
 
@@ -512,8 +529,14 @@ class LocoEnv(Mjx):
         if was_jax:
             self.th.to_jax()
 
-    def play_trajectory_from_velocity(self, n_episodes=None, n_steps_per_episode=None, render=True,
-                                      record=False, recorder_params=None, callback_class=None, key=None):
+    def play_trajectory_from_velocity(self, n_episodes: int = None,
+                                      n_steps_per_episode: int = None,
+                                      render: bool = True,
+                                      record: bool = False,
+                                      recorder_params: Dict = None,
+                                      callback_class=None,
+                                      quiet: bool = False,
+                                      key: jax.random.PRNGKey = None) -> None:
         """
         Plays a demo of the loaded trajectory by forcing the model
         positions to the ones calculated from the joint velocities
@@ -529,6 +552,7 @@ class LocoEnv(Mjx):
             record (bool): If True, the rendered trajectory will be recorded.
             recorder_params (dict): Dictionary containing the recorder parameters.
             callback_class (class): Class to be called at each step of the simulation.
+            quiet (bool): If True, disable tqdm.
             key (jax.random.PRNGKey): Random key to use for the simulation.
 
         """
@@ -539,25 +563,66 @@ class LocoEnv(Mjx):
             stacklevel=3
         )
         self.play_trajectory(n_episodes, n_steps_per_episode, True, render,
-                             record, recorder_params, callback_class, key)
+                             record, recorder_params, callback_class, quiet, key)
 
-    def set_sim_state_from_traj_data(self, data, traj_data, carry):
+    def set_sim_state_from_traj_data(self, data, traj_data, carry) -> MjData:
+        """
+        Sets the Mujoco datastructure to the state specified in the trajectory data.
+
+        Args:
+            data (MjData): The Mujoco data structure.
+            traj_data: The trajectory data containing state information.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            MjData: The updated Mujoco data structure.
+        """
+        free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
         traj_state = carry.traj_state
         # get the initial state of the current trajectory
         traj_data_init = self.th.traj.data.get(traj_state.traj_no, traj_state.subtraj_step_no_init, np)
         # subtract the initial state from the current state
-        traj_data.qpos[0:2] -= traj_data_init.qpos[0:2]
+        traj_data.qpos[free_jnt_qpos_id_xy] -= traj_data_init.qpos[free_jnt_qpos_id_xy]
         return Mjx.set_sim_state_from_traj_data(data, traj_data, carry)
 
-    def mjx_set_sim_state_from_traj_data(self, data, traj_data, carry):
+    def mjx_set_sim_state_from_traj_data(self, data, traj_data, carry) -> Data:
+        """
+        Sets the simulation state from the trajectory data.
+
+        Args:
+            data (Data): Current Mujoco data.
+            traj_data (TrajectoryData): Data from the trajectory.
+            carry (MjxAdditionalCarry): Additional carry information.
+
+        Returns:
+            Data: Updated Mujoco data.
+        """
+        free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
         traj_state = carry.traj_state
         # get the initial state of the current trajectory
         traj_data_init = self.th.traj.data.get(traj_state.traj_no, traj_state.subtraj_step_no_init, jnp)
         # subtract the initial state from the current state
-        traj_data = traj_data.replace(qpos=traj_data.qpos.at[0:2].add(-traj_data_init.qpos[0:2]))
+        traj_data = traj_data.replace(
+            qpos=traj_data.qpos.at[free_jnt_qpos_id_xy].add(-traj_data_init.qpos[free_jnt_qpos_id_xy]))
         return Mjx.mjx_set_sim_state_from_traj_data(data, traj_data, carry)
 
-    def _init_additional_carry(self, key, model, data, backend):
+    def _init_additional_carry(self,
+                               key: jax.Array,
+                               model: MjModel,
+                               data: MjData,
+                               backend: ModuleType) -> LocoCarry:
+        """
+        Initializes the additional carry structure.
+
+        Args:
+            key (jax.Array): Random key for JAX operations.
+            model (MjModel): The Mujoco model.
+            data (MjData): The Mujoco data structure.
+            backend (ModuleType): The numerical backend to use (NumPy or JAX NumPy).
+
+        Returns:
+            AdditionalCarry: The initialized additional carry structure.
+        """
 
         carry = super()._init_additional_carry(key, model, data, backend)
 
@@ -571,18 +636,53 @@ class LocoEnv(Mjx):
 
         return carry
 
-    def reset(self, key):
+    def reset(self, key=None) -> np.ndarray:
+        """
+        Resets the environment to the initial state.
+
+        Args:
+            key: Random key. For now, not used in the Mujoco environment.
+                Could be used in future to set the numpy seed.
+
+        Returns:
+            The initial observation as a numpy array.
+
+        """
         if self.th is not None and not self.th.is_numpy:
             self.th.to_numpy()
         return super().reset(key)
 
-    def mjx_reset(self, key):
+    def mjx_reset(self, key: jax.random.PRNGKey) -> MjxState:
+        """
+        Resets the environment.
+
+        Args:
+            key (jax.random.PRNGKey): Random key for the reset.
+
+        Returns:
+            MjxState: The reset state of the environment.
+
+        """
         if self.th is not None and self.th.is_numpy:
             raise ValueError("Trajectory is in numpy format, but your attempting to run the MJX backend. "
                              "Please call the <your_env_name>.th.to_jax() function on your environment first.")
         return super().mjx_reset(key)
 
-    def _reset_carry(self, model, data, carry):
+    def _reset_carry(self, model: MjModel,
+                     data: MjData,
+                     carry: LocoCarry) -> Tuple[MjData, LocoCarry]:
+        """
+        Resets the additional carry. Also allows modification to the MjData.
+
+        Args:
+            model (MjModel): Mujoco model.
+            data (MjData): Mujoco data structure.
+            carry (AdditionalCarry): Additional carry information.
+
+        Returns:
+            The updated carry and data.
+
+        """
 
         # reset trajectory state
         if self.th is not None:
@@ -594,7 +694,20 @@ class LocoEnv(Mjx):
 
         return data, carry
 
-    def _mjx_reset_carry(self, model, data, carry):
+    def _mjx_reset_carry(self, model: Model,
+                         data: Data,
+                         carry: MjxAdditionalCarry) -> Tuple[Data, MjxAdditionalCarry]:
+        """
+        Resets the additional carry and allows modification to the Mujoco data.
+
+        Args:
+            model (Model): Mujoco model.
+            data (Data): Mujoco data structure.
+            carry (MjxAdditionalCarry): Additional carry information.
+
+        Returns:
+            Tuple[Data, MjxAdditionalCarry]: Updated data and carry.
+        """
 
         # reset trajectory state
         if self.th is not None:
@@ -606,14 +719,13 @@ class LocoEnv(Mjx):
 
         return data, carry
 
-    def _get_from_obs(self, obs, key):
+    def _get_from_obs(self, obs: Union[np.ndarray, jnp.ndarray], obs_name: str) -> Union[np.ndarray, jnp.ndarray]:
         """
         Returns a part of the observation based on the specified keys.
 
         Args:
-            obs (np.array or jnp.array): Observation array.
+            obs (Union[np.ndarray, jnp.ndarray]): Observation array.
             key str: Key which are used to extract entries from the observation.
-            backend: Backend to use.
 
         Returns:
             np or jnp array including the parts of the original observation whose
@@ -621,33 +733,28 @@ class LocoEnv(Mjx):
 
         """
 
-        idx = self.obs_container[key].obs_ind
+        idx = self.obs_container[obs_name].obs_ind
         return obs[idx]
 
-    def _has_fallen(self, obs, info, data, return_err_msg=False):
+    def _modify_spec_for_mjx(self, spec: MjSpec) -> MjSpec:
         """
-        Checks if a model has fallen. This has to be implemented for each environment.
-        
+        Modifies the specification for the MJX backend if needed.
+
         Args:
-            obs (np.array): Current observation.
-            return_err_msg (bool): If True, an error message with violations is returned.
+            spec: The specification to modify.
 
         Returns:
-            True, if the model has fallen for the current observation, False otherwise.
+            MjSpec: The modified specification.
 
         """
-        
-        raise NotImplementedError
-
-    def _mjx_has_fallen(self, obs, info, data, carry):
-        raise NotImplementedError
-
-    def _modify_spec_for_mjx(self, spec: MjSpec):
         raise NotImplementedError
 
     @classmethod
-    def generate(cls, task=None, dataset_type="mocap", debug=False,
-                 clip_trajectory_to_joint_ranges=False, **kwargs):
+    def generate(cls, task: str = None,
+                 dataset_type: str = "mocap",
+                 debug: bool = False,
+                 clip_trajectory_to_joint_ranges: bool = False,
+                 **kwargs) -> Any:
         """
         Returns an environment corresponding to the specified task.
 
@@ -668,7 +775,7 @@ class LocoEnv(Mjx):
         warnings.warn(
             "The methods `LocoEnv.make()` and `LocoEnv.generate()` are deprecated and will be "
             "removed in a future release.\nPlease use the task factory classes instead: "
-            "`ImitationFactory`, `RLFactory`, or `AMASSImitationFactory`.",
+            "`ImitationFactory` or `RLFactory`.",
             category=DeprecationWarning,
             stacklevel=3
         )
@@ -677,14 +784,13 @@ class LocoEnv(Mjx):
         from loco_mujoco.task_factories import ImitationFactory, DefaultDatasetConf
         from loco_mujoco.task_factories import RLFactory
 
-
         if task is None:
             return RLFactory.make(cls.__name__, **kwargs)
         else:
             return ImitationFactory.make(cls.__name__, DefaultDatasetConf(task, dataset_type, debug), **kwargs)
 
     @classmethod
-    def get_default_xml_file_path(cls):
+    def get_default_xml_file_path(cls) -> str:
         """
         Returns the default path to the xml file of the environment.
         """
@@ -692,38 +798,42 @@ class LocoEnv(Mjx):
                                   f"in the {type(cls).__name__} environment.")
 
     @info_property
-    def root_body_name(self):
+    def root_body_name(self) -> str:
+        """
+        Returns the name of the root body.
+
+        """
         raise NotImplementedError(f"Please implement the root_body_name "
                                   f"info property in the {type(self).__name__} environment.")
 
     @info_property
-    def grf_size(self):
+    def root_free_joint_xml_name(self) -> str:
         """
-        Returns the size of the ground force vector.
+        Returns the name of the root free joint.
 
         """
-
-        return 12
-
-    @info_property
-    def root_free_joint_xml_name(self):
         return "root"
 
     @info_property
-    def upper_body_xml_name(self):
+    def upper_body_xml_name(self) -> str:
+        """
+        Returns the name of the upper body.
+
+        """
         raise NotImplementedError(f"Please implement the upper_body_xml_name property "
                                   f"in the {type(self).__name__} environment.")
 
     @info_property
-    def root_height_healthy_range(self):
+    def root_height_healthy_range(self) -> Tuple[float, float]:
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+
         """
         raise NotImplementedError(f"Please implement the root_height_healthy_range property "
                                   f"in the {type(self).__name__} environment.")
 
     @info_property
-    def foot_geom_names(self):
+    def foot_geom_names(self) -> List[str]:
         """
         Returns the names of the foot geometries.
 
@@ -732,15 +842,15 @@ class LocoEnv(Mjx):
         return []
 
     @info_property
-    def goal_visualization_arrow_offset(self):
+    def goal_visualization_arrow_offset(self) -> List[float]:
         """
-        Returns the offset of the goal visualization arrow.
+        Returns the offset of the goal visualization arrow. Needs to be a 3D vector for the x, y, z offset.
 
         """
-        return [0, 0, 0.0]
+        return [0.0, 0.0, 0.0]
 
     @staticmethod
-    def _get_observation_specification(spec: MjSpec):
+    def _get_observation_specification(spec: MjSpec) -> List[Observation]:
         """
         Returns the observation specification of the environment.
 
@@ -748,13 +858,13 @@ class LocoEnv(Mjx):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of observation types.
+            List[Observation]: A list of observations.
         """
         raise NotImplementedError(f"Please implement the _get_observation_specification method "
                                   f"in the {type(spec).__name__} environment.")
 
     @staticmethod
-    def _get_action_specification(spec: MjSpec):
+    def _get_action_specification(spec: MjSpec) -> List[str]:
         """
         Getter for the action space specification.
 
@@ -769,35 +879,7 @@ class LocoEnv(Mjx):
                                   f"in the {type(spec).__name__} environment.")
 
     @staticmethod
-    @jax.jit
-    def increment_traj_counter(traj_data, traj_no, subtraj_step_no):
-        n_trajectories = LocoEnv.n_trajectories(traj_data)
-        length_trajectory = LocoEnv.len_trajectory(traj_data, traj_no)
-
-        subtraj_step_no += 1
-
-        # set to zero once exceeded
-        next_subtraj_step_no = jnp.mod(subtraj_step_no, length_trajectory)
-
-        # check whether to go to the next trajectory
-        next_traj_no = jax.lax.cond(next_subtraj_step_no == 0, lambda t, nt: jnp.mod(t+1, nt),
-                                    lambda t, nt: t, traj_no, n_trajectories)
-
-        return next_traj_no, next_subtraj_step_no
-
-    @staticmethod
-    @jax.jit
-    def get_traj_next_sample(traj_data, traj_no, subtraj_step_no):
-        next_traj_no, next_subtraj_step_no = LocoEnv.increment_traj_counter(traj_data, traj_no, subtraj_step_no)
-        return traj_data.get(next_traj_no, next_subtraj_step_no), next_traj_no, next_subtraj_step_no
-
-    @staticmethod
-    @jax.jit
-    def get_traj_current_sample(traj_data, traj_no, subtraj_step_no):
-        return traj_data.get(traj_no, subtraj_step_no)
-
-    @staticmethod
-    def list_registered_loco_mujoco():
+    def list_registered_loco_mujoco() -> List[str]:
         """
         List registered loco_mujoco environments.
 
@@ -808,15 +890,18 @@ class LocoEnv(Mjx):
         return list(LocoEnv.registered_envs.keys())
 
     @staticmethod
-    def _delete_from_spec(spec, joints_to_remove, actuators_to_remove, equ_constraints_to_remove):
+    def _delete_from_spec(spec: MjSpec,
+                          joints_to_remove: List[str],
+                          actuators_to_remove: List[str],
+                          equ_constraints_to_remove: List[str]):
         """
         Deletes certain joints, motors and equality constraints from a Mujoco specification.
 
         Args:
             spec (MjSpec): Mujoco specification.
-            joints_to_remove (list): List of joint names to remove.
-            actuators_to_remove (list): List of actuator names to remove.
-            equ_constraints_to_remove (list): List of equality constraint names to remove.
+            joints_to_remove (List[str]): List of joint names to remove.
+            actuators_to_remove (List[str]): List of actuator names to remove.
+            equ_constraints_to_remove (List[str]): List of equality constraint names to remove.
 
         Returns:
             Modified Mujoco specification.
@@ -834,7 +919,3 @@ class LocoEnv(Mjx):
                 equality.delete()
 
         return spec
-
-    @staticmethod
-    def raise_mjx_not_enabled_error(*args, **kwargs):
-        return ValueError("Mjx not enabled in this environment")

@@ -305,7 +305,7 @@ class Atlas(BaseRobotHumanoid):
             action_spec = [ac for ac in action_spec if ac not in motors_to_remove]
             spec = self._delete_from_spec(spec, joints_to_remove, motors_to_remove, equ_constr_to_remove)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     def _get_spec_modifications(self):
         """

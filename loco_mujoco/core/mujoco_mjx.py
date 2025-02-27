@@ -1,4 +1,5 @@
-from typing import Any, Dict, Tuple, List
+from typing import Any, Dict, Tuple
+from types import ModuleType
 
 import mujoco
 from mujoco import mjx
@@ -29,7 +30,7 @@ class MjxState:
     State of the Mjx environment.
 
     Args:
-        data (mjx.Data): Mjx data structure.
+        data (Data): Mjx data structure.
         observation (jax.Array): Observation of the environment.
         reward (float): Reward of the environment.
         absorbing (bool): Whether the state is absorbing.
@@ -38,7 +39,7 @@ class MjxState:
         info (Dict[str, Any]): Information dictionary.
 
     """
-    data: mjx.Data
+    data: Data
     observation: jax.Array
     reward: float
     absorbing: bool
@@ -559,7 +560,7 @@ class Mjx(Mujoco):
     def _init_additional_carry(self, key,
                                model: Model,
                                data: Data,
-                               backend) -> MjxAdditionalCarry:
+                               backend: ModuleType) -> MjxAdditionalCarry:
         """
         Initializes additional carry parameters.
 
@@ -567,7 +568,7 @@ class Mjx(Mujoco):
             key: Random key for initialization.
             model (Model): Mujoco model.
             data (Data): Mujoco data structure.
-            backend: Computational backend.
+            backend (ModuleType): Computational backend (either numpy or jax.numpy).
 
         Returns:
             MjxAdditionalCarry: Initialized carry object.

@@ -266,8 +266,7 @@ class UnitreeH1(BaseRobotHumanoid):
             if disable_arms:
                 spec = self._reorient_arms(spec)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
-                         **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     def _get_spec_modifications(self):
         """

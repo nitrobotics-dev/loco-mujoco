@@ -1,6 +1,7 @@
 import atexit
 from copy import deepcopy
 from typing import Union, List, Dict, Tuple
+from types import ModuleType
 
 from functools import partial
 import mujoco
@@ -19,6 +20,7 @@ from loco_mujoco.core.terrain import Terrain
 from loco_mujoco.core.initial_state_handler import InitialStateHandler
 from loco_mujoco.core.terminal_state_handler.base import TerminalStateHandler
 from loco_mujoco.core.visuals import MjvScene, MujocoViewer
+from loco_mujoco.core.utils.mujoco import mj_jntid2qposid, mj_jntid2qvelid
 
 
 @struct.dataclass
@@ -374,7 +376,6 @@ class Mujoco:
             A boolean flag indicating whether the episode is done or not.
 
         """
-
         done = absorbing or (self._cur_step_in_episode >= self.info.horizon)
         return done
 
@@ -693,7 +694,7 @@ class Mujoco:
                                    model: MjModel,
                                    data: MjData,
                                    carry: AdditionalCarry,
-                                   backend: Union[np, jnp]) -> Tuple[np.ndarray, AdditionalCarry]:
+                                   backend: ModuleType) -> Tuple[np.ndarray, AdditionalCarry]:
         """
         Creates the observation array by concatenating extracted observations from all types.
 
@@ -701,7 +702,7 @@ class Mujoco:
             model (MjModel): The Mujoco model.
             data (MjData): The Mujoco data structure.
             carry (AdditionalCarry): Additional carry information.
-            backend (Union[np, jnp]): The numerical backend to use (NumPy or JAX NumPy).
+            backend (ModuleType): The numerical backend to use (NumPy or JAX NumPy).
 
         Returns:
             Tuple[np.ndarray, AdditionalCarry]: The observation array and updated carry.
@@ -788,7 +789,7 @@ class Mujoco:
                                key: jax.Array,
                                model: MjModel,
                                data: MjData,
-                               backend: Union[np, jnp]) -> AdditionalCarry:
+                               backend: ModuleType) -> AdditionalCarry:
         """
         Initializes the additional carry structure.
 
@@ -796,7 +797,7 @@ class Mujoco:
             key (jax.Array): Random key for JAX operations.
             model (MjModel): The Mujoco model.
             data (MjData): The Mujoco data structure.
-            backend (Union[np, jnp]): The numerical backend to use (NumPy or JAX NumPy).
+            backend (ModuleType): The numerical backend to use (NumPy or JAX NumPy).
 
         Returns:
             AdditionalCarry: The initialized additional carry structure.
@@ -978,6 +979,34 @@ class Mujoco:
             MjSpec: The Mujoco specification.
         """
         return self._mjspec
+
+    @property
+    def free_jnt_qpos_id(self):
+        """
+        Get the qpos index of free joints
+
+        Returns:
+            np.ndarray: The qpos index of free joints with shape (n_free_joints, 7)
+
+        """
+        free_jnt_qpos_id = np.concatenate([mj_jntid2qposid(i, self._model)
+                                           for i in range(self._model.njnt)
+                                           if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE]).reshape(-1, 7)
+        return free_jnt_qpos_id
+
+    @property
+    def free_jnt_qvel_id(self):
+        """
+        Get the qvel index of free joints
+
+        Returns:
+            np.ndarray: The qvel index of free joints with shape (n_free_joints, 6)
+
+        """
+        free_jnt_qvel_id = np.concatenate([mj_jntid2qvelid(i, self._model)
+                                           for i in range(self._model.njnt)
+                                           if self._model.jnt_type[i] == mujoco.mjtJoint.mjJNT_FREE]).reshape(-1, 6)
+        return free_jnt_qvel_id
 
     @property
     def cur_step_in_episode(self) -> int:

@@ -14,6 +14,7 @@ import mujoco
 from scipy.interpolate import interp1d
 from scipy.spatial.transform import Slerp, Rotation
 from typing import Union
+from types import ModuleType
 
 from loco_mujoco.core.observations.base import ObservationContainer
 
@@ -39,7 +40,7 @@ class Trajectory:
     obs_container: ObservationContainer = None
 
     @staticmethod
-    def concatenate(trajs: list, backend=jnp):
+    def concatenate(trajs: list, backend: ModuleType = jnp):
         traj_data = [traj.data for traj in trajs]
         traj_info = [traj.info for traj in trajs]
         traj_data, traj_info = TrajectoryData.concatenate(traj_data, traj_info, backend)
@@ -81,7 +82,7 @@ class Trajectory:
         np.savez(str(path), **serialized)
 
     @classmethod
-    def load(cls, path, backend=jnp):
+    def load(cls, path, backend: ModuleType = jnp):
         """
         Loads a trajectory from a npz file.
 
@@ -171,7 +172,7 @@ class TrajectoryInfo:
             for i, s_name in enumerate(self.site_names):
                 self.site_name2ind[s_name] = np.array([i])
 
-    def __eq__(self, other, backend=jnp):
+    def __eq__(self, other, backend: ModuleType = jnp):
         if not isinstance(other, TrajectoryInfo):
             return False
 
@@ -220,7 +221,7 @@ class TrajectoryInfo:
     def get_attribute_names(cls):
         return [field.name for field in fields(cls)]
 
-    def add_joint(self, joint_name, joint_type, backend=jnp):
+    def add_joint(self, joint_name, joint_type, backend: ModuleType = jnp):
         """
         Add a new joint to the trajectory info.
 
@@ -242,7 +243,7 @@ class TrajectoryInfo:
                        )
 
     def add_body(self, body_name, body_rootid, body_weldid, body_mocapid,
-                 body_pos, body_quat, body_ipos, body_iquat, backend=jnp):
+                 body_pos, body_quat, body_ipos, body_iquat, backend: ModuleType = jnp):
         """
         Add a new body to the trajectory info.
 
@@ -269,7 +270,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def add_site(self, site_name, site_pos, site_quat, site_bodyid, backend=jnp):
+    def add_site(self, site_name, site_pos, site_quat, site_bodyid, backend: ModuleType = jnp):
         """
         Add a new site to the trajectory info.
 
@@ -294,7 +295,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def remove_joints(self, joint_names, backend=jnp):
+    def remove_joints(self, joint_names, backend: ModuleType = jnp):
         """
         Remove the joints with the specified ids from the trajectory info.
 
@@ -312,7 +313,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def remove_bodies(self, body_names, backend=jnp):
+    def remove_bodies(self, body_names, backend: ModuleType = jnp):
         """
         Remove the bodies with the specified ids from the trajectory info.
 
@@ -330,7 +331,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def remove_sites(self, site_names, backend=jnp):
+    def remove_sites(self, site_names, backend: ModuleType = jnp):
         """
         Remove the sites with the specified ids from the trajectory info.
 
@@ -347,7 +348,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def reorder_joints(self, new_order, backend=jnp):
+    def reorder_joints(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
@@ -360,7 +361,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def reorder_bodies(self, new_order, backend=jnp):
+    def reorder_bodies(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
@@ -373,7 +374,7 @@ class TrajectoryInfo:
                        model=new_model
                        )
 
-    def reorder_sites(self, new_order, backend=jnp):
+    def reorder_sites(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
@@ -413,7 +414,7 @@ class TrajectoryModel:
     site_pos: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
     site_quat: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
-    def __eq__(self, other, backend=jnp):
+    def __eq__(self, other, backend: ModuleType = jnp):
         if not isinstance(other, TrajectoryModel):
             return False
 
@@ -434,7 +435,7 @@ class TrajectoryModel:
             and backend.array_equal(self.site_quat, other.site_quat)
         )
 
-    def add_joint(self, jnt_type, backend=jnp):
+    def add_joint(self, jnt_type, backend: ModuleType = jnp):
         """
         Add a new joint to the trajectory model.
 
@@ -451,7 +452,7 @@ class TrajectoryModel:
         )
 
     def add_body(self, body_rootid, body_weldid, body_mocapid, body_pos, body_quat,
-                 body_ipos, body_iquat, backend=jnp):
+                 body_ipos, body_iquat, backend: ModuleType = jnp):
         """
         Add a new body to the trajectory model.
 
@@ -479,14 +480,14 @@ class TrajectoryModel:
             body_iquat=backend.concatenate([self.body_iquat, backend.array([body_iquat])])
         )
 
-    def add_site(self, site_pos, site_quat, site_body_id, backend=jnp):
+    def add_site(self, site_pos, site_quat, site_body_id, backend: ModuleType = jnp):
         """
         Add a new site to the trajectory model.
 
         Args:
             site_pos (Array): Position of the new site.
             site_quat (Array): Quaternion of the new site.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the new site added.
@@ -498,13 +499,13 @@ class TrajectoryModel:
             site_quat=backend.concatenate([self.site_quat, backend.array([site_quat])],)
         )
 
-    def remove_joints(self, joint_ids, backend=jnp):
+    def remove_joints(self, joint_ids, backend: ModuleType = jnp):
         """
         Remove the joints with the specified ids from the trajectory model.
 
         Args:
             joint_ids (Union[jax.Array, np.ndarray]): Array of joint ids to remove.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified joints removed.
@@ -514,13 +515,13 @@ class TrajectoryModel:
             jnt_type=backend.delete(self.jnt_type, joint_ids, axis=0)
         )
 
-    def remove_bodies(self, body_ids, backend=jnp):
+    def remove_bodies(self, body_ids, backend: ModuleType = jnp):
         """
         Remove the bodies with the specified ids from the trajectory model.
 
         Args:
             body_ids (jax.Array): Array of body ids to remove.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified bodies removed.
@@ -536,13 +537,13 @@ class TrajectoryModel:
             body_iquat=backend.delete(self.body_iquat, body_ids, axis=0)
         )
 
-    def remove_sites(self, site_ids, backend=jnp):
+    def remove_sites(self, site_ids, backend: ModuleType = jnp):
         """
         Remove the sites with the specified ids from the trajectory model.
 
         Args:
             site_ids (Union[jax.Array, np.ndarray]): Array of site ids to remove.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
 
         Returns:
         A new instance of TrajectoryModel with the specified sites removed.
@@ -554,12 +555,12 @@ class TrajectoryModel:
             site_quat=backend.delete(self.site_quat, site_ids, axis=0)
         )
 
-    def reorder_joints(self, new_order, backend=jnp):
+    def reorder_joints(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
             new_order (list[int]): List of indices of new joint order.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
 
         """
         new_order = backend.array(new_order)
@@ -567,12 +568,12 @@ class TrajectoryModel:
             jnt_type=self.jnt_type[new_order]
         )
 
-    def reorder_bodies(self, new_order, backend=jnp):
+    def reorder_bodies(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
             new_order (list[int]): List of indices of new body order.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
         """
         new_order = backend.array(new_order)
         return self.replace(
@@ -585,12 +586,12 @@ class TrajectoryModel:
             body_iquat=self.body_iquat[new_order]
         )
 
-    def reorder_sites(self, new_order, backend=jnp):
+    def reorder_sites(self, new_order, backend: ModuleType = jnp):
         """
 
         Args:
             new_order (list[int]): List of indices of new site order.
-            backend (Union[jax, numpy]): Backend to use for the computation.
+            backend (ModuleType): Backend to use for the computation.
         """
         new_order = backend.array(new_order)
         return self.replace(
@@ -661,7 +662,7 @@ class TrajectoryData(SingleData):
     # points defining the beginning of each trajectory, and the end of the last trajectory
     split_points: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
-    def __eq__(self, other, backend=jnp):
+    def __eq__(self, other, backend: ModuleType = jnp):
         if not isinstance(other, TrajectoryData):
             return False
 
@@ -678,7 +679,7 @@ class TrajectoryData(SingleData):
             return False
         return True
 
-    def get(self, traj_index, sub_traj_index, backend=jnp):
+    def get(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         """
         Retrieve the corresponding data for a given trajectory index and sub-trajectory index.
 
@@ -709,7 +710,7 @@ class TrajectoryData(SingleData):
         )
 
     @classmethod
-    def dynamic_slice_in_dim(cls, data, traj_index, sub_traj_start_index, slice_length, backend=jnp):
+    def dynamic_slice_in_dim(cls, data, traj_index, sub_traj_start_index, slice_length, backend: ModuleType = jnp):
 
         # Get the start indices for the selected trajectory
         start_idx = data.split_points[traj_index]
@@ -767,63 +768,63 @@ class TrajectoryData(SingleData):
         # Slice the desired attribute using `lax.dynamic_slice_in_dim`
         return backend.squeeze(self._dynamic_slice_in_dim_compat(attribute, slice_start, slice_length, backend))
 
-    def get_qpos(self, traj_index, sub_traj_index, backend=jnp):
+    def get_qpos(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.qpos, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_qvel(self, traj_index, sub_traj_index, backend=jnp):
+    def get_qvel(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.qvel, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_xpos(self, traj_index, sub_traj_index, backend=jnp):
+    def get_xpos(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.xpos, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_xquat(self, traj_index, sub_traj_index, backend=jnp):
+    def get_xquat(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.xquat, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_cvel(self, traj_index, sub_traj_index, backend=jnp):
+    def get_cvel(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.cvel, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_subtree_com(self, traj_index, sub_traj_index, backend=jnp):
+    def get_subtree_com(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.subtree_com, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_site_xpos(self, traj_index, sub_traj_index, backend=jnp):
+    def get_site_xpos(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.site_xpos, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_site_xmat(self, traj_index, sub_traj_index, backend=jnp):
+    def get_site_xmat(self, traj_index, sub_traj_index, backend: ModuleType = jnp):
         return self._get_single_attribute(self.site_xmat, self.split_points, traj_index, sub_traj_index, backend)
 
-    def get_qpos_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_qpos_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.qpos, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_qvel_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_qvel_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.qvel, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_xpos_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_xpos_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.xpos, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_xquat_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_xquat_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.xquat, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_cvel_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_cvel_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.cvel, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_subtree_com_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_subtree_com_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.subtree_com, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_site_xpos_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_site_xpos_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.site_xpos, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def get_site_xmat_slice(self, traj_index, sub_traj_index, slice_length, backend=jnp):
+    def get_site_xmat_slice(self, traj_index, sub_traj_index, slice_length, backend: ModuleType = jnp):
         return self._dynamic_slice_in_dim_single(self.site_xmat, self.split_points,
                                                  traj_index, sub_traj_index, slice_length, backend)
 
-    def add_joint(self, qpos_value=0.0, qvel_value=0.0, backend=jnp):
+    def add_joint(self, qpos_value=0.0, qvel_value=0.0, backend: ModuleType = jnp):
         """
         Adds a new joint with a default value to the trajectory data.
 
@@ -841,7 +842,7 @@ class TrajectoryData(SingleData):
             qvel=backend.concatenate([self.qvel, backend.full((self.qvel.shape[0], 1), qvel_value)], axis=1)
         )
 
-    def add_body(self, xpos_value=0.0, cvel_value=0.0, subtree_com_value=0.0, backend=jnp):
+    def add_body(self, xpos_value=0.0, cvel_value=0.0, subtree_com_value=0.0, backend: ModuleType = jnp):
         """
         Adds a new body with a default value to the trajectory data.
 
@@ -863,7 +864,7 @@ class TrajectoryData(SingleData):
                                                                             subtree_com_value)], axis=1)
         )
 
-    def add_site(self, site_xpos_value=0.0, backend=jnp):
+    def add_site(self, site_xpos_value=0.0, backend: ModuleType = jnp):
         """
         Adds a new site with a default value for the position/velocity and an identity matrix as a
         rotation to the trajectory data.
@@ -883,7 +884,7 @@ class TrajectoryData(SingleData):
                                                                                 (self.site_xmat.shape[0], 1, 9))], axis=1)
         )
 
-    def remove_joints(self, joint_qpos_ids, joint_qvel_ids, backend=jnp):
+    def remove_joints(self, joint_qpos_ids, joint_qvel_ids, backend: ModuleType = jnp):
         """
         Remove the joints with the specified ids from the trajectory data.
 
@@ -902,7 +903,7 @@ class TrajectoryData(SingleData):
             qvel=backend.delete(self.qvel, joint_qvel_ids, axis=1)
         )
 
-    def remove_bodies(self, body_ids, backend=jnp):
+    def remove_bodies(self, body_ids, backend: ModuleType = jnp):
         """
         Remove the bodies with the specified ids from the trajectory data.
 
@@ -922,7 +923,7 @@ class TrajectoryData(SingleData):
             subtree_com=backend.delete(self.subtree_com, body_ids, axis=1)
         )
 
-    def remove_sites(self, site_ids, backend=jnp):
+    def remove_sites(self, site_ids, backend: ModuleType = jnp):
         """
         Remove the sites with the specified ids from the trajectory data.
 
@@ -988,7 +989,7 @@ class TrajectoryData(SingleData):
         )
 
     @staticmethod
-    def concatenate(traj_datas: list, traj_infos: list, backend=jnp):
+    def concatenate(traj_datas: list, traj_infos: list, backend: ModuleType = jnp):
         """
         Concatenate a list of TrajectoryData instances given that the TrajectoryInfos are equivalent.
 
@@ -1062,7 +1063,7 @@ class TrajectoryData(SingleData):
         return TrajectoryData(**dic)
 
 
-def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float, backend=jnp):
+def interpolate_trajectories(traj_data: TrajectoryData, traj_info: TrajectoryInfo, new_frequency: float, backend: ModuleType = jnp):
     """
     Interpolate the trajectories to a new frequency.
 

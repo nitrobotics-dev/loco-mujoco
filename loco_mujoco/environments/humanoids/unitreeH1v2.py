@@ -92,8 +92,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
                                             d_gain=[self.d_gains[act.name] for act in spec.actuators],
                                             scale_action_to_jnt_limits=False)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled,
-                         **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     def _get_spec_modifications(self):
         """
