@@ -9,6 +9,8 @@
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=flat&logo=discord&logoColor=white)](https://discord.gg/gEqR3xCVdn)
 
 
+TODO: INTRO WILL BE UPDATED FOR RELEASE, BUT INSTALLATION IS CORRECT.
+
 **LocoMuJoCo** is an **imitation learning benchmark** specifically targeted towards **locomotion**. It encompasses a diverse set of environments, including quadrupeds, bipeds, and musculoskeletal human models, each accompanied by comprehensive datasets, such as real noisy motion capture data, ground truth expert data, and ground truth sub-optimal data,
 enabling evaluation across a spectrum of difficulty levels. 
 
@@ -31,118 +33,57 @@ enabling evaluation across a spectrum of difficulty levels.
 
 ## Installation
 
-You have the choice to install the latest release via PyPI by running 
+[//]: # ()
+[//]: # (You have the choice to install the latest release via PyPI by running )
 
-```bash
-pip install loco-mujoco 
-```
+[//]: # ()
+[//]: # (```bash)
 
-or you do an editable installation by cloning this repository and then running:
+[//]: # (pip install loco-mujoco )
+
+[//]: # (```)
+
+Clone this repo and do an editable installation:
 
 ```bash
 cd loco-mujoco
 pip install -e . 
 ```
 
-> [!NOTE]
-> We fixed the version of MuJoCo to 2.3.7 during installation since we found that there are slight 
-> differences in the simulation, which made testing very difficult. However, in practice, you can 
-> use any newer version of MuJoCo! Just install it after installing LocoMuJoCo.
+By default, this will install the CPU-version of Jax. If you want to use Jax on the GPU, you need to install the following:
+
+```bash
+pip install jax["cuda12"]
+````
 
 > [!NOTE]
 > If you want to run the **MyoSkeleton** environment, you need to additionally run
-> `loco-mujoco-myomodel-init` to accept the license and download the model. Finally, you need to 
-> upgrade Mujoco to 3.2.2 and dm_control to 1.0.22 *after* installing this package and downloading the datasets! 
+> `loco-mujoco-myomodel-init` to accept the license and download the model.
 
 
-### Download the Datasets
-After installing LocoMuJoCo, new commands for downloading the datasets will be setup for you.
-You have the choice of downloading all datasets available or only the ones you need.
+### Datasets
 
-For example, to install all datasets run:  
-```bash
-loco-mujoco-download
-```
+LocoMuJoCo provides three sources of motion capture (mocap) data: default (provided by us), LAFAN1, and AMASS. The first two datasets
+are available on the [LocoMujoCo HuggingFace dataset repository](https://huggingface.co/datasets/robfiras/loco-mujoco-datasets)
+and will downloaded and cached automatically for you. AMASS needs to be downloaded and installed separately due to
+their licensing. See [here](loco_mujoco/smpl/README.md) for more information about the installation.
 
-To install only the real (motion capture, no actions) datasets run:  
-```bash
-loco-mujoco-download-real
-```
-
-To install only the perfect (ground-truth with actions) datasets run:  
-```bash
-loco-mujoco-download-perfect
-```
-
-### Installing the Baselines
-If you also want to run the baselines, you have to install our imitation learning library [imitation_lib](https://github.com/robfiras/ls-iq). You find example files for training the baselines for any LocoMuJoCo task [here](examples/imitation_learning).
-
-### First Test
-To verify that everything is installed correctly, run the examples such as:
-
-```bash
-python examples/simple_mushroom_env/example_unitree_a1.py
-```
-
-To replay a dataset run:
-
-```bash
-python examples/replay_datasets/replay_Unitree.py
-```
----
-## Environments & Tasks
-You want a quick overview of all **environments**, **tasks** and **datasets** available? You can find it 
-[here](/loco_mujoco/environments) and more detailed in the [Documentation](https://loco-mujoco.readthedocs.io/).
-
-<p align="center">
-  <img src="https://github.com/robfiras/loco-mujoco/assets/69359729/73ca0cdd-3958-4d59-a1f7-0eba00fe373a">
-</p>
-
-And stay tuned! There are many more to come ...
-
----
-## Quick Examples
-LocoMuJoCo is very easy to use. Just choose and create the environment, and generate the dataset belonging to this task and you are ready to go! 
-```python
-import numpy as np
-import loco_mujoco
-import gymnasium as gym
-
-
-env = gym.make("LocoMujoco", env_name="HumanoidTorque.run")
-dataset = env.create_dataset()
-```
-You want to use LocoMuJoCo for pure reinforcement learning? No problem! Just define your custom reward function and pass it to the environment!
+This is how you can visualize the datasets:
 
 ```python
-import numpy as np
-import loco_mujoco
-import gymnasium as gym
-import numpy as np
+from loco_mujoco.task_factories import ImitationFactory, LAFAN1DatasetConf, DefaultDatasetConf, AMASSDatasetConf
 
 
-def my_reward_function(state, action, next_state):
-    return -np.mean(action)
+# # example --> you can add as many datasets as you want in the lists!
+env = ImitationFactory.make("UnitreeH1",
+                            default_dataset_conf=DefaultDatasetConf(["squat"]),
+                            lafan1_dataset_conf=LAFAN1DatasetConf(["dance2_subject4", "walk1_subject1"]),
+                            # if SMPL and AMASS are installed, you can use the following:
+                            #amass_dataset_conf=AMASSDatasetConf(["DanceDB/DanceDB/20120911_TheodorosSourmelis/Capoeira_Theodoros_v2_C3D_poses"])
+                            )
 
-
-env = gym.make("LocoMujoco", env_name="HumanoidTorque.run", reward_type="custom",
-               reward_params=dict(reward_callback=my_reward_function))
-
+env.play_trajectory(n_episodes=3, n_steps_per_episode=500, render=True)
 ```
-
-LocoMuJoCo *natively* supports [MushroomRL](https://github.com/MushroomRL/mushroom-rl):
-
-```python
-import numpy as np
-from loco_mujoco import LocoEnv
-
-env = LocoEnv.make("HumanoidTorque.run")
-dataset = env.create_dataset()
-```
-
-You can find many more examples [here](examples).
-
-Detailed Tutorials are given in the [Documentation](https://loco-mujoco.readthedocs.io/).
 
 ---
 ## Citation
