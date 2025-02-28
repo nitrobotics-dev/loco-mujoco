@@ -643,6 +643,7 @@ class SingleData:
     def is_complete(self):
         return all(getattr(self, field).size > 0 for field in self.__dataclass_fields__)
 
+
 @struct.dataclass
 class TrajectoryData(SingleData):
     """

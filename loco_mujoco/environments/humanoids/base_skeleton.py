@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import mujoco
 from mujoco import MjSpec
@@ -5,6 +6,8 @@ from mujoco import MjSpec
 from loco_mujoco.core import ObservationType
 from loco_mujoco.environments import LocoEnv
 from loco_mujoco.core.utils import info_property
+from loco_mujoco.trajectory import Trajectory, TrajectoryInfo, TrajectoryModel, TrajectoryData, TrajectoryHandler
+from loco_mujoco.smpl.retargeting import extend_motion
 
 
 class BaseSkeleton(LocoEnv):
@@ -15,7 +18,7 @@ class BaseSkeleton(LocoEnv):
 
     mjx_enabled = False
 
-    def __init__(self, use_muscles=False, use_box_feet=True, disable_arms=False,
+    def __init__(self, use_muscles=False, use_box_feet=True, disable_arms=False, scaling=1.0,
                  alpha_box_feet=0.5, spec=None, observation_spec=None, action_spec=None, **kwargs):
         """
         Constructor.
@@ -25,6 +28,7 @@ class BaseSkeleton(LocoEnv):
             use_box_feet (bool): If True, boxes are used as feet (for simplification).
             disable_arms (bool): If True, all arm joints are removed and the respective
                 actuators are removed from the action specification.
+            scaling (float): Scaling factor for the kinematics and dynamics of the humanoid model.
             alpha_box_feet (float): Alpha parameter of the boxes, which might be added as feet.
 
         """
@@ -34,6 +38,10 @@ class BaseSkeleton(LocoEnv):
 
         # load the model specification
         spec = mujoco.MjSpec.from_file(spec) if not isinstance(spec, MjSpec) else spec
+
+        self.scaling = scaling
+        if scaling != 1.0:
+            spec = self.scale_body(spec, use_muscles)
 
         # get the observation and action specification
         if observation_spec is None:
@@ -68,7 +76,7 @@ class BaseSkeleton(LocoEnv):
             assert use_box_feet
             spec = self._modify_spec_for_mjx(spec)
 
-        super().__init__(spec, action_spec, observation_spec, enable_mjx=self.mjx_enabled, **kwargs)
+        super().__init__(spec, action_spec, observation_spec, **kwargs)
 
     def _get_spec_modifications(self):
         """
@@ -196,8 +204,7 @@ class BaseSkeleton(LocoEnv):
 
         return observation_spec
 
-    @staticmethod
-    def _add_box_feet_to_spec(spec, alpha_box_feet, scaling=1.0):
+    def _add_box_feet_to_spec(self, spec, alpha_box_feet):
         """
         Adds box feet to Mujoco spec and makes old feet non-collidable.
 
@@ -211,8 +218,8 @@ class BaseSkeleton(LocoEnv):
 
         # find foot and attach box
         toe_l = spec.find_body("toes_l")
-        size = np.array([0.112, 0.03, 0.05]) * scaling
-        pos = np.array([-0.09, 0.019, 0.0]) * scaling
+        size = np.array([0.112, 0.03, 0.05]) * self.scaling
+        pos = np.array([-0.09, 0.019, 0.0]) * self.scaling
         toe_l.add_geom(name="foot_box_l", type=mujoco.mjtGeom.mjGEOM_BOX, size=size, pos=pos,
                        rgba=[0.5, 0.5, 0.5, alpha_box_feet], euler=[0.0, 0.15, 0.0])
         toe_r = spec.find_body("toes_r")
@@ -252,12 +259,124 @@ class BaseSkeleton(LocoEnv):
 
         return spec
 
+    def scale_body(self, mjspec: MjSpec, use_muscles):
+        """
+        This function scales the kinematics and dynamics of the humanoid model given a Mujoco XML handle.
+
+        Args:
+            mjspec: Handle to Mujoco specification.
+            use_muscles (bool): If True, muscle actuators will be scaled, else torque actuators will be scaled.
+
+        Returns:
+            Modified Mujoco XML handle.
+
+        """
+
+        body_scaling = self.scaling
+        head_geoms = ["hat_skull", "hat_jaw", "hat_ribs_cap"]
+
+        # scale meshes
+        for mesh in mjspec.meshes:
+            if mesh.name not in head_geoms: # don't scale head
+                mesh.scale *= body_scaling
+
+        # change position of head
+        for geom in mjspec.geoms:
+            if geom.name in head_geoms:
+                geom.pos = [0.0, -0.5 * (1 - body_scaling), 0.0]
+
+        # scale bodies
+        for body in mjspec.bodies:
+            body.pos *= body_scaling
+            body.mass *= body_scaling ** 3
+            body.fullinertia *= body_scaling ** 5
+            assert np.array_equal(body.fullinertia[3:], np.zeros(3)), "Some of the diagonal elements of the" \
+                                                                      "inertia matrix are not zero! Scaling is" \
+                                                                      "not done correctly. Double-Check!"
+
+        # scale actuators
+        if use_muscles:
+            for site in mjspec.sites:
+                site.pos *= body_scaling
+
+            for actuator in mjspec.actuators:
+                if "mot" not in actuator.name:
+                    actuator.force *= body_scaling ** 2
+                else:
+                    actuator.gear *= body_scaling ** 2
+        else:
+            for actuator in mjspec.actuators:
+                actuator.gear *= body_scaling ** 2
+
+        return mjspec
+
+    def load_trajectory(self, traj: Trajectory = None,
+                        traj_path: str = None,
+                        warn: bool = True) -> None:
+        """
+        Loads trajectories. If there were trajectories loaded already, this function overrides the latter.
+
+        Args:
+            traj (Trajectory): Datastructure containing all trajectory files. If traj_path is specified, this
+                should be None.
+            traj_path (string): path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
+                with a 'traj_data' array and possibly a 'split_points' array inside. The 'traj_data'
+                should be in the shape (joints x observations). If traj_files is specified, this should be None.
+            warn (bool): If True, a warning will be raised.
+
+        """
+
+        if self.th is not None and warn:
+            warnings.warn("New trajectories loaded, which overrides the old ones.", RuntimeWarning)
+
+        th_params = self._th_params if self._th_params is not None else {}
+        self.th = TrajectoryHandler(model=self._model, warn=warn, traj_path=traj_path,
+                                    traj=traj, control_dt=self.dt, **th_params)
+
+        if self.th.traj.obs_container is not None:
+            assert self.obs_container == self.th.traj.obs_container, \
+                ("Observation containers of trajectory and environment do not match. \n"
+                 "Please, either load a trajectory with the same observation container or "
+                 "set the observation container of the environment to the one of the trajectory.")
+
+        if self.scaling != 1.0:
+            # scale trajectory
+            traj_info = self.th.traj.info
+            traj_data = self.th.traj.data
+            free_jnt_pos_id = self.free_jnt_qpos_id[:, :3].reshape(-1)
+            free_jnt_lin_vel_id = self.free_jnt_qvel_id[:, :3].reshape(-1)
+
+            # scale trajectory (only qpos and qvel)
+            traj_data_new = TrajectoryData(qpos=traj_data.qpos.at[:, free_jnt_pos_id].mul(self.scaling),
+                                       qvel=traj_data.qvel.at[:, free_jnt_lin_vel_id].mul(self.scaling),
+                                       split_points=traj_data.split_points)
+
+            # create a new traj info
+            traj_model = TrajectoryModel(njnt=traj_info.model.njnt, jnt_type=traj_info.model.jnt_type)
+            traj_info = TrajectoryInfo(joint_names=traj_info.joint_names,
+                                       model=traj_model, frequency=traj_info.frequency)
+
+            # combine to trajectory
+            traj = Trajectory(info=traj_info, data=traj_data_new)
+
+            # extend trajectory
+            traj = extend_motion(self.__class__.__name__, {}, traj)
+
+            # update trajectory handler
+            self.th = TrajectoryHandler(model=self._model, warn=warn, traj=traj, control_dt=self.dt, **th_params)
+
+        # setup trajectory information in observation_dict, goal and reward if needed
+        for obs_entry in self.obs_container.entries():
+            obs_entry.init_from_traj(self.th)
+        self._goal.init_from_traj(self.th)
+        self._terminal_state_handler.init_from_traj(self.th)
+
     @info_property
     def root_height_healthy_range(self):
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
-        return (0.8, 1.1)
+        return (0.8*self.scaling, 1.1*self.scaling)
 
     @info_property
     def upper_body_xml_name(self):

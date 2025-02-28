@@ -19,7 +19,7 @@ from .toddlerbot_mjx import MjxToddlerBot
 from .fourier_gr1t2 import FourierGR1T2
 from .fourier_gr1t2_mjx import MjxFourierGR1T2
 from .skeletons import (SkeletonTorque, MjxSkeletonTorque, HumanoidTorque, SkeletonMuscle, MjxSkeletonMuscle,
-                        HumanoidMuscle, HumanoidTorque4Ages, HumanoidMuscle4Ages)
+                        HumanoidMuscle)
 
 
 # register environments in mushroom
