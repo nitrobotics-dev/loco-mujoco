@@ -66,7 +66,7 @@ pip install jax["cuda12"]
 LocoMuJoCo provides three sources of motion capture (mocap) data: default (provided by us), LAFAN1, and AMASS. The first two datasets
 are available on the [LocoMujoCo HuggingFace dataset repository](https://huggingface.co/datasets/robfiras/loco-mujoco-datasets)
 and will downloaded and cached automatically for you. AMASS needs to be downloaded and installed separately due to
-their licensing. See [here](loco_mujoco/smpl/README.md) for more information about the installation.
+their licensing. See [here](loco_mujoco/smpl) for more information about the installation.
 
 This is how you can visualize the datasets:
 
