@@ -25,6 +25,30 @@ def set_smpl_model_path():
     _set_path_in_yaml_conf(args.path, "LOCOMUJOCO_SMPL_MODEL_PATH", path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
 
 
+def set_all_caches():
+    """
+    Set the path to which all converted datasets will be stored. This sets the following Variables:
+    - LOCOMUJOCO_CONVERTED_AMASS_PATH
+    - LOCOMUJOCO_CONVERTED_LAFAN1_PATH
+    - LOCOMUJOCO_CONVERTED_DEFAULT_PATH
+
+    Returns:
+
+    """
+    parser = argparse.ArgumentParser(description="Set the path to which all converted datasets will be stored.")
+    parser.add_argument("--path", type=str, help="Path to which all converted datasets will be stored.")
+    args = parser.parse_args()
+    amass_path = os.path.join(args.path, "AMASS")
+    _set_path_in_yaml_conf(amass_path, "LOCOMUJOCO_CONVERTED_AMASS_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+    lafan1_path = os.path.join(args.path, "LAFAN1")
+    _set_path_in_yaml_conf(lafan1_path, "LOCOMUJOCO_CONVERTED_LAFAN1_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+    default_path = os.path.join(args.path, "DEFAULT")
+    _set_path_in_yaml_conf(default_path, "LOCOMUJOCO_CONVERTED_DEFAULT_PATH",
+                           path_to_conf=loco_mujoco.PATH_TO_VARIABLES)
+
+
 def set_converted_amass_path():
     """
     Set the path to which the converted AMASS dataset is stored.

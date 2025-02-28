@@ -44,8 +44,9 @@ mkdir $HOME/smpl
 loco-mujoco-set-smpl-model-path --path $HOME/smpl
 ```
 
-Also, set the path to which the converted datasets (after retargeting) will be stored:
-
+Also, set the path to which the converted datasets (after retargeting) will be stored. If you already specified
+a general caching  directory for LocoMuJoCo using `loco-mujoco-set-all-caches`, you can skip this step. But if you want
+to store the converted AMASS datasets in a different directory, you can set it using:
 ```bash
 loco-mujoco-set-conv-amass-path --path <path to converted amass data>
 ```

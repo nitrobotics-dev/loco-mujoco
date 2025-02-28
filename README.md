@@ -85,6 +85,20 @@ env = ImitationFactory.make("UnitreeH1",
 env.play_trajectory(n_episodes=3, n_steps_per_episode=500, render=True)
 ```
 
+#### Speeding up the Dataset Loading
+LocoMuJoCo allows only stores datasets with joint positions and velocities to save memory. All other attributes are calculated 
+using forward kinematics. If you want to speed up the dataset loading, you can define caches for the datasets. This will
+store the forward kinematics results in a cache file, which will be loaded on the next run: 
+
+```bash
+loco-mujoco-set-all-caches --path <path to cache>
+```
+
+For instance, you could run:
+```bash
+loco-mujoco-set-all-caches --path "$HOME/.loco-mujoco-caches"
+````
+
 ---
 ## Citation
 ```

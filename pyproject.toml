@@ -6,8 +6,8 @@ name = "loco-mujoco"
 dependencies = [
     "numpy<2.0",
     "scipy>=1.14.0",
-    "mujoco>=3.2.7",
-    "mujoco-mjx>=3.2.7",
+    "mujoco==3.2.7",    # todo: MjSpec API changed in 3.3.0, check why find functions are not supported anymore (no info in Mujoco changelog given)
+    "mujoco-mjx==3.2.7",
     "hydra-core",
     "jax",
     "flax",
@@ -60,3 +60,4 @@ loco-mujoco-set-amass-path = "loco_mujoco.utils:set_amass_path"
 loco-mujoco-set-conv-amass-path = "loco_mujoco.utils:set_converted_amass_path"
 loco-mujoco-set-lafan1-path = "loco_mujoco.utils:set_lafan1_path"
 loco-mujoco-set-conv-lafan1-path = "loco_mujoco.utils:set_converted_lafan1_path"
+loco-mujoco-set-all-caches = "loco_mujoco.utils:set_all_caches"

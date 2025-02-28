@@ -68,7 +68,6 @@ def extend_motion(
     return traj
 
 
-
 def load_lafan1_trajectory(
         env_name: str,
         dataset_name: Union[str, List[str]],
@@ -93,12 +92,15 @@ def load_lafan1_trajectory(
 
     path_to_conf = loco_mujoco.PATH_TO_VARIABLES
 
-    with open(path_to_conf, "r") as file:
-        data = yaml.load(file, Loader=yaml.FullLoader)
-        try:
-            path_to_convert_lafan1_datasets = data["LOCOMUJOCO_CONVERTED_LAFAN1_PATH"]
-        except KeyError:
-            path_to_convert_lafan1_datasets = None
+    try:
+        with open(path_to_conf, "r") as file:
+            data = yaml.load(file, Loader=yaml.FullLoader)
+            try:
+                path_to_convert_lafan1_datasets = data["LOCOMUJOCO_CONVERTED_LAFAN1_PATH"]
+            except KeyError:
+                path_to_convert_lafan1_datasets = None
+    except FileNotFoundError:
+        path_to_convert_lafan1_datasets = None
 
     if isinstance(dataset_name, str):
         dataset_name = [dataset_name]

@@ -1,7 +1,10 @@
+import os
 from typing import Union, Dict
 from omegaconf import ListConfig, DictConfig
 from huggingface_hub import hf_hub_download
+import yaml
 
+import loco_mujoco
 from loco_mujoco.environments.base import LocoEnv
 from loco_mujoco.trajectory import Trajectory, TrajectoryHandler
 from loco_mujoco.smpl.retargeting import load_retargeted_amass_trajectory, extend_motion, load_robot_conf_file
@@ -121,21 +124,54 @@ class ImitationFactory(TaskFactory):
         if isinstance(default_dataset_conf.task, str):
             default_dataset_conf.task = [default_dataset_conf.task]
 
+        path_to_conf = loco_mujoco.PATH_TO_VARIABLES
+
+        try:
+            with open(path_to_conf, "r") as file:
+                data = yaml.load(file, Loader=yaml.FullLoader)
+                try:
+                    path_to_convert_default_datasets = data["LOCOMUJOCO_CONVERTED_DEFAULT_PATH"]
+                    os.makedirs(path_to_convert_default_datasets, exist_ok=True)
+                except KeyError:
+                    path_to_convert_default_datasets = None
+        except FileNotFoundError:
+            path_to_convert_default_datasets = None
+
         trajs = []
         for task in default_dataset_conf.task:
-            filename = f"DefaultDatasets/{default_dataset_conf.dataset_type}/{env_name}/{task}.npz"
 
-            file_path = hf_hub_download(
-                repo_id="robfiras/loco-mujoco-datasets",
-                filename=filename,
-                repo_type="dataset"
-            )
+            file_path = f"{default_dataset_conf.dataset_type}/{env_name}/{task}.npz"
 
-            traj = Trajectory.load(file_path)
+            traj = None
+            cached_file_path = None
 
-            # extend the motion to the desired length
-            if not traj.data.is_complete:
-                traj = extend_motion(env_name, load_robot_conf_file(env_name).env_params, traj)
+            # try to load the default dataset from cache
+            if path_to_convert_default_datasets:
+                cached_file_path = os.path.join(path_to_convert_default_datasets, file_path)
+                if os.path.isfile(cached_file_path):
+                    print(f"[LocoMuJoCo's Default Dataset Pipeline] INFO: Found converted dataset at: {cached_file_path}.")
+                    traj = Trajectory.load(cached_file_path)
+
+            # if the default dataset is not in the cache, download it from the hub
+            if traj is None:
+
+                filename = f"DefaultDatasets/{file_path}"
+
+                file_path = hf_hub_download(
+                    repo_id="robfiras/loco-mujoco-datasets",
+                    filename=filename,
+                    repo_type="dataset"
+                )
+
+                traj = Trajectory.load(file_path)
+
+                # extend the motion to the desired length
+                if not traj.data.is_complete:
+                    traj = extend_motion(env_name, load_robot_conf_file(env_name).env_params, traj)
+
+                # save  to the cache if the cache path is set
+                if cached_file_path:
+                    traj.save(cached_file_path)
 
             # pass the default trajectory through a TrajectoryHandler to interpolate it to the environment frequency
             # and to filter out or add necessary entities is needed
