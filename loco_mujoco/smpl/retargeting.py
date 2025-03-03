@@ -22,8 +22,8 @@ try:
     from loco_mujoco.smpl import SMPLH_Parser
     _OPTIONAL_IMPORT_INSTALLED = True
 except ImportError as e:
-    print(f"[LocoMuJoCo] Optional smpl dependencies not installed. {e}")
     _OPTIONAL_IMPORT_INSTALLED = False
+    _OPTIONAL_IMPORT_EXCEPTION = e
 
 import loco_mujoco
 from loco_mujoco.smpl import SMPLH_BONE_ORDER_NAMES
@@ -49,8 +49,8 @@ OPTIMIZED_SHAPE_FILE_NAME = "shape_optimized.pkl"
 
 def check_optional_imports():
     if not _OPTIONAL_IMPORT_INSTALLED:
-        raise ImportError("[LocoMuJoCo] Optional smpl depencies not installed. "
-                          "Checkout the README for installation instructions.")
+        raise ImportError(f"[LocoMuJoCo] Optional smpl depencies not installed. "
+                          f"Checkout the README for installation instructions. {_OPTIONAL_IMPORT_EXCEPTION}")
 
 
 def get_amass_dataset_path():
