@@ -21,6 +21,7 @@ from loco_mujoco.core.mujoco_mjx import Mjx, MjxAdditionalCarry, MjxState
 from loco_mujoco.core.visuals import VideoRecorder
 from loco_mujoco.trajectory import TrajectoryHandler
 from loco_mujoco.core.utils import info_property
+from loco_mujoco.core.utils.mujoco import mj_jntname2qposid
 from loco_mujoco.trajectory import Trajectory, TrajState, TrajectoryTransitions
 
 
@@ -577,12 +578,14 @@ class LocoEnv(Mjx):
         Returns:
             MjData: The updated Mujoco data structure.
         """
-        free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
+        robot_free_jnt_name = self.root_free_joint_xml_name
+        robot_free_jnt_qpos_id_xy = np.array(mj_jntname2qposid(robot_free_jnt_name, self._model))[:2]
+        all_free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
         traj_state = carry.traj_state
         # get the initial state of the current trajectory
         traj_data_init = self.th.traj.data.get(traj_state.traj_no, traj_state.subtraj_step_no_init, np)
         # subtract the initial state from the current state
-        traj_data.qpos[free_jnt_qpos_id_xy] -= traj_data_init.qpos[free_jnt_qpos_id_xy]
+        traj_data.qpos[all_free_jnt_qpos_id_xy] -= traj_data_init.qpos[robot_free_jnt_qpos_id_xy]
         return Mjx.set_sim_state_from_traj_data(data, traj_data, carry)
 
     def mjx_set_sim_state_from_traj_data(self, data, traj_data, carry) -> Data:
@@ -597,13 +600,15 @@ class LocoEnv(Mjx):
         Returns:
             Data: Updated Mujoco data.
         """
-        free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
+        robot_free_jnt_name = self.root_free_joint_xml_name
+        robot_free_jnt_qpos_id_xy = np.array(mj_jntname2qposid(robot_free_jnt_name, self._model))[:2]
+        all_free_jnt_qpos_id_xy = self.free_jnt_qpos_id[:, :2].reshape(-1)
         traj_state = carry.traj_state
         # get the initial state of the current trajectory
         traj_data_init = self.th.traj.data.get(traj_state.traj_no, traj_state.subtraj_step_no_init, jnp)
         # subtract the initial state from the current state
         traj_data = traj_data.replace(
-            qpos=traj_data.qpos.at[free_jnt_qpos_id_xy].add(-traj_data_init.qpos[free_jnt_qpos_id_xy]))
+            qpos=traj_data.qpos.at[all_free_jnt_qpos_id_xy].add(-traj_data_init.qpos[robot_free_jnt_qpos_id_xy]))
         return Mjx.mjx_set_sim_state_from_traj_data(data, traj_data, carry)
 
     def _init_additional_carry(self,
