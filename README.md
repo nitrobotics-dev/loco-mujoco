@@ -66,7 +66,7 @@ pip install jax["cuda12"]
 LocoMuJoCo provides three sources of motion capture (mocap) data: default (provided by us), LAFAN1, and AMASS. The first two datasets
 are available on the [LocoMujoCo HuggingFace dataset repository](https://huggingface.co/datasets/robfiras/loco-mujoco-datasets)
 and will downloaded and cached automatically for you. AMASS needs to be downloaded and installed separately due to
-their licensing. See [here](loco_mujoco/smpl/README.md) for more information about the installation.
+their licensing. See [here](loco_mujoco/smpl) for more information about the installation.
 
 This is how you can visualize the datasets:
 
@@ -85,9 +85,9 @@ env = ImitationFactory.make("UnitreeH1",
 env.play_trajectory(n_episodes=3, n_steps_per_episode=500, render=True)
 ```
 
-#### Speeding up the Dataset Loading
-LocoMuJoCo allows only stores datasets with joint positions and velocities to save memory. All other attributes are calculated 
-using forward kinematics. If you want to speed up the dataset loading, you can define caches for the datasets. This will
+#### Speeding up Dataset Loading
+LocoMuJoCo only stores datasets with joint positions and velocities to save memory. All other attributes are calculated 
+using forward kinematics upon loading. If you want to speed up the dataset loading, you can define caches for the datasets. This will
 store the forward kinematics results in a cache file, which will be loaded on the next run: 
 
 ```bash
