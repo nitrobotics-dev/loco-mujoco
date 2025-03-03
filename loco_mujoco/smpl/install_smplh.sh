@@ -2,7 +2,7 @@
 
 # Function to read LOCO_MUJOCO_PATH from Python package
 function get_loco_mujoco_path() {
-    LOCO_MUJOCO_PATH=$(python -c "import loco_mujoco; print(loco_mujoco.__path__[0])" 2>/dev/null)
+    LOCO_MUJOCO_PATH=$(python -c "import loco_mujoco; print(loco_mujoco.__path__[0])" 2>/dev/null | tail -n 1)
     if [ -z "$LOCO_MUJOCO_PATH" ]; then
         echo "Error: Could not determine LOCO_MUJOCO_PATH from the installed loco_mujoco package."
         exit 1
