@@ -133,7 +133,7 @@ def get_obs_space_table_docsv2(env_name):
     env_cls = loco_mujoco.get_registered_envs()[env_name]
     env = env_cls()
 
-    header = ["Index in Observation", "Name", "ObservationType",  "Min", "Max", "Dim"]
+    header = ["Index in Obs", "Name", "ObservationType",  "Min", "Max", "Dim"]
     grid = [header]
     for obs_name, obs_info in env.obs_container.items():
         row = []
@@ -160,7 +160,11 @@ def get_obs_space_table_docsv2(env_name):
 def get_action_space_table_docsv2(env_name):
 
     env_cls = loco_mujoco.get_registered_envs()[env_name]
-    env = env_cls(control_type="PDControl", control_params=dict(p_gain=1.0, d_gain=0.1, scale_action_to_jnt_limits=False))
+    env = env_cls()
+
+    ctrl_func_type = env._control_func.__class__.__name__
+    print(f"Control function type: **{env._control_func.__class__.__name__}**")
+    print("See control function interface for more details.")
 
     header = ["Index in Action", "Min", "Max"]
     grid = [header]

@@ -7,6 +7,7 @@ Here you find an overview of the API of all Humanoid environments.
 
     ./humanoids/talos.rst
     ./humanoids/atlas.rst
+    ./humanoids/apollo.rst
     ./humanoids/unitreeh1.rst
     ./humanoids/unitreeg1.rst
     ./humanoids/myoskeleton.rst
