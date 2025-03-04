@@ -14,7 +14,7 @@ class Apollo(BaseRobotHumanoid):
 
     Description
     ------------
-    Apollo is a humanoid robot developed by Apptronik.
+    Environment of the Apollo robot. Apollo is a humanoid robot developed by Apptronik.
 
 
 
@@ -249,7 +249,7 @@ class Apollo(BaseRobotHumanoid):
 
         Args:
             spec (Union[str, MjSpec]): Specification of the environment.
-                It can be a path to the xml file or a MjSpec object.
+                It can be a path to the xml file or a MjSpec object. If none, is provided, the default xml file is used.
             observation_spec (List[Observation]): Observation specification.
             action_spec (List[str]): Action specification.
             **kwargs: Additional arguments
@@ -400,7 +400,7 @@ class Apollo(BaseRobotHumanoid):
         return (loco_mujoco.PATH_TO_MODELS / "apptronik_apollo" / "apptronik_apollo.xml").as_posix()
 
     @info_property
-    def p_gains(self) -> List[float]:
+    def p_gains(self) -> Union[float, List[float]]:
         """
         Returns the proportional gains for the default PD controller.
 
@@ -409,7 +409,7 @@ class Apollo(BaseRobotHumanoid):
                 277, 312, 47, 20, 18, 395, 530, 277, 312, 47, 20, 18]
 
     @info_property
-    def d_gains(self) -> float:
+    def d_gains(self) -> Union[float, List[float]]:
         """
         Returns the derivative gain used for the default PD controller.
 
@@ -419,7 +419,7 @@ class Apollo(BaseRobotHumanoid):
     @info_property
     def upper_body_xml_name(self) -> str:
         """
-        Returns the name of the upper body link.
+        Returns the name of the upper body.
 
         """
         return "torso_link"
