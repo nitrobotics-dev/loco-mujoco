@@ -17,7 +17,7 @@ class BoosterT1(BaseRobotHumanoid):
     Environment of the Booster T1 robot. The Booster T1 is a humanoid robot from Booster Robotics.
 
 
-    Observation Space
+    Default Observation Space
     -----------------
 
     ============ ======================= ================ ==================================== ============================== ===
@@ -120,11 +120,13 @@ class BoosterT1(BaseRobotHumanoid):
     56           dq_Right_Ankle_Roll     JointVel         [-inf]                               [inf]                          1
     ============ ======================= ================ ==================================== ============================== ===
 
-    Action Space
+    Default Action Space
     ------------
 
     Control function type: **PDControl**
+
     See control function interface for more details.
+
     =============== ==== ===
     Index in Action Min  Max
     =============== ==== ===

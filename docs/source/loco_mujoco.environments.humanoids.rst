@@ -8,6 +8,7 @@ Here you find an overview of the API of all Humanoid environments.
     ./humanoids/apollo.rst
     ./humanoids/atlas.rst
     ./humanoids/booster.rst
+    ./humanoids/fourier_gr1t2.rst
     ./humanoids/unitreeh1.rst
     ./humanoids/unitreeg1.rst
     ./humanoids/myoskeleton.rst
