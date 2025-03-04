@@ -238,7 +238,9 @@ class FourierGR1T2(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, spec=None, observation_spec=None, action_spec=None, **kwargs) -> None:
+    def __init__(self, spec: Union[str, MjSpec] = None,
+                 observation_spec: List[Observation] = None,
+                 action_spec: List[str] = None, **kwargs) -> None:
         """
         Constructor.
 

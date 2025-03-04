@@ -95,7 +95,7 @@ This script will:
 - Create a Python 3.10 environment.
 - Install all required dependencies.
 - Generate the `SMPLH_NEUTRAL.PKL` file and place it in `/path/to/smpl/models`.
-- Finally, deletes the created Python environment and dependencies. 
+- Finally, delete the created Python environment and dependencies. 
 
 ---
 
