@@ -15,6 +15,8 @@ class BaseSkeleton(LocoEnv):
     """
     Mujoco environment of a base skeleton model.
 
+    .. note:: This class is not the base for the MyoSkeleton environment.
+
     """
 
     mjx_enabled = False

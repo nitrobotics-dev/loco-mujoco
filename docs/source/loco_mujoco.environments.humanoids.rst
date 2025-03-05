@@ -15,6 +15,6 @@ Here you find an overview of the API of all Humanoid environments.
     ./humanoids/myoskeleton.rst
     ./humanoids/skeleton_torque.rst
     ./humanoids/skeleton_muscle.rst
-    ./humanoids/base_humanoids.rst
     ./humanoids/talos.rst
     ./humanoids/toddlerbot.rst
+    ./humanoids/base_humanoids.rst
