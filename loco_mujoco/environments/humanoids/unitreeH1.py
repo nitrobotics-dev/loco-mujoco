@@ -1,8 +1,9 @@
+from typing import List, Union, Tuple
 import mujoco
 from mujoco import MjSpec
 
 import loco_mujoco
-from loco_mujoco.core import ObservationType
+from loco_mujoco.core import ObservationType, Observation
 from loco_mujoco.environments.humanoids.base_robot_humanoid import BaseRobotHumanoid
 from loco_mujoco.core.utils import info_property
 
@@ -13,212 +14,145 @@ class UnitreeH1(BaseRobotHumanoid):
     Description
     ------------
 
-    Mujoco environment of the Unitree H1 robot. Optionally, the H1 can carry
-    a weight. This environment can be partially observable by hiding
-    some of the state space entries from the policy using a state mask.
-    Hidable entries are "positions", "velocities", "foot_forces",
-    or "weight".
-
-    Tasks
-    -----------------
-    * **Walking**: The robot has to walk forward with a fixed speed of 1.25 m/s.
-    * **Running**: Run forward with a fixed speed of 2.5 m/s.
-    * **Carry**: The robot has to walk forward with a fixed speed of 1.25 m/s while carrying a weight.
-      The mass is either specified by the user or sampled from a uniformly from [0.1 kg, 1 kg, 5 kg, 10 kg].
+    Mujoco environment of the Unitree H1 robot.
 
 
-    Dataset Types
-    -----------------
-    The available dataset types for this environment can be found at: :ref:`env-label`.
-
-
-    Observation Space
+    Default Observation Space
     -----------------
 
-    The observation space has the following properties *by default* (i.e., only obs with Disabled == False):
+    ============ ================== ================ ==================================== ============================== ===
+    Index in Obs Name               ObservationType  Min                                  Max                            Dim
+    ============ ================== ================ ==================================== ============================== ===
+    0 - 4        q_root             FreeJointPosNoXY [-inf, -inf, -inf, -inf, -inf]       [inf, inf, inf, inf, inf]      5
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    5            q_back_bkz         JointPos         [-2.35]                              [2.35]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    6            q_l_arm_shy        JointPos         [-2.87]                              [2.87]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    7            q_l_arm_shx        JointPos         [-0.34]                              [3.11]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    8            q_l_arm_shz        JointPos         [-1.3]                               [4.45]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    9            q_left_elbow       JointPos         [-1.25]                              [2.61]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    10           q_r_arm_shy        JointPos         [-2.87]                              [2.87]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    11           q_r_arm_shx        JointPos         [-3.11]                              [0.34]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    12           q_r_arm_shz        JointPos         [-4.45]                              [1.3]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    13           q_right_elbow      JointPos         [-1.25]                              [2.61]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    14           q_hip_flexion_r    JointPos         [-1.57]                              [1.57]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    15           q_hip_adduction_r  JointPos         [-0.43]                              [0.43]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    16           q_hip_rotation_r   JointPos         [-0.43]                              [0.43]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    17           q_knee_angle_r     JointPos         [-0.26]                              [2.05]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    18           q_ankle_angle_r    JointPos         [-0.87]                              [0.52]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    19           q_hip_flexion_l    JointPos         [-1.57]                              [1.57]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    20           q_hip_adduction_l  JointPos         [-0.43]                              [0.43]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    21           q_hip_rotation_l   JointPos         [-0.43]                              [0.43]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    22           q_knee_angle_l     JointPos         [-0.26]                              [2.05]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    23           q_ankle_angle_l    JointPos         [-0.87]                              [0.52]                         1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    24 - 29      dq_root            FreeJointVel     [-inf, -inf, -inf, -inf, -inf, -inf] [inf, inf, inf, inf, inf, inf] 6
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    30           dq_back_bkz        JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    31           dq_l_arm_shy       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    32           dq_l_arm_shx       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    33           dq_l_arm_shz       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    34           dq_left_elbow      JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    35           dq_r_arm_shy       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    36           dq_r_arm_shx       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    37           dq_r_arm_shz       JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    38           dq_right_elbow     JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    39           dq_hip_flexion_r   JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    40           dq_hip_adduction_r JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    41           dq_hip_rotation_r  JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    42           dq_knee_angle_r    JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    43           dq_ankle_angle_r   JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    44           dq_hip_flexion_l   JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    45           dq_hip_adduction_l JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    46           dq_hip_rotation_l  JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    47           dq_knee_angle_l    JointVel         [-inf]                               [inf]                          1
+    ------------ ------------------ ---------------- ------------------------------------ ------------------------------ ---
+    48           dq_ankle_angle_l   JointVel         [-inf]                               [inf]                          1
+    ============ ================== ================ ==================================== ============================== ===
 
-    | For walking task: :code:`(min=-inf, max=inf, dim=32, dtype=float32)`
-    | For running task: :code:`(min=-inf, max=inf, dim=32, dtype=float32)`
-    | For carry task: :code:`(min=-inf, max=inf, dim=33, dtype=float32)`
+    Default Action Space
+    -----------------
 
-    Some observations are **disabled by default**, but can be turned on. The detailed observation space is:
+    Control function type: **DefaultControl**
 
-    ===== ============================================= ===== ==== =========================== === ========================
-    Index Description                                   Min   Max  Disabled                    Dim Units
-    ===== ============================================= ===== ==== =========================== === ========================
-    0     Position of Joint pelvis_ty                   -inf  inf  False                       1   Position [m]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    1     Position of Joint pelvis_tilt                 -inf  inf  False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    2     Position of Joint pelvis_list                 -inf  inf  False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    3     Position of Joint pelvis_rotation             -inf  inf  False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    4     Position of Joint back_bkz                    -2.35 2.35 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    5     Position of Joint l_arm_shy                   -2.87 2.87 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    6     Position of Joint l_arm_shx                   -0.34 3.11 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    7     Position of Joint l_arm_shz                   -1.3  4.45 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    8     Position of Joint left_elbow                  -1.25 2.61 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    9     Position of Joint r_arm_shy                   -2.87 2.87 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    10    Position of Joint r_arm_shx                   -3.11 0.34 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    11    Position of Joint r_arm_shz                   -4.45 1.3  True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    12    Position of Joint right_elbow                 -1.25 2.61 True                        1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    13    Position of Joint hip_flexion_r               -1.57 1.57 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    14    Position of Joint hip_adduction_r             -0.43 0.43 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    15    Position of Joint hip_rotation_r              -0.43 0.43 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    16    Position of Joint knee_angle_r                -0.26 2.05 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    17    Position of Joint ankle_angle_r               -0.87 0.52 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    18    Position of Joint hip_flexion_l               -1.57 1.57 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    19    Position of Joint hip_adduction_l             -0.43 0.43 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    20    Position of Joint hip_rotation_l              -0.43 0.43 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    21    Position of Joint knee_angle_l                -0.26 2.05 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    22    Position of Joint ankle_angle_l               -0.87 0.52 False                       1   Angle [rad]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    23    Velocity of Joint pelvis_tx                   -inf  inf  False                       1   Velocity [m/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    24    Velocity of Joint pelvis_tz                   -inf  inf  False                       1   Velocity [m/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    25    Velocity of Joint pelvis_ty                   -inf  inf  False                       1   Velocity [m/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    26    Velocity of Joint pelvis_tilt                 -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    27    Velocity of Joint pelvis_list                 -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    28    Velocity of Joint pelvis_rotation             -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    29    Velocity of Joint back_bkz                    -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    30    Velocity of Joint l_arm_shy                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    31    Velocity of Joint l_arm_shx                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    32    Velocity of Joint l_arm_shz                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    33    Velocity of Joint left_elbow                  -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    34    Velocity of Joint r_arm_shy                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    35    Velocity of Joint r_arm_shx                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    36    Velocity of Joint r_arm_shz                   -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    37    Velocity of Joint right_elbow                 -inf  inf  True                        1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    38    Velocity of Joint hip_flexion_r               -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    39    Velocity of Joint hip_adduction_r             -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    40    Velocity of Joint hip_rotation_r              -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    41    Velocity of Joint knee_angle_r                -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    42    Velocity of Joint ankle_angle_r               -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    43    Velocity of Joint hip_flexion_l               -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    44    Velocity of Joint hip_adduction_l             -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    45    Velocity of Joint hip_rotation_l              -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    46    Velocity of Joint knee_angle_l                -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    47    Velocity of Joint ankle_angle_l               -inf  inf  False                       1   Angular Velocity [rad/s]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    48    Mass of the Weight                            0.0   inf  Only Enabled for Carry Task 1   Mass [kg]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    49    3D linear Forces between Right Foot and Floor 0.0   inf  True                        3   Force [N]
-    ----- --------------------------------------------- ----- ---- --------------------------- --- ------------------------
-    52    3D linear Forces between Left Foot and Floor  0.0   inf  True                        3   Force [N]
-    ===== ============================================= ===== ==== =========================== === ========================
+    See control function interface for more details.
 
-    Action Space
-    ------------
+    =============== ==== ===
+    Index in Action Min  Max
+    =============== ==== ===
+    0               -1.0 1.0
+    --------------- ---- ---
+    1               -1.0 1.0
+    --------------- ---- ---
+    2               -1.0 1.0
+    --------------- ---- ---
+    3               -1.0 1.0
+    --------------- ---- ---
+    4               -1.0 1.0
+    --------------- ---- ---
+    5               -1.0 1.0
+    --------------- ---- ---
+    6               -1.0 1.0
+    --------------- ---- ---
+    7               -1.0 1.0
+    --------------- ---- ---
+    8               -1.0 1.0
+    --------------- ---- ---
+    9               -1.0 1.0
+    --------------- ---- ---
+    10              -1.0 1.0
+    --------------- ---- ---
+    11              -1.0 1.0
+    --------------- ---- ---
+    12              -1.0 1.0
+    --------------- ---- ---
+    13              -1.0 1.0
+    --------------- ---- ---
+    14              -1.0 1.0
+    --------------- ---- ---
+    15              -1.0 1.0
+    --------------- ---- ---
+    16              -1.0 1.0
+    --------------- ---- ---
+    17              -1.0 1.0
+    --------------- ---- ---
+    18              -1.0 1.0
+    =============== ==== ===
 
-    | The action space has the following properties *by default* (i.e., only actions with Disabled == False):
-    | :code:`(min=-1, max=1, dim=11, dtype=float32)`
-
-    Some actions are **disabled by default**, but can be turned on. The detailed action space is:
-
-    ===== ======================== =========== =========== ========
-    Index Name in XML              Control Min Control Max Disabled
-    ===== ======================== =========== =========== ========
-    0     back_bkz_actuator        -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    1     l_arm_shy_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    2     l_arm_shx_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    3     l_arm_shz_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    4     left_elbow_actuator      -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    5     r_arm_shy_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    6     r_arm_shx_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    7     r_arm_shz_actuator       -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    8     right_elbow_actuator     -1.0        1.0         True
-    ----- ------------------------ ----------- ----------- --------
-    9     hip_flexion_r_actuator   -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    10    hip_adduction_r_actuator -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    11    hip_rotation_r_actuator  -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    12    knee_angle_r_actuator    -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    13    ankle_angle_r_actuator   -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    14    hip_flexion_l_actuator   -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    15    hip_adduction_l_actuator -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    16    hip_rotation_l_actuator  -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    17    knee_angle_l_actuator    -1.0        1.0         False
-    ----- ------------------------ ----------- ----------- --------
-    18    ankle_angle_l_actuator   -1.0        1.0         False
-    ===== ======================== =========== =========== ========
-
-
-    Rewards
-    --------
-
-    The default reward function is based on the distance between the current center of mass velocity and the
-    desired velocity in the x-axis. The desired velocity is given by the dataset to imitate.
-
-    **Class**: :class:`loco_mujoco.utils.reward.TargetVelocityReward`
-
-    Initial States
-    ---------------
-
-    The initial state is sampled by default from the dataset to imitate.
-
-    Terminal States
-    ----------------
-
-    The terminal state is reached when the robot falls, or rather starts falling. The condition to check if the robot
-    is falling is based on the orientation of the robot, the height of the center of mass, and the orientation of the
-    back joint. More details can be found in the  :code:`_has_fallen` method of the environment.
 
     Methods
     ------------
@@ -227,11 +161,22 @@ class UnitreeH1(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_arms=False, disable_back_joint=False, spec=None,
-                 observation_spec=None, action_spec=None, **kwargs):
+    def __init__(self, disable_arms: bool = False, disable_back_joint: bool = False,
+                 spec: Union[str, MjSpec] = None,
+                 observation_spec: List[Observation] = None,
+                 action_spec: List[str] = None,
+                 **kwargs) -> None:
         """
-        Constructor.
+        Initializes the ToddlerBot environment.
 
+        Args:
+            disable_arms (bool): Whether to disable arm joints.
+            disable_back_joint (bool): Whether to disable the back joint.
+            spec (Union[str, MjSpec]): Specification of the environment. Can be a path to the XML file or an MjSpec object.
+                If none is provided, the default XML file is used.
+            observation_spec (List[Observation], optional): List defining the observation space. Defaults to None.
+            action_spec (List[str], optional): List defining the action space. Defaults to None.
+            **kwargs: Additional parameters for the environment.
         """
 
         self._disable_arms = disable_arms
@@ -268,15 +213,13 @@ class UnitreeH1(BaseRobotHumanoid):
 
         super().__init__(spec, action_spec, observation_spec, **kwargs)
 
-    def _get_spec_modifications(self):
+    def _get_spec_modifications(self) -> Tuple[List[str], List[str], List[str]]:
         """
-        Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco specification.
+        Specifies which joints, actuators, and equality constraints should be removed from the Mujoco specification.
 
         Returns:
-            A tuple of lists consisting of names of joints to remove, names of actuators to remove,
-             and names of equality constraints to remove.
-
+            Tuple[List[str], List[str], List[str]]: A tuple containing lists of joints to remove, actuators to remove,
+            and equality constraints to remove.
         """
 
         joints_to_remove = []
@@ -296,17 +239,17 @@ class UnitreeH1(BaseRobotHumanoid):
 
         return joints_to_remove, actuators_to_remove, equ_constr_to_remove
 
+
     @staticmethod
-    def _reorient_arms(spec: MjSpec):
+    def _reorient_arms(spec: MjSpec) -> MjSpec:
         """
-        Reorients the elbow to not collide with the hip. Is used when disable_arms is set to True.
+        Reorients the arms to prevent collision with the hips. Used when disable_arms is set to True.
 
         Args:
             spec (MjSpec): Mujoco specification.
 
         Returns:
-            Modified Mujoco specification.
-
+            MjSpec: Modified Mujoco specification.
         """
         # modify the arm orientation
         left_shoulder_pitch_link = spec.find_body("left_shoulder_pitch_link")
@@ -321,7 +264,7 @@ class UnitreeH1(BaseRobotHumanoid):
         return spec
 
     @staticmethod
-    def _get_observation_specification(spec: MjSpec):
+    def _get_observation_specification(spec: MjSpec) -> List[Observation]:
         """
         Returns the observation specification of the environment.
 
@@ -329,7 +272,7 @@ class UnitreeH1(BaseRobotHumanoid):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of observation types.
+            List[Observation]: List of observations.
         """
         observation_spec = [# ------------- JOINT POS -------------
                             ObservationType.FreeJointPosNoXY("q_root", xml_name="root"),
@@ -378,7 +321,7 @@ class UnitreeH1(BaseRobotHumanoid):
         return observation_spec
 
     @staticmethod
-    def _get_action_specification(spec: MjSpec):
+    def _get_action_specification(spec: MjSpec) -> List[str]:
         """
         Getter for the action space specification.
 
@@ -386,7 +329,7 @@ class UnitreeH1(BaseRobotHumanoid):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of actuator names.
+            List[str]: List of action names.
         """
         action_spec = ["back_bkz_actuator", "l_arm_shy_actuator", "l_arm_shx_actuator",
                        "l_arm_shz_actuator", "left_elbow_actuator", "r_arm_shy_actuator", "r_arm_shx_actuator",
@@ -398,31 +341,28 @@ class UnitreeH1(BaseRobotHumanoid):
         return action_spec
 
     @classmethod
-    def get_default_xml_file_path(cls):
+    def get_default_xml_file_path(cls) -> str:
         """
-        Returns the default path to the xml file of the environment.
+        Returns the default XML file path for the Unitree H1 environment.
         """
         return (loco_mujoco.PATH_TO_MODELS / "unitree_h1" / "h1.xml").as_posix()
 
     @info_property
-    def grf_size(self):
+    def upper_body_xml_name(self) -> str:
         """
-        Returns the size of the ground force vector.
-
+        Returns the name of the upper body specified in the XML file.
         """
-
-        return 6
-
-    @info_property
-    def upper_body_xml_name(self):
         return "torso_link"
 
     @info_property
-    def root_free_joint_xml_name(self):
+    def root_free_joint_xml_name(self) -> str:
+        """
+        Returns the name of the free joint of the root specified in the XML file.
+        """
         return "root"
 
     @info_property
-    def root_height_healthy_range(self):
+    def root_height_healthy_range(self) -> Tuple[float, float]:
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
