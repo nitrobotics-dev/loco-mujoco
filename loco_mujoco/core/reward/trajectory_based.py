@@ -304,33 +304,37 @@ class MimicReward(TrajectoryBasedReward):
         traj_data_single = traj_data.get(carry.traj_state.traj_no, carry.traj_state.subtraj_step_no, backend)
         qpos_traj, qvel_traj = traj_data_single.qpos[self._qpos_ind], traj_data_single.qvel[self._qvel_ind]
         qpos_quat_traj = qpos_traj[self._quat_in_qpos].reshape(-1, 4)
-        site_rpos_traj, site_rangles_traj, site_rvel_traj =\
-            calculate_relative_site_quatities(traj_data_single, self._rel_site_ids,
-                                              self._rel_body_ids, model.body_rootid, backend)
+        if len(self._rel_site_ids) > 1:
+            site_rpos_traj, site_rangles_traj, site_rvel_traj =\
+                calculate_relative_site_quatities(traj_data_single, self._rel_site_ids,
+                                                self._rel_body_ids, model.body_rootid, backend)
 
         # get all quantities from the current data
         qpos, qvel = data.qpos[self._qpos_ind], data.qvel[self._qvel_ind]
         qpos_quat = qpos[self._quat_in_qpos].reshape(-1, 4)
-        site_rpos, site_rangles, site_rvel = (
-            calculate_relative_site_quatities(data, self._rel_site_ids, self._rel_body_ids,
-                                              model.body_rootid, backend))
+        if len(self._rel_site_ids) > 1:
+            site_rpos, site_rangles, site_rvel = (
+                calculate_relative_site_quatities(data, self._rel_site_ids, self._rel_body_ids,
+                                                model.body_rootid, backend))
 
         # calculate distances
         qpos_dist = backend.mean(backend.square(qpos[~self._quat_in_qpos] - qpos_traj[~self._quat_in_qpos]))
         qpos_dist += backend.mean(quaternion_angular_distance(qpos_quat, qpos_quat_traj, backend))
         qvel_dist = backend.mean(backend.square(qvel - qvel_traj))
-        rpos_dist = backend.mean(backend.square(site_rpos - site_rpos_traj))
-        rquat_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
-        rvel_rot_dist = backend.mean(backend.square(site_rvel[:,:3] - site_rvel_traj[:,:3]))
-        rvel_lin_dist = backend.mean(backend.square(site_rvel[:,3:] - site_rvel_traj[:,3:]))
+        if len(self._rel_site_ids) > 1:
+            rpos_dist = backend.mean(backend.square(site_rpos - site_rpos_traj))
+            rquat_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
+            rvel_rot_dist = backend.mean(backend.square(site_rvel[:,:3] - site_rvel_traj[:,:3]))
+            rvel_lin_dist = backend.mean(backend.square(site_rvel[:,3:] - site_rvel_traj[:,3:]))
 
         # calculate rewards
         qpos_reward = backend.exp(-self._qpos_w_exp*qpos_dist)
         qvel_reward = backend.exp(-self._qvel_w_exp*qvel_dist)
-        rpos_reward = backend.exp(-self._rpos_w_exp*rpos_dist)
-        rquat_reward = backend.exp(-self._rquat_w_exp*rquat_dist)
-        rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
-        rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
+        if len(self._rel_site_ids) > 1:
+            rpos_reward = backend.exp(-self._rpos_w_exp*rpos_dist)
+            rquat_reward = backend.exp(-self._rquat_w_exp*rquat_dist)
+            rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
+            rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
         # calculate costs
         # out of bounds action cost
@@ -371,10 +375,13 @@ class MimicReward(TrajectoryBasedReward):
         total_penalities = backend.maximum(total_penalities, -1.0)
 
         # calculate total reward
-        total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward
+        total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward)
+        if len(self._rel_site_ids) > 1:
+            total_reward = (total_reward
                         + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
-                        + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward
-                        + total_penalities)
+                        + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
+
+        total_reward = total_reward + total_penalities
 
         # clip to positive values
         total_reward = backend.maximum(total_reward, 0.0)
