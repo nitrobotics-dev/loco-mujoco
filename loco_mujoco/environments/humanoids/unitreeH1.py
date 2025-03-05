@@ -167,7 +167,7 @@ class UnitreeH1(BaseRobotHumanoid):
                  action_spec: List[str] = None,
                  **kwargs) -> None:
         """
-        Initializes the ToddlerBot environment.
+        Constructor.
 
         Args:
             disable_arms (bool): Whether to disable arm joints.

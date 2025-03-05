@@ -10,6 +10,7 @@ Here you find an overview of the API of all Humanoid environments.
     ./humanoids/booster.rst
     ./humanoids/fourier_gr1t2.rst
     ./humanoids/unitreeh1.rst
+    ./humanoids/unitreeh1v2.rst
     ./humanoids/unitreeg1.rst
     ./humanoids/myoskeleton.rst
     ./humanoids/torque_humanoid.rst

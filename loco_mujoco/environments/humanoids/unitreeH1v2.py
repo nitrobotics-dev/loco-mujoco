@@ -1,3 +1,4 @@
+from typing import Union, List, Dict, Tuple
 import mujoco
 from mujoco import MjSpec
 
@@ -13,34 +14,154 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
     Description
     ------------
+    Mujoco environment of the Unitree H1.5 robot.
 
-
-    Tasks
-    -------------
-
-
-    Dataset Types
+    Default Observation Space
     -----------------
 
+    ============ ============================= ================ ==================================== ============================== ===
+    Index in Obs Name                          ObservationType  Min                                  Max                            Dim
+    ============ ============================= ================ ==================================== ============================== ===
+    0 - 4        q_floating_base_joint         FreeJointPosNoXY [-inf, -inf, -inf, -inf, -inf]       [inf, inf, inf, inf, inf]      5
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    5            q_left_hip_yaw_joint          JointPos         [-0.43]                              [0.43]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    6            q_left_hip_pitch_joint        JointPos         [-3.14]                              [2.5]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    7            q_left_hip_roll_joint         JointPos         [-0.43]                              [3.14]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    8            q_left_knee_joint             JointPos         [-0.12]                              [2.19]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    9            q_left_ankle_pitch_joint      JointPos         [-0.897334]                          [0.523598]                     1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    10           q_left_ankle_roll_joint       JointPos         [-0.261799]                          [0.261799]                     1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    11           q_right_hip_yaw_joint         JointPos         [-0.43]                              [0.43]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    12           q_right_hip_pitch_joint       JointPos         [-3.14]                              [2.5]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    13           q_right_hip_roll_joint        JointPos         [-3.14]                              [0.43]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    14           q_right_knee_joint            JointPos         [-0.12]                              [2.19]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    15           q_right_ankle_pitch_joint     JointPos         [-0.897334]                          [0.523598]                     1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    16           q_right_ankle_roll_joint      JointPos         [-0.261799]                          [0.261799]                     1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    17           q_torso_joint                 JointPos         [-2.35]                              [2.35]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    18           q_left_shoulder_pitch_joint   JointPos         [-3.14]                              [1.57]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    19           q_left_shoulder_roll_joint    JointPos         [-0.38]                              [3.4]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    20           q_left_shoulder_yaw_joint     JointPos         [-2.66]                              [3.01]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    21           q_left_elbow_joint            JointPos         [-0.95]                              [3.18]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    22           q_right_shoulder_pitch_joint  JointPos         [-3.14]                              [1.57]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    23           q_right_shoulder_roll_joint   JointPos         [-3.4]                               [0.38]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    24           q_right_shoulder_yaw_joint    JointPos         [-3.01]                              [2.66]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    25           q_right_elbow_joint           JointPos         [-0.95]                              [3.18]                         1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    26 - 31      dq_floating_base_joint        FreeJointVel     [-inf, -inf, -inf, -inf, -inf, -inf] [inf, inf, inf, inf, inf, inf] 6
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    32           dq_left_hip_yaw_joint         JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    33           dq_left_hip_pitch_joint       JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    34           dq_left_hip_roll_joint        JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    35           dq_left_knee_joint            JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    36           dq_left_ankle_pitch_joint     JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    37           dq_left_ankle_roll_joint      JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    38           dq_right_hip_yaw_joint        JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    39           dq_right_hip_pitch_joint      JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    40           dq_right_hip_roll_joint       JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    41           dq_right_knee_joint           JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    42           dq_right_ankle_pitch_joint    JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    43           dq_right_ankle_roll_joint     JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    44           dq_torso_joint                JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    45           dq_left_shoulder_pitch_joint  JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    46           dq_left_shoulder_roll_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    47           dq_left_shoulder_yaw_joint    JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    48           dq_left_elbow_joint           JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    49           dq_right_shoulder_pitch_joint JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    50           dq_right_shoulder_roll_joint  JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    51           dq_right_shoulder_yaw_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------------------- ---------------- ------------------------------------ ------------------------------ ---
+    52           dq_right_elbow_joint          JointVel         [-inf]                               [inf]                          1
+    ============ ============================= ================ ==================================== ============================== ===
 
-    Observation Space
-    -----------------
-
-
-    Action Space
+    Default Action Space
     ------------
 
+    Control function type: **PDControl**
+    See control function interface for more details.
+    =============== ==== ===
+    Index in Action Min  Max
+    =============== ==== ===
+    0               -1.0 1.0
+    --------------- ---- ---
+    1               -1.0 1.0
+    --------------- ---- ---
+    2               -1.0 1.0
+    --------------- ---- ---
+    3               -1.0 1.0
+    --------------- ---- ---
+    4               -1.0 1.0
+    --------------- ---- ---
+    5               -1.0 1.0
+    --------------- ---- ---
+    6               -1.0 1.0
+    --------------- ---- ---
+    7               -1.0 1.0
+    --------------- ---- ---
+    8               -1.0 1.0
+    --------------- ---- ---
+    9               -1.0 1.0
+    --------------- ---- ---
+    10              -1.0 1.0
+    --------------- ---- ---
+    11              -1.0 1.0
+    --------------- ---- ---
+    12              -1.0 1.0
+    --------------- ---- ---
+    13              -1.0 1.0
+    --------------- ---- ---
+    14              -1.0 1.0
+    --------------- ---- ---
+    15              -1.0 1.0
+    --------------- ---- ---
+    16              -1.0 1.0
+    --------------- ---- ---
+    17              -1.0 1.0
+    --------------- ---- ---
+    18              -1.0 1.0
+    --------------- ---- ---
+    19              -1.0 1.0
+    --------------- ---- ---
+    20              -1.0 1.0
+    =============== ==== ===
 
-    Rewards
-    --------
-
-
-    Initial States
-    ---------------
-
-
-    Terminal States
-    ----------------
 
     Methods
     ---------
@@ -49,11 +170,20 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
     mjx_enabled = False
 
-    def __init__(self, disable_hands=True, spec=None,
-                 observation_spec=None, action_spec=None, **kwargs):
+    def __init__(self, disable_hands: bool = True, spec: Union[str, MjSpec] = None,
+                 observation_spec: List[ObservationType] = None,
+                 action_spec: List[str] = None,
+                 **kwargs) -> None:
         """
         Constructor.
 
+        Args:
+            disable_hands (bool): Whether to disable hand joints.
+            spec (Union[str, MjSpec]): Specification of the environment. Can be a path to the XML file or an MjSpec object.
+                If none is provided, the default XML file is used.
+            observation_spec (List[ObservationType], optional): List defining the observation space. Defaults to None.
+            action_spec (List[str], optional): List defining the action space. Defaults to None.
+            **kwargs: Additional parameters for the environment.
         """
 
         self._disable_handss = disable_hands
@@ -94,15 +224,13 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
         super().__init__(spec, action_spec, observation_spec, **kwargs)
 
-    def _get_spec_modifications(self):
+    def _get_spec_modifications(self) -> Tuple[List[str], List[str], List[str]]:
         """
-        Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco specification.
+        Specifies which joints, actuators, and equality constraints should be removed from the Mujoco specification.
 
         Returns:
-            A tuple of lists consisting of names of joints to remove, names of actuators to remove,
-             and names of equality constraints to remove.
-
+            Tuple[List[str], List[str], List[str]]: A tuple containing lists of joints to remove, actuators to remove,
+            and equality constraints to remove.
         """
 
         joints_to_remove = [
@@ -180,7 +308,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
         return joints_to_remove, actuators_to_remove, equ_constr_to_remove
 
     @staticmethod
-    def _get_observation_specification(spec: MjSpec):
+    def _get_observation_specification(spec: MjSpec) -> List[ObservationType]:
         """
         Returns the observation specification of the environment.
 
@@ -188,7 +316,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of observation types.
+            List[ObservationType]: A list of observation types.
         """
         observation_spec = [
             # ------------- JOINT POS -------------
@@ -303,7 +431,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
         return observation_spec
 
     @staticmethod
-    def _get_action_specification(spec: MjSpec):
+    def _get_action_specification(spec: MjSpec) -> List[str]:
         """
         Getter for the action space specification.
 
@@ -311,8 +439,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of actuator names.
+            List[str]: A list of actuator names.
         """
+        ...
         action_spec = [
             "left_hip_yaw_joint",
             "left_hip_pitch_joint",
@@ -370,7 +499,14 @@ class UnitreeH1v2(BaseRobotHumanoid):
         return action_spec
 
     @property
-    def p_gains(self):
+    def p_gains(self) -> Dict[str, float]:
+        """
+        Getter for the proportional gains of the PD controller.
+
+        Returns:
+            Dict[str, float]: A dictionary containing the proportional gains for each joint
+
+        """
         p_gains = {
             'left_hip_yaw_joint': 200.0,
             'left_hip_pitch_joint': 200.0,
@@ -428,7 +564,14 @@ class UnitreeH1v2(BaseRobotHumanoid):
         return p_gains
 
     @property
-    def d_gains(self):
+    def d_gains(self) -> Dict[str, float]:
+        """
+        Getter for the derivative gains of the PD controller.
+
+        Returns:
+            Dict[str, float]: A dictionary containing the derivative gains for each joint
+
+        """
         d_gains = {
             'left_hip_yaw_joint': 2.5,
             'left_hip_pitch_joint': 2.5,
@@ -486,32 +629,32 @@ class UnitreeH1v2(BaseRobotHumanoid):
         return d_gains
 
     @classmethod
-    def get_default_xml_file_path(cls):
+    def get_default_xml_file_path(cls) -> str:
         """
-        Returns the default path to the xml file of the environment.
+        Returns the default XML file path for the unitree h1_2 environment.
         """
         return (loco_mujoco.PATH_TO_MODELS / "unitree_h1_2" / "h1_2.xml").as_posix()
 
     @info_property
-    def grf_size(self):
+    def upper_body_xml_name(self) -> str:
         """
-        Returns the size of the ground force vector.
+        Returns the name of the upper body XML element.
 
         """
-
-        return 6
-
-    @info_property
-    def upper_body_xml_name(self):
         return "torso_link"
 
     @info_property
-    def root_free_joint_xml_name(self):
+    def root_free_joint_xml_name(self) -> str:
+        """
+        Returns the name of the root free joint XML element.
+
+        """
         return "floating_base_joint"
 
     @info_property
-    def root_height_healthy_range(self):
+    def root_height_healthy_range(self) -> Tuple[float, float]:
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+
         """
         return (0.6, 1.5)
