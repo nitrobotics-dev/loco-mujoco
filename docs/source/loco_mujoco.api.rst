@@ -1,6 +1,14 @@
 API Documentation
 ====================
 
+Core
+-----------
+
+.. toctree::
+    :hidden:
+
+    ./loco_mujoco.core.rst
+
 
 Environments
 -----------
@@ -44,7 +52,6 @@ for the Unitree H1 robot:
 .. toctree::
     :hidden:
 
-    ./loco_mujoco.environments.rst
     ./loco_mujoco.environments.humanoids.rst
     ./loco_mujoco.environments.quadrupeds.rst
     ./loco_mujoco.environments.base.rst
