@@ -1,3 +1,4 @@
+from typing import Union, List, Tuple
 import warnings
 import numpy as np
 import mujoco
@@ -18,8 +19,16 @@ class BaseSkeleton(LocoEnv):
 
     mjx_enabled = False
 
-    def __init__(self, use_muscles=False, use_box_feet=True, disable_arms=False, scaling=1.0,
-                 alpha_box_feet=0.5, spec=None, observation_spec=None, action_spec=None, **kwargs):
+    def __init__(self,
+                 use_muscles: bool = False,
+                 use_box_feet: bool = True,
+                 disable_arms: bool = False,
+                 scaling: float = 1.0,
+                 alpha_box_feet: float = 0.5,
+                 spec: Union[str, MjSpec] = None,
+                 observation_spec: List[ObservationType] = None,
+                 action_spec: List[str] = None,
+                 **kwargs) -> None:
         """
         Constructor.
 
@@ -30,7 +39,11 @@ class BaseSkeleton(LocoEnv):
                 actuators are removed from the action specification.
             scaling (float): Scaling factor for the kinematics and dynamics of the humanoid model.
             alpha_box_feet (float): Alpha parameter of the boxes, which might be added as feet.
-
+            spec (Union[str, MjSpec]): Specification of the environment.
+                It can be a path to the xml file or a MjSpec object. If none, is provided, the default xml file is used.
+            observation_spec (List[ObservationType]): Observation specification.
+            action_spec (List[str]): Action specification.
+            **kwargs: Additional arguments.
         """
 
         if spec is None:
@@ -78,16 +91,14 @@ class BaseSkeleton(LocoEnv):
 
         super().__init__(spec, action_spec, observation_spec, **kwargs)
 
-    def _get_spec_modifications(self):
+    def _get_spec_modifications(self) -> Tuple[List[str], List[str], List[str]]:
         """
-        Function that specifies which joints, motors and equality constraints
-        should be removed from the Mujoco specification. Also, the required collision
-        groups will be returned.
+        Function that specifies which joints, motors, and equality constraints
+        should be removed from the Mujoco specification.
 
         Returns:
             A tuple of lists consisting of names of joints to remove, names of motors to remove,
-             names of equality constraints to remove, and names of collision groups to be used.
-
+            and names of equality constraints to remove.
         """
 
         joints_to_remove = []
@@ -113,7 +124,7 @@ class BaseSkeleton(LocoEnv):
         return joints_to_remove, motors_to_remove, equ_constr_to_remove
 
     @staticmethod
-    def _get_observation_specification(spec: MjSpec):
+    def _get_observation_specification(spec: MjSpec) -> List[ObservationType]:
         """
         Returns the observation specification of the environment.
 
@@ -204,16 +215,17 @@ class BaseSkeleton(LocoEnv):
 
         return observation_spec
 
-    def _add_box_feet_to_spec(self, spec, alpha_box_feet):
+    def _add_box_feet_to_spec(self, spec: MjSpec,
+                              alpha_box_feet: float) -> MjSpec:
         """
         Adds box feet to Mujoco spec and makes old feet non-collidable.
 
         Args:
-            spec: Mujoco specification.
+            spec (MjSpec): Mujoco specification.
+            alpha_box_feet (float): Alpha parameter of the boxes.
 
         Returns:
             Modified Mujoco spec.
-
         """
 
         # find foot and attach box
@@ -236,16 +248,15 @@ class BaseSkeleton(LocoEnv):
         return spec
 
     @staticmethod
-    def _reorient_arms(spec: MjSpec):
+    def _reorient_arms(spec: MjSpec) -> MjSpec:
         """
         Reorients the arm of a humanoid model given its Mujoco specification.
 
         Args:
-            spec: MjSpec: Mujoco specification.
+            spec (MjSpec): Mujoco specification.
 
         Returns:
             Modified Mujoco specification.
-
         """
 
         h = spec.find_body("humerus_l")
@@ -259,17 +270,17 @@ class BaseSkeleton(LocoEnv):
 
         return spec
 
-    def scale_body(self, mjspec: MjSpec, use_muscles):
+    def scale_body(self, mjspec: MjSpec,
+                   use_muscles: bool) -> MjSpec:
         """
         This function scales the kinematics and dynamics of the humanoid model given a Mujoco XML handle.
 
         Args:
-            mjspec: Handle to Mujoco specification.
+            mjspec (MjSpec): Handle to Mujoco specification.
             use_muscles (bool): If True, muscle actuators will be scaled, else torque actuators will be scaled.
 
         Returns:
             Modified Mujoco XML handle.
-
         """
 
         body_scaling = self.scaling
@@ -319,11 +330,10 @@ class BaseSkeleton(LocoEnv):
         Args:
             traj (Trajectory): Datastructure containing all trajectory files. If traj_path is specified, this
                 should be None.
-            traj_path (string): path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
+            traj_path (string): Path with the trajectory for the model to follow. Should be a numpy zipped file (.npz)
                 with a 'traj_data' array and possibly a 'split_points' array inside. The 'traj_data'
                 should be in the shape (joints x observations). If traj_files is specified, this should be None.
             warn (bool): If True, a warning will be raised.
-
         """
 
         if self.th is not None and warn:
@@ -372,28 +382,30 @@ class BaseSkeleton(LocoEnv):
         self._terminal_state_handler.init_from_traj(self.th)
 
     @info_property
-    def root_height_healthy_range(self):
+    def root_height_healthy_range(self) -> Tuple[float, float]:
         """
         Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
         """
         return (0.8*self.scaling, 1.1*self.scaling)
 
     @info_property
-    def upper_body_xml_name(self):
+    def upper_body_xml_name(self) -> str:
+        """
+        Returns the name of the upper body.
+        """
         return "torso"
 
-    def _modify_spec_for_mjx(self, spec):
+    def _modify_spec_for_mjx(self, spec: MjSpec) -> MjSpec:
         """
         Mjx is bad in handling many complex contacts. To speed-up simulation significantly we apply
         some changes to the Mujoco specification:
             1. Disable all contacts except the ones between feet and the floor.
 
         Args:
-            spec: Handle to Mujoco specification.
+            spec (MjSpec): Handle to Mujoco specification.
 
         Returns:
             Mujoco specification.
-
         """
 
         # --- disable all contacts in geom ---
@@ -408,7 +420,11 @@ class BaseSkeleton(LocoEnv):
         return spec
 
     @info_property
-    def sites_for_mimic(self):
+    def sites_for_mimic(self) -> List[str]:
+        """
+        Returns the list of sites for mimic.
+
+        """
         return ["upper_body_mimic", "head_mimic", "pelvis_mimic",
                 "left_shoulder_mimic", "left_elbow_mimic", "left_hand_mimic",
                 "left_hip_mimic", "left_knee_mimic", "left_foot_mimic",
@@ -416,5 +432,8 @@ class BaseSkeleton(LocoEnv):
                 "right_hip_mimic", "right_knee_mimic", "right_foot_mimic"]
 
     @info_property
-    def root_body_name(self):
+    def root_body_name(self) -> str:
+        """
+        Returns the name of the root body.
+        """
         return "pelvis"

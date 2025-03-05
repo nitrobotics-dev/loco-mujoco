@@ -13,8 +13,8 @@ Here you find an overview of the API of all Humanoid environments.
     ./humanoids/unitreeh1v2.rst
     ./humanoids/unitreeg1.rst
     ./humanoids/myoskeleton.rst
-    ./humanoids/torque_humanoid.rst
-    ./humanoids/muscle_humanoid.rst
+    ./humanoids/skeleton_torque.rst
+    ./humanoids/skeleton_muscle.rst
     ./humanoids/base_humanoids.rst
     ./humanoids/talos.rst
     ./humanoids/toddlerbot.rst
