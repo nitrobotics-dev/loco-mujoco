@@ -115,7 +115,9 @@ class UnitreeH1v2(BaseRobotHumanoid):
     ------------
 
     Control function type: **PDControl**
+
     See control function interface for more details.
+
     =============== ==== ===
     Index in Action Min  Max
     =============== ==== ===
