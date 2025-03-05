@@ -321,8 +321,8 @@ class MimicReward(TrajectoryBasedReward):
         qvel_dist = backend.mean(backend.square(qvel - qvel_traj))
         rpos_dist = backend.mean(backend.square(site_rpos - site_rpos_traj))
         rquat_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
-        rvel_rot_dist = backend.mean(backend.square(site_rvel[:3] - site_rvel_traj[:3]))
-        rvel_lin_dist = backend.mean(backend.square(site_rvel[3:] - site_rvel_traj[3:]))
+        rvel_rot_dist = backend.mean(backend.square(site_rvel[:,:3] - site_rvel_traj[:,:3]))
+        rvel_lin_dist = backend.mean(backend.square(site_rvel[:,3:] - site_rvel_traj[:,3:]))
 
         # calculate rewards
         qpos_reward = backend.exp(-self._qpos_w_exp*qpos_dist)
