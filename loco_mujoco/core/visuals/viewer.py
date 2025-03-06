@@ -483,18 +483,31 @@ class MujocoViewer:
             # Calculate starting coordinates to center the grid around (center_x, center_y)
             half_grid = grid_size // 2
 
+            done = False  # Flag to track when to stop
             for i in range(grid_size):
                 for j in range(grid_size):
-                    # Calculate the coordinates for the current position using the specified offset
                     x = center_x + (i - half_grid) * offset
                     y = center_y + (j - half_grid) * offset
                     positions.append((x, y))
 
-                    # Stop if we have reached the number of environments
                     if len(positions) == num_envs:
-                        return positions
+                        done = True
+                        break
+
+                if done:
+                    break
+
+            # Identify the middle index of the first column
+            col_length = min(grid_size,
+                             (num_envs + grid_size - 1) // grid_size)  # Number of elements in the first column
+            middle_index = (col_length // 2) * grid_size  # Index of middle element in the first column
+
+            # Swap the middle element of the first column with the first element
+            if middle_index < len(positions):
+                positions[0], positions[middle_index] = positions[middle_index], positions[0]
 
             return positions
+
 
         n_envs = mjx_state.data.qpos.shape[0]
         if self._offsets_for_parallel_render is None or n_envs > len(self._offsets_for_parallel_render):
