@@ -4,6 +4,11 @@ API Documentation
 Core
 -----------
 
+The core consists of fundamental modules that serve as the backbone for all tasks and environments.
+It supports both reinforcement learning and imitation learning, providing essential components such
+as the main simulation in MuJoCo and Mjx, observation and goal interfaces, initial and terminal state
+handlers, control and reward functions, as well as domain and terrain interfaces.
+
 .. toctree::
     :hidden:
 
@@ -13,40 +18,10 @@ Core
 Environments
 -----------
 
-.. image:: https://github.com/robfiras/loco-mujoco/assets/69359729/73ca0cdd-3958-4d59-a1f7-0eba00fe373a
-
-
-LocoMuJoCo focuses on *Loco*motion environments. This includes humanoids and quadrupeds, with
-a strong focus on the latter. The environment is built on top of MuJoCo. The aim of LocoMuJoCo is to be
-a simple and easy-to-use environment for imitation learning and reinforcement learning while shifting the focus towards
-realistic and complex tasks crucial for real-world robotics. LocoMuJoCo strives to be simple and user-friendly, offering
-an environment tailored for both imitation and reinforcement learning. Its main objective is to shift the focus away from
-simplistic locomotion tasks often used as benchmarks for imitation and reinforcement learning algorithms, and instead
-prioritize realistic and intricate tasks vital for real-world robotics applications.
-
-For imitation learning, it is crucial to have a good and diverse datasets. LocoMuJoCo makes it very simple to generate
-diverse datasets of different difficulty levels in a single line of code. This allows the user to focus on the learning
-algorithm and not worry about the environment. Here is a simple example of how to generate a the environment and the dataset
-for the Unitree H1 robot:
-
-.. literalinclude:: ../../examples/simple_gymnasium_env/example_unitree_h1.py
-    :language: python
-
-
-.. note:: As can be seen in the example above *Task-IDs* (e.g., "UnitreeH1.run.real") are used to choose what environment,
-    task and dataset type to use. The general structure of a Task-Id is `<environment>.<task>.<dataset_type>`.
-    For the Task-ID, you have to choose *at least* the environment name. Missing
-    information will be filled with default settings, which are "walk" for the task and "real" for the dataset type for the
-    Unitree H1 robot. A list of all available *Task-IDs* in LocoMuJoCo is given in the :doc:`./loco_mujoco.environments`.
-    Alternatively, you can use the following code:
-
-    .. code-block:: python
-
-        from loco_mujoco import LocoEnv
-
-        task_ids = LocoEnv.get_all_task_names()
-
-
+LocoMuJoCo comes with 16 different environments, including 12 humanoids and 4 quadrupeds. The environments
+are designed to be simple and user-friendly, offering a variety of tasks for both imitation and reinforcement
+learning. The environments are built on top of the core modules, providing a seamless integration with the
+rest of the library.
 
 
 .. toctree::
@@ -57,6 +32,37 @@ for the Unitree H1 robot:
     ./loco_mujoco.environments.base.rst
 
 
+
+Datasets
+-----------
+
+LocoMuJoCo provides different datasets for imitation learning. For now, three different dataset sources are available:
+
+- **DefaultDataset**: Collected by the maintainers of LocoMuJoCo.
+- `Lafan1Dataset <https://huggingface.co/datasets/unitreerobotics/LAFAN1_Retargeting_Dataset>`__ : Humanoid motion capture dataset.
+- `AMASSDataset <https://amass.is.tue.mpg.de/>`__ : Humanoid motion capture dataset.
+
+All datasets will be automatically downloaded, retagerget for the respective humanoid and optionaly cached.
+Due to licensing, the AMASS dataset needs to be downloaded manually. You can find more information on the installation
+page of the documentation. The DefaultDataset and Lafan1Dataset are hosted on
+`LocoMuJoCo's HuggingFace hub <https://huggingface.co/datasets/robfiras/loco-mujoco-datasets/tree/main>`__.
+
+
+Task Factories
+-----------
+
+For easy dataset loading, LocoMuJoCo provides task factories that can be used to load the datasets and create the
+corresponding tasks. Different sources of datasets can be mixed and matched to create a single task. Here is an example
+of an imitation learning task using the DefaultDataset and Lafan1Dataset.
+
+.. toctree::
+    :hidden:
+
+    ./loco_mujoco.task_factories.rst
+
+
+.. literalinclude:: ../../examples/replay_datasets/example.py
+    :language: python
 
 
 
