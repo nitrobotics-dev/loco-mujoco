@@ -32,6 +32,12 @@ def check_traj_provided(method):
 
 class TrajectoryBasedReward(Reward):
 
+    """
+    Base class for trajectory-based reward functions. These reward functions require a
+    trajectory handler to compute the reward.
+
+    """
+
     @property
     def requires_trajectory(self) -> bool:
         return True
