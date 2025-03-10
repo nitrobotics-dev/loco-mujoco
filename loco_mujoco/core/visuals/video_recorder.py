@@ -92,7 +92,7 @@ class VideoRecorder(object):
                     check=True  # Raise an error if ffmpeg fails
                 )
                 os.replace(tmp_file, self._video_writer_path)
-                print("Successfully compressed recorded vide and saved at: ", self._video_writer_path)
+                print("Successfully compressed recorded video and saved at: ", self._video_writer_path)
 
             except subprocess.CalledProcessError as e:
                 print(f"Video compression failed: {e}")

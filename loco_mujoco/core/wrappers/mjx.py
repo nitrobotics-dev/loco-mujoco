@@ -89,6 +89,12 @@ class BaseWrapper:
         # If the attribute or env_state isn't found
         raise AttributeError(f"Attribute '{attr_name}' not found")
 
+    def unwrapped(self):
+        # find first env which is not a subclass of BaseWrapper
+        if isinstance(self.env, BaseWrapper):
+            return self.env.unwrapped()
+        else:
+            return self.env.env
 
 @struct.dataclass
 class SummaryMetrics:

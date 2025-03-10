@@ -61,8 +61,7 @@ class GAILAgentConf(AgentConfBase):
                    network=flax.serialization.from_state_dict(ActorCritic, d["network"]),
                    discriminator=flax.serialization.from_state_dict(FullyConnectedNet, d["discriminator"]),
                    tx=tx, disc_tx=disc_tx,
-                   expert_dataset=flax.serialization.from_state_dict(TrajectoryTransitions, d["expert_dataset"]),
-                   save_expert_dataset=d["save_expert_dataset"])
+                   expert_dataset=flax.serialization.from_state_dict(TrajectoryTransitions, d["expert_dataset"]))
 
 
 @struct.dataclass
@@ -553,7 +552,14 @@ class GAILJax(JaxRLAlgorithmBase):
                     agent_state: GAILAgentState,
                     n_envs: int, n_steps=None, render=True,
                     record=False, rng=None, deterministic=False,
+                    use_mujoco=False, wrap_env=True,
                     train_state_seed=None):
+
+        if use_mujoco and wrap_env:
+            if hasattr(agent_conf.experiment, "len_obs_history"):
+                assert agent_conf.experiment.len_obs_history == 1, "len_obs_history must be 1 for mujoco envs."
+        if use_mujoco:
+            assert n_envs == 1, "Only one mujoco env can be run at a time."
 
         def sample_actions(ts, obs, _rng):
             y, updates = agent_conf.network.apply({'params': ts.params,
@@ -581,7 +587,8 @@ class GAILJax(JaxRLAlgorithmBase):
             warnings.warn("No rendering, no record, no n_steps specified. This will run forever with no effect.")
 
         # create env
-        env = cls._wrap_env(env, config)
+        if wrap_env and not use_mujoco:
+            env = cls._wrap_env(env, config)
 
         if rng is None:
             rng = jax.random.key(0)
@@ -592,7 +599,11 @@ class GAILJax(JaxRLAlgorithmBase):
         plcy_call = jax.jit(sample_actions)
 
         # reset env
-        obs, env_state = env.reset(env_keys)
+        if use_mujoco:
+            obs = env.reset()
+            env_state = None
+        else:
+            obs, env_state = env.reset(env_keys)
 
         if n_steps is None:
             n_steps = np.iinfo(np.int32).max
@@ -605,12 +616,34 @@ class GAILJax(JaxRLAlgorithmBase):
             action = jnp.atleast_2d(action)
 
             # STEP ENV
-            obs, reward, absorbing, done, info, env_state = env.step(env_state, action)
+            if use_mujoco:
+                obs, reward, absorbing, done, info = env.step(action)
+            else:
+                obs, reward, absorbing, done, info, env_state = env.step(env_state, action)
 
             # RENDER
-            env.mjx_render(env_state, record=record)
+            if use_mujoco:
+                env.render(record=True)
+            else:
+                env.mjx_render(env_state, record=record)
+
+            # RESET MUJOCO ENV (MJX resets by itself)
+            if use_mujoco:
+                if done:
+                    obs = env.reset()
 
         env.stop()
+
+    @classmethod
+    def play_policy_mujoco(cls, env,
+                           agent_conf: GAILAgentConf,
+                           agent_state: GAILAgentState,
+                           n_steps=None, render=True,
+                           record=False, rng=None, deterministic=False,
+                           train_state_seed=None):
+
+        cls.play_policy(env, agent_conf, agent_state, 1, n_steps, render, record, rng, deterministic,
+                        True, False, train_state_seed)
 
     @staticmethod
     def _wrap_env(env, config):

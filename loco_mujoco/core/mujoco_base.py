@@ -217,6 +217,7 @@ class Mujoco:
                                                                             self._additional_carry, jnp)
         self._obs, self._additional_carry = self._create_observation(self._model, self._data, self._additional_carry)
         self._info = self._reset_info_dictionary(self._obs, self._data, subkey)
+        self._cur_step_in_episode = 0
         return self._obs
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
