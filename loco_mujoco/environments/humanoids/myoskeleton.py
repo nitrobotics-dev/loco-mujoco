@@ -473,6 +473,11 @@ class MyoSkeleton(LocoEnv):
             if g.name == "floor":
                 g.delete()
 
+        # remove old lights
+        for b in spec.bodies:
+            for l in b.lights:
+                l.delete()
+
         # load common specs
         scene_spec = mujoco.MjSpec.from_file((PATH_TO_MODELS / "common" / "scene.xml").as_posix())
 
@@ -496,6 +501,11 @@ class MyoSkeleton(LocoEnv):
             # todo: can not load mimic sites attributes for now, so I add them manually
             b.add_site(name=site_name, group=4, type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.075, 0.05, 0.025],
                        rgba=[1.0, 0.0, 0.0, 0.5], pos=pos)
+
+        # add spot light
+        for b in spec.bodies:
+            if b.name == "pelvis":
+                b.add_light(name="spotlight", mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM, pos=[0, 50, -2], dir=[0, -1, 0])
 
         if self._disable_fingers:
             for j in spec.joints:
