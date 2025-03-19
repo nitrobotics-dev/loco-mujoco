@@ -35,7 +35,7 @@ class Goal(StatefulObservation):
         n_visual_geoms (int): Number of visual geometries for visualization.
     """
 
-    def __init__(self, info_props: Dict, visualize_goal: bool = False, n_visual_geoms: int = 0):
+    def __init__(self, info_props: Dict, visualize_goal: bool = False, n_visual_geoms: int = 0, **kwargs):
         self._initialized_from_traj = False
         self._info_props = info_props
         if visualize_goal:
@@ -44,7 +44,7 @@ class Goal(StatefulObservation):
                 f"Please set visualize_goal to False."
             )
         self.visualize_goal = visualize_goal
-        Observation.__init__(self, obs_name=self.__class__.__name__)
+        Observation.__init__(self, obs_name=self.__class__.__name__, **kwargs)
         StatefulObject.__init__(self, n_visual_geoms)
 
     @property

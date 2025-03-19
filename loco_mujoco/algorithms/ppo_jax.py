@@ -80,12 +80,28 @@ class PPOJax(JaxRLAlgorithmBase):
         hidden_layers = config.experiment.hidden_layers \
             if isinstance(config.experiment.hidden_layers, (list, ListConfig)) \
             else ast.literal_eval(config.experiment.hidden_layers)
+        if hasattr(config.experiment, "actor_obs_group") and config.experiment.actor_obs_group is not None:
+            actor_obs_ind = env.obs_container.get_obs_ind_by_group(config.experiment.actor_obs_group)
+        else:
+            actor_obs_ind = jnp.arange(env.mdp_info.observation_space.shape[0])
+        if hasattr(config.experiment, "critic_obs_group") and config.experiment.critic_obs_group is not None:
+            critic_obs_ind = env.obs_container.get_obs_ind_by_group(config.experiment.critic_obs_group)
+        else:
+            critic_obs_ind = jnp.arange(env.mdp_info.observation_space.shape[0])
+        if hasattr(config.experiment, "len_obs_history") and config.experiment.len_obs_history > 1:
+            obs_len = env.info.observation_space.shape[0]
+            actor_obs_ind = jnp.concatenate([actor_obs_ind + i*obs_len
+                                             for i in range(config.experiment.len_obs_history)])
+            critic_obs_ind = jnp.concatenate([critic_obs_ind + i*obs_len
+                                              for i in range(config.experiment.len_obs_history)])
         network = ActorCritic(
             env.info.action_space.shape[0],
             activation=config.experiment.activation,
             init_std=config.experiment.init_std,
             learnable_std=config.experiment.learnable_std,
-            hidden_layer_dims=hidden_layers
+            hidden_layer_dims=hidden_layers,
+            actor_obs_ind=actor_obs_ind,
+            critic_obs_ind=critic_obs_ind
         )
 
         # set up optimizers

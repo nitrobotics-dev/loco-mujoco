@@ -59,6 +59,9 @@ class DefaultRandomizer(DomainRandomizer):
         self._other_body_masks[0] = False # exclude worldbody
         self._other_body_masks[self._root_body_id] = False
 
+        # some observations are not allowed to be randomized, filter them out
+        self._allowed_to_be_randomized = env.obs_container.get_randomizable_obs_indices()
+
         super().__init__(env, **kwargs)
 
     def init_state(self,
@@ -301,50 +304,57 @@ class DefaultRandomizer(DomainRandomizer):
             key, _k = jax.random.split(key)
             noise = jax.random.normal(_k, shape=(total_len_noise_vec,))
 
+            randomized_obs = obs.copy()
+
             # Add noise to joint positions
             if self.rand_conf["add_joint_pos_noise"]:
-                obs = obs.at[ind_of_all_joint_pos].add(noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale)
+                randomized_obs = randomized_obs.at[ind_of_all_joint_pos].add(noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale)
             
             # Add noise to joint velocities
             if self.rand_conf["add_joint_vel_noise"]:
-                obs = obs.at[ind_of_all_joint_vel].add(noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale)
+                randomized_obs = randomized_obs.at[ind_of_all_joint_vel].add(noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale)
             
             # Add noise to gravity vector
             if self.rand_conf["add_gravity_noise"]:
-                obs = obs.at[ind_of_gravity_vec].add(noise[ind_of_gravity_vec_noise] * gravity_noise_scale)
+                randomized_obs = randomized_obs.at[ind_of_gravity_vec].add(noise[ind_of_gravity_vec_noise] * gravity_noise_scale)
             
             # Add noise to linear velocities
             if self.rand_conf["add_free_joint_lin_vel_noise"]:
-                obs = obs.at[ind_of_lin_vel].add(noise[ind_of_lin_vel_noise] * lin_vel_noise_scale)
+                randomized_obs = randomized_obs.at[ind_of_lin_vel].add(noise[ind_of_lin_vel_noise] * lin_vel_noise_scale)
 
             # Add noise to angular velocities
             if self.rand_conf["add_free_joint_ang_vel_noise"]:
-                obs = obs.at[ind_of_ang_vel].add(noise[ind_of_ang_vel_noise] * ang_vel_noise_scale)
-            
+                randomized_obs = randomized_obs.at[ind_of_ang_vel].add(noise[ind_of_ang_vel_noise] * ang_vel_noise_scale)
+
+            obs = obs.at[self._allowed_to_be_randomized].set(randomized_obs[self._allowed_to_be_randomized])
             carry = carry.replace(key=key)
 
         else:
             noise = np.random.normal(size=(total_len_noise_vec,))
 
+            randomized_obs = obs.copy()
+
              # Add noise to joint positions
             if self.rand_conf["add_joint_pos_noise"]:
-                obs[ind_of_all_joint_pos] += noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale
+                randomized_obs[ind_of_all_joint_pos] += noise[ind_of_all_joint_pos_noise] * joint_pos_noise_scale
 
             # Add noise to joint velocities
             if self.rand_conf["add_joint_vel_noise"]:
-                obs[ind_of_all_joint_vel] += noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale
+                randomized_obs[ind_of_all_joint_vel] += noise[ind_of_all_joint_vel_noise] * joint_vel_noise_scale
 
             # Add noise to gravity vector
             if self.rand_conf["add_gravity_noise"]:
-                obs[ind_of_gravity_vec] += noise[ind_of_gravity_vec_noise] * gravity_noise_scale
+                randomized_obs[ind_of_gravity_vec] += noise[ind_of_gravity_vec_noise] * gravity_noise_scale
 
             # Add noise to linear velocities
             if self.rand_conf["add_free_joint_lin_vel_noise"]:
-                obs[ind_of_lin_vel] += noise[ind_of_lin_vel_noise] * lin_vel_noise_scale
+                randomized_obs[ind_of_lin_vel] += noise[ind_of_lin_vel_noise] * lin_vel_noise_scale
 
             # Add noise to angular velocities
             if self.rand_conf["add_free_joint_ang_vel_noise"]:
-                obs[ind_of_ang_vel] += noise[ind_of_ang_vel_noise] * ang_vel_noise_scale
+                randomized_obs[ind_of_ang_vel] += noise[ind_of_ang_vel_noise] * ang_vel_noise_scale
+
+            obs[self._allowed_to_be_randomized] = randomized_obs[self._allowed_to_be_randomized]
 
         return obs, carry
 

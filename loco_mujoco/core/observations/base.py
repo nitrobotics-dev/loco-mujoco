@@ -1,6 +1,6 @@
 from __future__ import annotations
 from copy import deepcopy
-from typing import List
+from typing import List, Union
 from collections import UserDict
 
 import numpy as np
@@ -120,6 +120,55 @@ class ObservationContainer(UserDict):
         # create instance
         return dynamic_class(**stateful_obs_dict)
 
+    def get_all_group_names(self):
+        """
+        Get all group names in the container.
+
+        Returns:
+            List[str]: The list of group names.
+
+        """
+        return list(set(group for obs in self.values() for group in obs.group))
+
+    def filter_by_group(self, obs: Union[np.ndarray, jnp.ndarray], group_name: str = None):
+        """
+        Filter observations by group name.
+
+        Args:
+            obs (Union[np.ndarray, jnp.ndarray]): The observation array.
+            group_name (str): The group name to filter by.
+
+        Returns:
+            Union[np.ndarray, jnp.ndarray]: The filtered observation array.
+
+        """
+        obs_ind_group = self.get_obs_ind_by_group(group_name)
+        return obs[..., obs_ind_group]
+
+    def get_obs_ind_by_group(self, group_name: str = None):
+        """
+        Get the indices of the observations by group name.
+
+        Args:
+            group_name (str): The group name to filter by.
+
+        Returns:
+            np.ndarray: The indices of the observations.
+
+        """
+        obs_ind_group = [obs.obs_ind for obs in self.values() if group_name in obs.group]
+        return np.concatenate(obs_ind_group) if len(obs_ind_group) > 0 else np.array([])
+
+    def get_randomizable_obs_indices(self):
+        """
+        Get the indices of the observations that are allowed to be randomized.
+
+        Returns:
+            np.ndarray: The indices of the observations.
+
+        """
+        return np.concatenate([obs.obs_ind for obs in self.values() if obs.allow_randomization])
+
     def reset_state(self, env, model, data, carry, backend):
         # Get all stateful observations
         stateful_obs = self.list_all_stateful()
@@ -138,13 +187,21 @@ class ObservationContainer(UserDict):
 class Observation:
     """
     Base class for all observation types.
+
+    Args:
+        obs_name: The name of the observation.
+        group: The group name of the observation.
+        allow_randomization: Whether the observation is allowed to be randomized.
+
     """
 
     registered = dict()
 
-    def __init__(self, obs_name: str):
+    def __init__(self, obs_name: str, group: Union[str, List(str)] = None, allow_randomization: bool = True):
         self.name = obs_name
         self.obs_container = None
+        self.group = [group] if isinstance(group, str) or group is None else group
+        self.allow_randomization = allow_randomization
 
         # these attributes *must* be initialized in the _init_from_mj method
         self.obs_ind = None
@@ -313,9 +370,9 @@ class SimpleObs(Observation):
         :class:`Obs` for the base observation class.
     """
 
-    def __init__(self, obs_name: str, xml_name: str):
+    def __init__(self, obs_name: str, xml_name: str, **kwargs):
         self.xml_name = xml_name
-        super().__init__(obs_name)
+        super().__init__(obs_name, **kwargs)
 
 
 class StatefulObservation(Observation, StatefulObject):
@@ -535,8 +592,8 @@ class JointPosArray(Observation):
         :class:`Obs` for the base observation class.
     """
 
-    def __init__(self, obs_name: str, xml_names: List[str]):
-        super().__init__(obs_name)
+    def __init__(self, obs_name: str, xml_names: List[str], **kwargs):
+        super().__init__(obs_name, **kwargs)
         self._xml_names = xml_names
         self.dim = None
 
@@ -646,8 +703,8 @@ class JointVelArray(Observation):
         :class:`Obs` for the base observation class.
     """
 
-    def __init__(self, obs_name: str, xml_names: List[str]):
-        super().__init__(obs_name)
+    def __init__(self, obs_name: str, xml_names: List[str], **kwargs):
+        super().__init__(obs_name, **kwargs)
         self._xml_names = xml_names
         self.dim = None
 
@@ -737,9 +794,9 @@ class ProjectedGravityVector(Observation):
 
     dim = 3
 
-    def __init__(self, obs_name: str, xml_name: str):
+    def __init__(self, obs_name: str, xml_name: str, **kwargs):
         self.xml_name = xml_name
-        super().__init__(obs_name)
+        super().__init__(obs_name, **kwargs)
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
@@ -796,10 +853,10 @@ class Force(Observation):
 
     dim = 6
 
-    def __init__(self, obs_name: str, xml_name_geom1: str, xml_name_geom2: str):
+    def __init__(self, obs_name: str, xml_name_geom1: str, xml_name_geom2: str, **kwargs):
         self.xml_name_geom1 = xml_name_geom1
         self.xml_name_geom2 = xml_name_geom2
-        super().__init__(obs_name)
+        super().__init__(obs_name, **kwargs)
 
         self.mjx_contact_id = None
         self.data_geom_id1 = None
@@ -849,8 +906,8 @@ class Force(Observation):
 
 class LastAction(StatefulObservation):
 
-    def __init__(self, obs_name: str):
-        super().__init__(obs_name)
+    def __init__(self, obs_name: str, **kwargs):
+        super().__init__(obs_name, **kwargs)
         self.dim = None
 
     def _init_from_mj(self, env, model, data, current_obs_size):
@@ -879,8 +936,8 @@ class LastAction(StatefulObservation):
 
 class HeightMatrix(StatefulObservation):
 
-    def __init__(self, obs_name: str):
-        super().__init__(obs_name)
+    def __init__(self, obs_name: str, **kwargs):
+        super().__init__(obs_name, **kwargs)
         self.matrix_config = dict()  # todo: setup the matrix configuration
         self.dim = 0 # todo: implement this. It should be the flattened size of the matrix
 
@@ -926,7 +983,7 @@ class RelativeSiteQuantaties(StatefulObservation):
         :class:`Obs` for the base observation class.
     """
 
-    def __init__(self, obs_name: str, site_names: List[str] = None):
+    def __init__(self, obs_name: str, site_names: List[str] = None, **kwargs):
         self.site_names = site_names
 
         # will be initialized in the _init_from_mj method
@@ -934,7 +991,7 @@ class RelativeSiteQuantaties(StatefulObservation):
         self.rel_site_ids = None
         self.site_bodyid = None
         self.body_rootid = None
-        super().__init__(obs_name)
+        super().__init__(obs_name, **kwargs)
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         if self.site_names is None:
