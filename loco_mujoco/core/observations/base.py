@@ -979,9 +979,6 @@ class ModelInfo(StatefulObservation):
         for attr in self._model_attributes:
             obs.append(backend.ravel(getattr(model, attr)))
 
-        test = backend.concatenate(obs)
-        import jax
-        jax.debug.print("model_obs {x}", x=test)
         return backend.concatenate(obs), carry
 
 
