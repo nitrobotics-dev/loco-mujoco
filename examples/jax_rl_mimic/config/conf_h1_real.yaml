@@ -16,7 +16,6 @@ hydra:
 #      experiment.clip_eps: 0.2, 0.05
       # env_params
       experiment.total_timesteps: 50e7, 100e7
-      experiment.hidden_layers: \[1024\, 512\, 1256\], \[8421\, 45\]
 
 wandb:
   project: "real_unitreeh1_lafan1"
@@ -39,6 +38,7 @@ experiment:
     goal_type: GoalTrajMimic
     goal_params:
       visualize_goal: true
+      group: [policy, prioritized]
     reward_type: MimicReward
     reward_params:
       action_out_of_bounds_coeff: 0.01
@@ -62,58 +62,69 @@ experiment:
     #timestep: 0.004 # 250 Hz
     #n_substeps: 5   # 50 Hz
     observation_spec:
+      # Critic observations (privileged)
       - type: ProjectedGravityVector
         obs_name: q_root
         xml_name: root
+        group: prioritized
+        allow_randomization: false
       - type: JointPosArray
         obs_name: joint_positions
-        xml_names:
-          - back_bkz
-          - l_arm_shy
-          - l_arm_shx
-          - l_arm_shz
-          - left_elbow
-          - r_arm_shy
-          - r_arm_shx
-          - r_arm_shz
-          - right_elbow
-          - hip_flexion_r
-          - hip_adduction_r
-          - hip_rotation_r
-          - knee_angle_r
-          - ankle_angle_r
-          - hip_flexion_l
-          - hip_adduction_l
-          - hip_rotation_l
-          - knee_angle_l
-          - ankle_angle_l
+        group: prioritized
+        allow_randomization: false
+        xml_names: ${robot_joints_to_consider}
       - type: FreeJointVel
         obs_name: dq_root
         xml_name: root
+        group: prioritized
+        allow_randomization: false
       - type: JointVelArray
         obs_name: joint_velocities
-        xml_names:
-          - back_bkz
-          - l_arm_shy
-          - l_arm_shx
-          - l_arm_shz
-          - left_elbow
-          - r_arm_shy
-          - r_arm_shx
-          - r_arm_shz
-          - right_elbow
-          - hip_flexion_r
-          - hip_adduction_r
-          - hip_rotation_r
-          - knee_angle_r
-          - ankle_angle_r
-          - hip_flexion_l
-          - hip_adduction_l
-          - hip_rotation_l
-          - knee_angle_l
-          - ankle_angle_l
+        xml_names: ${robot_joints_to_consider}
+        group: prioritized
+        allow_randomization: false
       - type: LastAction
         obs_name: last_action
+        group: prioritized
+        allow_randomization: false
+      - type: ModelInfo
+        obs_name: model_info
+        group: prioritized
+        allow_randomization: false
+        model_attributes:
+          - geom_friction
+          - geom_solref
+          - body_ipos
+          - body_mass
+          - dof_frictionloss
+          - dof_damping
+          - dof_armature
+      # Actor observations (unprivileged)
+      - type: ProjectedGravityVector
+        obs_name: q_root_pi
+        xml_name: root
+        group: policy
+        allow_randomization: true
+      - type: JointPosArray
+        obs_name: joint_positions_pi
+        group: policy
+        allow_randomization: true
+        xml_names: ${robot_joints_to_consider}
+      - type: FreeJointVel
+        obs_name: dq_root_pi
+        xml_name: root
+        group: policy
+        allow_randomization: true
+      - type: JointVelArray
+        obs_name: joint_velocities_pi
+        xml_names: ${robot_joints_to_consider}
+        group: policy
+        allow_randomization: true
+      - type: LastAction
+        obs_name: last_action_pi
+        group: policy
+        allow_randomization: true
+
     action_spec:
       - back_bkz_actuator
       - l_arm_shy_actuator
@@ -136,6 +147,8 @@ experiment:
       - ankle_angle_l_actuator
     control_type: ${control_config.position_control.control_type}
     control_params: ${control_config.position_control.control_params}
+  actor_obs_group: policy
+  critic_obs_group: prioritized
   hidden_layers: [512, 256]
   lr: 1e-4
   len_obs_history: 5
@@ -239,3 +252,26 @@ control_config:
   torque_control:
     control_type: DefaultControl
     control_params:
+
+
+robot_joints_to_consider:
+  - back_bkz
+  - l_arm_shy
+  - l_arm_shx
+  - l_arm_shz
+  - left_elbow
+  - r_arm_shy
+  - r_arm_shx
+  - r_arm_shz
+  - right_elbow
+  - hip_flexion_r
+  - hip_adduction_r
+  - hip_rotation_r
+  - knee_angle_r
+  - ankle_angle_r
+  - hip_flexion_l
+  - hip_adduction_l
+  - hip_rotation_l
+  - knee_angle_l
+  - ankle_angle_l
+
