@@ -104,6 +104,16 @@ class ObservationContainer(UserDict):
         """
         return self._stateful_obs
 
+    def get_all_stateful_indices(self):
+        """
+        Get the indices of all stateful observations in the container.
+
+        Returns:
+            np.ndarray: The indices of the stateful observations.
+
+        """
+        return np.concatenate([obs.obs_ind for obs in self._stateful_obs]).astype(int)
+
     def init_state(self, env, key, model, data, backend):
         """
         Builds a dataclass from the stateful observations in the container.
@@ -968,6 +978,10 @@ class ModelInfo(StatefulObservation):
         obs = []
         for attr in self._model_attributes:
             obs.append(backend.ravel(getattr(model, attr)))
+
+        test = backend.concatenate(obs)
+        import jax
+        jax.debug.print("model_obs {x}", x=test)
         return backend.concatenate(obs), carry
 
 
@@ -1093,6 +1107,7 @@ class ObservationType:
     ProjectedGravityVector = ProjectedGravityVector
     Force = Force
     LastAction = LastAction
+    ModelInfo = ModelInfo
     RelativeSiteQuantaties = RelativeSiteQuantaties
 
     @classmethod

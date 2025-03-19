@@ -615,7 +615,7 @@ class Mujoco:
         # convert all lists to numpy arrays
         data_ind.convert_to_numpy()
         obs_ind.convert_to_numpy()
-        
+
         return obs_container, data_ind, obs_ind
 
     def _setup_goal(self, spec: MjSpec,
@@ -720,7 +720,24 @@ class Mujoco:
             obs_s, carry = obs.get_obs_and_update_state(self, model, data, carry, backend)
             obs_stateful.append(obs_s)
 
-        return backend.concatenate([obs_not_stateful, *obs_stateful]), carry
+        obs_stateful = backend.concatenate(obs_stateful)
+        stateful_obs_ind = self.obs_container.get_all_stateful_indices()
+
+        # merge the non-stateful and stateful observations and bring them in the order of the observation spec
+        merged = backend.empty(len(obs_not_stateful) + len(stateful_obs_ind), dtype=float)
+        mask = backend.ones(len(merged), dtype=bool)
+
+        if backend == np:
+            mask[stateful_obs_ind] = False
+            merged[mask] = obs_not_stateful
+            merged[stateful_obs_ind] = obs_stateful
+        elif backend == jnp:
+            mask = mask.at[stateful_obs_ind].set(False)
+            indices = jnp.where(mask, size=len(obs_not_stateful))[0]  # Convert boolean mask to indices
+            merged = merged.at[indices].set(obs_not_stateful)
+            merged = merged.at[stateful_obs_ind].set(obs_stateful)
+
+        return merged, carry
 
     @staticmethod
     def set_sim_state_from_traj_data(data: MjData,

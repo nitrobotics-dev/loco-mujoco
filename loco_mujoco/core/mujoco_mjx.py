@@ -191,7 +191,7 @@ class Mjx(Mujoco):
         data, carry = self._mjx_simulation_post_step(self._model, data, carry)
 
         # create the observation
-        cur_obs, carry = self._mjx_create_observation(self._model, data, carry)
+        cur_obs, carry = self._mjx_create_observation(sys, data, carry)
 
         # modify the observation and the data if needed (does nothing by default)
         cur_obs, data, cur_info, carry = self._mjx_step_finalize(cur_obs, self._model, data, cur_info, carry)

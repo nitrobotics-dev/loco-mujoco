@@ -25,14 +25,14 @@ print(f"Jax backend device: {jax.default_backend()} \n")
 DEFAULTS = {"horizon": 1000, "gamma": 0.99, "n_envs": 1}
 
 OBSERVATION_SPACE = [
+    {"obs_name": "name_obs9", "type": "JointVel", "xml_name": "right_hip_y"},
+    {"obs_name": "name_obs10", "type": "SiteRot", "xml_name": "left_thigh_site"},
     {"obs_name": "name_obs3", "type": "BodyVel", "xml_name": "left_thigh"},
     {"obs_name": "name_obs4", "type": "BodyVel", "xml_name": "right_shin"},
     {"obs_name": "name_obs5", "type": "BodyVel", "xml_name": "pelvis"},
-    {"obs_name": "name_obs6", "type": "JointPos", "xml_name": "left_hip_y"},
     {"obs_name": "name_obs7", "type": "JointVel", "xml_name": "left_hip_y"},
+    {"obs_name": "name_obs6", "type": "JointPos", "xml_name": "left_hip_y"},
     {"obs_name": "name_obs8", "type": "JointPos", "xml_name": "right_hip_y"},
-    {"obs_name": "name_obs9", "type": "JointVel", "xml_name": "right_hip_y"},
-    {"obs_name": "name_obs10", "type": "SiteRot", "xml_name": "left_thigh_site"},
 ]
 
 
@@ -1118,6 +1118,64 @@ def test_LastAction(backend):
     assert backend.all(
         next_obs == action
     ), "LastAction should match the previous action"
+
+
+@pytest.mark.parametrize("backend", ["jax", "numpy"])
+def test_ModelInfo(backend):
+    seed = 0
+    key = jax.random.PRNGKey(seed)
+
+    # Specify the observation space
+    observation_spec = deepcopy(OBSERVATION_SPACE)
+    model_attributes = ["geom_friction", "geom_solref", "body_ipos",
+                        "body_mass", "dof_frictionloss", "dof_damping",
+                        "dof_armature"]
+    observation_spec.insert(0, {"obs_name": "name_obs1", "type": "ModelInfo",
+                             "model_attributes": model_attributes})
+
+    # Specify the name of the actuators of the XML
+    action_spec = ["abdomen_y"]
+
+    # Define a simple Mjx environment
+    mjx_env = DummyHumamoidEnv(
+        enable_mjx=True,
+        actuation_spec=action_spec,
+        observation_spec=observation_spec,
+        **DEFAULTS,
+    )
+
+    backend = jnp if backend == "jax" else np
+    # index the correct observation dims
+    obs_ind = backend.concatenate([mjx_env.obs_container[name].obs_ind for name in ["name_obs1"]])
+    if backend == np:
+        # Reset the environment in Mujoco
+        obs = mjx_env.reset(key)
+        obs = obs[obs_ind]
+    else:
+        # Reset the environment in Mjx
+        state = mjx_env.mjx_reset(key)
+        obs_mjx = state.observation
+        obs_mjx = obs_mjx[obs_ind]
+
+    model = mjx_env.get_model()
+
+    expected_obs = []
+    for attr in model_attributes:
+        expected_obs.append(backend.ravel(getattr(model, attr)))
+
+    expected_obs = backend.concatenate(expected_obs)
+
+    if backend == np:
+        np.testing.assert_allclose(
+            obs, expected_obs, err_msg="Mismatch between Mujoco observation and expected values",
+                                                                                        atol=1e-6
+        )
+    else:
+        np.testing.assert_allclose(
+            obs_mjx, expected_obs, err_msg="Mismatch between Mjx observation and expected values",
+                                                                                        atol=1e-6
+        )
+
 
 
 @pytest.mark.parametrize("backend", ["jax", "numpy"])
