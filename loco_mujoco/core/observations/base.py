@@ -167,7 +167,7 @@ class ObservationContainer(UserDict):
             np.ndarray: The indices of the observations.
 
         """
-        return np.concatenate([obs.obs_ind for obs in self.values() if obs.allow_randomization])
+        return np.concatenate([obs.obs_ind for obs in self.values() if obs.allow_randomization]).astype(int)
 
     def reset_state(self, env, model, data, carry, backend):
         # Get all stateful observations
@@ -932,6 +932,43 @@ class LastAction(StatefulObservation):
 
         """
         return carry.last_action, carry
+
+
+class ModelInfo(StatefulObservation):
+
+    def __init__(self, obs_name: str, model_attributes: Union[str, List[str]], **kwargs):
+        self._model_attributes = [model_attributes] if isinstance(model_attributes, str) else model_attributes
+        super().__init__(obs_name, **kwargs)
+        self.dim = None
+
+    def _init_from_mj(self, env, model, data, current_obs_size):
+        dim = 0
+        for attr in self._model_attributes:
+            dim += getattr(model, attr).size
+        self.dim = dim
+        self.min, self.max = [-np.inf] * self.dim, [np.inf] * self.dim
+        self.obs_ind = np.array([j for j in range(current_obs_size, current_obs_size + self.dim)])
+        self._initialized_from_mj = True
+
+    def get_obs_and_update_state(self, env, model, data, carry, backend):
+        """
+        Get the observation and update the state.
+
+        Args:
+            env: The environment.
+            model: The Mujoco model.
+            data: The Mujoco data structure.
+            carry: The state carry.
+            backend: The backend to use, either np or jnp.
+
+        Returns:
+            The observation and the updated state.
+
+        """
+        obs = []
+        for attr in self._model_attributes:
+            obs.append(backend.ravel(getattr(model, attr)))
+        return backend.concatenate(obs), carry
 
 
 class HeightMatrix(StatefulObservation):
