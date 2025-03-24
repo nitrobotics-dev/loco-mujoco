@@ -19,7 +19,7 @@ class MjxUnitreeA1(UnitreeA1):
             del kwargs["model_option_conf"]
         super().__init__(timestep=timestep, n_substeps=n_substeps, model_option_conf=model_option_conf, **kwargs)
 
-    def _modify_spec_for_mjx(self, spec: MjSpec):
+    def _modify_spec_for_mjx(self, spec: MjSpec) -> MjSpec:
         """
         Mjx is bad in handling many complex contacts. To speed-up simulation significantly we apply
         some changes to the XML:

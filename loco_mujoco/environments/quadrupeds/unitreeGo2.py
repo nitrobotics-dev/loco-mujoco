@@ -1,3 +1,4 @@
+from typing import Union, List, Tuple
 import numpy as np
 import mujoco
 from mujoco import MjSpec
@@ -13,37 +14,103 @@ class UnitreeGo2(BaseRobotQuadruped):
     """
     Description
     ------------
+    Mujoco environment of Unitree Go2 model.
 
 
-    Tasks
-    -------------
-
-
-    Dataset Types
+    Default Observation Space
     -----------------
 
+    ============ ================= ================ ==================================== ============================== ===
+    Index in Obs Name              ObservationType  Min                                  Max                            Dim
+    ============ ================= ================ ==================================== ============================== ===
+    0 - 4        q_root            FreeJointPosNoXY [-inf, -inf, -inf, -inf, -inf]       [inf, inf, inf, inf, inf]      5
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    5            q_FR_hip_joint    JointPos         [-1.0472]                            [1.0472]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    6            q_FR_thigh_joint  JointPos         [-1.5708]                            [3.4907]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    7            q_FR_calf_joint   JointPos         [-2.7227]                            [-0.83776]                     1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    8            q_FL_hip_joint    JointPos         [-1.0472]                            [1.0472]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    9            q_FL_thigh_joint  JointPos         [-1.5708]                            [3.4907]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    10           q_FL_calf_joint   JointPos         [-2.7227]                            [-0.83776]                     1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    11           q_RR_hip_joint    JointPos         [-1.0472]                            [1.0472]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    12           q_RR_thigh_joint  JointPos         [-0.5236]                            [4.5379]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    13           q_RR_calf_joint   JointPos         [-2.7227]                            [-0.83776]                     1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    14           q_RL_hip_joint    JointPos         [-1.0472]                            [1.0472]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    15           q_RL_thigh_joint  JointPos         [-0.5236]                            [4.5379]                       1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    16           q_RL_calf_joint   JointPos         [-2.7227]                            [-0.83776]                     1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    17 - 22      dq_root           FreeJointVel     [-inf, -inf, -inf, -inf, -inf, -inf] [inf, inf, inf, inf, inf, inf] 6
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    23           dq_FR_hip_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    24           dq_FR_thigh_joint JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    25           dq_FR_calf_joint  JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    26           dq_FL_hip_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    27           dq_FL_thigh_joint JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    28           dq_FL_calf_joint  JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    29           dq_RR_hip_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    30           dq_RR_thigh_joint JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    31           dq_RR_calf_joint  JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    32           dq_RL_hip_joint   JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    33           dq_RL_thigh_joint JointVel         [-inf]                               [inf]                          1
+    ------------ ----------------- ---------------- ------------------------------------ ------------------------------ ---
+    34           dq_RL_calf_joint  JointVel         [-inf]                               [inf]                          1
+    ============ ================= ================ ==================================== ============================== ===
 
-    Observation Space
-    -----------------
 
-
-    Action Space
+    Default Action Space
     ------------
 
+    Control function type: **DefaultControl**
 
-    Rewards
-    --------
+    See control function interface for more details.
 
-
-    Initial States
-    ---------------
-
-
-    Terminal States
-    ----------------
-
-    Methods
-    ---------
+    =============== ==== ===
+    Index in Action Min  Max
+    =============== ==== ===
+    0               -1.0 1.0
+    --------------- ---- ---
+    1               -1.0 1.0
+    --------------- ---- ---
+    2               -1.0 1.0
+    --------------- ---- ---
+    3               -1.0 1.0
+    --------------- ---- ---
+    4               -1.0 1.0
+    --------------- ---- ---
+    5               -1.0 1.0
+    --------------- ---- ---
+    6               -1.0 1.0
+    --------------- ---- ---
+    7               -1.0 1.0
+    --------------- ---- ---
+    8               -1.0 1.0
+    --------------- ---- ---
+    9               -1.0 1.0
+    --------------- ---- ---
+    10              -1.0 1.0
+    --------------- ---- ---
+    11              -1.0 1.0
+    =============== ==== ===
 
     """
 
@@ -55,8 +122,12 @@ class UnitreeGo2(BaseRobotQuadruped):
         Constructor.
 
         Args:
-            camera_params (dict): Dictionary defining some of the camera parameters for the visualization.
-
+            spec (Union[str, MjSpec]): Specification of the environment.
+                It can be a path to the xml file or a MjSpec object. If none, is provided, the default xml file is used.
+            camera_params (dict): Dictionary defining some of the camera parameters for visualization.
+            observation_spec (List[ObservationType]): Observation specification.
+            action_spec (List[str]): Action specification.
+            **kwargs: Additional arguments
         """
 
         if spec is None:
@@ -92,13 +163,15 @@ class UnitreeGo2(BaseRobotQuadruped):
                          camera_params=camera_params, **kwargs)
 
     @staticmethod
-    def _get_observation_specification(spec: MjSpec):
+    def _get_observation_specification(spec: MjSpec) -> List[ObservationType]:
         """
-        Getter for the observation space specification.
+        Returns the observation specification of the environment.
+
+        Args:
+            spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of tuples containing the specification of each observation
-            space entry.
+            List[ObservationType]: A list of observations.
         """
 
         observation_spec = [
@@ -141,7 +214,7 @@ class UnitreeGo2(BaseRobotQuadruped):
         return observation_spec
 
     @staticmethod
-    def _get_action_specification(spec: MjSpec):
+    def _get_action_specification(spec: MjSpec) -> List[str]:
         """
         Getter for the action space specification.
 
@@ -149,66 +222,103 @@ class UnitreeGo2(BaseRobotQuadruped):
             spec (MjSpec): Specification of the environment.
 
         Returns:
-            A list of actuator names.
+            List[str]: A list of actuator names.
         """
-
         action_spec = [
             "FR_hip", "FR_thigh", "FR_calf",
             "FL_hip", "FL_thigh", "FL_calf",
             "RR_hip", "RR_thigh", "RR_calf",
-            "RL_hip", "RL_thigh", "RL_calf"
-        ]
+            "RL_hip", "RL_thigh", "RL_calf"]
 
         return action_spec
 
     @classmethod
-    def get_default_xml_file_path(cls):
+    def get_default_xml_file_path(cls) -> str:
         """
-        Returns the torque path to the xml file of the environment.
+        Returns the default path to the xml file of the environment.
+
+        Returns:
+            str: The default path to the xml file.
         """
         return (loco_mujoco.PATH_TO_MODELS / "unitree_go2" / "go2.xml").as_posix()
 
     @info_property
-    def grf_size(self):
+    def grf_size(self) -> int:
         """
         Returns the size of the ground force vector.
 
+        Returns:
+            int: The size of the ground force vector.
         """
-
         return 12
 
     @info_property
-    def upper_body_xml_name(self):
+    def upper_body_xml_name(self) -> str:
+        """
+        Returns the name of the upper body in the Mujoco xml.
+
+        Returns:
+            str: The name of the upper body.
+        """
         return self.root_body_name
 
     @info_property
-    def root_body_name(self):
+    def root_body_name(self) -> str:
+        """
+        Returns the name of the root body in the Mujoco xml.
+
+        Returns:
+            str: The name of the root body.
+        """
         return "base"
 
     @info_property
-    def root_free_joint_xml_name(self):
+    def root_free_joint_xml_name(self) -> str:
+        """
+        Returns the name of the free joint of the root body in the Mujoco xml.
+
+        Returns:
+            str: The name of the free joint.
+        """
         return "root"
 
     @info_property
-    def root_height_healthy_range(self):
+    def root_height_healthy_range(self) -> Tuple[float, float]:
         """
-        Return the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+        Returns the healthy range of the root height. This is only used when HeightBasedTerminalStateHandler is used.
+
+        Returns:
+            Tuple[float, float]: The healthy range of the root height.
         """
         return (0.25, 1.0)
 
     @info_property
-    def foot_geom_names(self):
+    def foot_geom_names(self) -> List[str]:
         """
         Returns the names of the foot geometries.
 
+        Returns:
+            List[str]: The names of the foot geometries.
         """
         return ["RL_foot", "RR_foot", "FL_foot", "FR_foot"]
 
     @info_property
-    def init_qpos(self):
+    def init_qpos(self) -> np.ndarray:
+        """
+        Returns the initial joint positions.
+
+        Returns:
+            np.ndarray: The initial joint positions.
+        """
         return np.array([0.0, 0.0, 0.27, 1.0, 0.0, 0.0, 0.0, 0.0, 0.9, -1.8, 0.0,
                          0.9, -1.8, 0.0, 0.9, -1.8, 0.0, 0.9, -1.8])
 
     @info_property
-    def init_qvel(self):
+    def init_qvel(self) -> np.ndarray:
+        """
+        Returns the initial joint velocities.
+
+        Returns:
+            np.ndarray: The initial joint velocities.
+        """
         return np.zeros(18)
