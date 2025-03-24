@@ -941,7 +941,7 @@ class LastAction(StatefulObservation):
             The observation and the updated state.
 
         """
-        return carry.last_action, carry
+        return backend.ravel(carry.last_action), carry
 
 
 class ModelInfo(StatefulObservation):
