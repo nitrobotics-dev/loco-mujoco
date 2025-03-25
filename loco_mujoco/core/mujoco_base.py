@@ -1,7 +1,9 @@
 import atexit
 from copy import deepcopy
-from typing import Union, List, Dict, Tuple
+from typing import Union, List, Dict, Tuple, Optional
 from types import ModuleType
+import requests
+import webbrowser
 
 from functools import partial
 import mujoco
@@ -946,6 +948,190 @@ class Mujoco:
             if isinstance(attr_value, property) and getattr(attr_value.fget, '_is_info_property', False):
                 info_props[attr_name] = deepcopy(getattr(self, attr_name))
         return info_props
+
+    def create_observation_summary(
+            self,
+            filename: Optional[str] = None,
+            open_in_browser: bool = True
+    ) -> str:
+        """Generates and uploads an HTML summary of a LocoMuJoCo environment's observations.
+
+        This function creates a main table with all observations and additional group-specific
+        tables. Each table shows observation indices, names, types, min/max values, group membership,
+        and randomizability flags. Arrays longer than 6 elements are summarized by showing the
+        first 3 elements, an ellipsis (`...`), and the last 3 elements.
+        Observation indices and filtered indices are shown as `range(...)` if longer than 1.
+
+        The generated HTML is uploaded to https://0x0.st for easy sharing. If `filename` is provided,
+        it is also saved locally.
+
+        Args:
+            filename (str | None, optional): The filename to save the HTML locally. If None, nothing is saved.
+                Defaults to "obs_table.html".
+            open_in_browser (bool, optional): Whether to open the uploaded URL in the default browser.
+                Defaults to True.
+
+        Returns:
+            str: A public URL to the uploaded HTML summary hosted on 0x0.st.
+
+        Raises:
+            Exception: If the upload to 0x0.st fails.
+        """
+        obs_container = self.obs_container
+        env_name = self.__class__.__name__
+
+        def summarize_array(arr, max_len=6, force_range: bool = False):
+            if arr is None:
+                return "None"
+            arr_list = list(arr) if isinstance(arr, (np.ndarray, list)) else [arr]
+            n = len(arr_list)
+
+            if force_range and n > 1:
+                return f"range({arr_list[0]}, {arr_list[0] + n})"
+
+            if n > max_len:
+                first_part = ", ".join(map(str, arr_list[:3]))
+                last_part = ", ".join(map(str, arr_list[-3:]))
+                return f"{first_part}, ..., {last_part}"
+            return ", ".join(map(str, arr_list))
+
+        html = f"""
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>LocoMuJoCo Observation Summary - {env_name}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f8f9fa; padding: 2rem; }}
+                table {{ border-collapse: collapse; width: 90%; margin: auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }}
+                th, td {{ padding: 12px 18px; border: 1px solid #ddd; text-align: left; }}
+                th {{ background-color: rgb(9, 16, 61); color: white; }}
+                tr:hover {{ background-color: #f1f1f1; }}
+                h2 {{ text-align: center; }}
+            </style>
+        </head>
+        <body>
+            <h2>LocoMuJoCo Observation Summary – {env_name}</h2>
+            <table>
+                <tr>
+                    <th>Obs Indices</th>
+                    <th>Obs Name</th>
+                    <th>Obs Type</th>
+                    <th>Min / Max</th>
+                    <th>Group(s)</th>
+                    <th>Randomizable</th>
+                </tr>
+        """
+
+        for obs in obs_container.values():
+            obs_ind = summarize_array(obs.obs_ind, force_range=True)
+            name = obs.name
+            obs_type = obs.__class__.__name__
+
+            if obs.min is not None and obs.max is not None:
+                min_vals = summarize_array(np.round(obs.min, 3))
+                max_vals = summarize_array(np.round(obs.max, 3))
+                minmax = f"{min_vals} / {max_vals}"
+            else:
+                minmax = "None"
+
+            groups = "None"
+            if obs.group:
+                filtered = [g for g in obs.group if g is not None]
+                groups = ", ".join(filtered) if filtered else "None"
+
+            rand = str(obs.allow_randomization)
+
+            html += f"""
+                <tr>
+                    <td>{obs_ind}</td>
+                    <td>{name}</td>
+                    <td>{obs_type}</td>
+                    <td>{minmax}</td>
+                    <td>{groups}</td>
+                    <td>{rand}</td>
+                </tr>
+            """
+
+        html += "</table>"
+
+        # Additional tables per group
+        all_groups = {g for obs in obs_container.values() if obs.group for g in obs.group if g is not None}
+
+        for group in sorted(all_groups):
+            filtered_obs = [obs for obs in obs_container.values() if group in (obs.group or [])]
+
+            html += f"""
+                <h2 style="text-align:center;">Group: {group}</h2>
+                <table>
+                    <tr>
+                        <th>Obs Indices</th>
+                        <th>Filtered Obs Indices</th>
+                        <th>Obs Name</th>
+                        <th>Obs Type</th>
+                        <th>Min / Max</th>
+                        <th>Group(s)</th>
+                        <th>Randomizable</th>
+                    </tr>
+            """
+
+            offset = 0
+            for obs in filtered_obs:
+                obs_ind = summarize_array(obs.obs_ind, force_range=True)
+                name = obs.name
+                obs_type = obs.__class__.__name__
+
+                if obs.min is not None and obs.max is not None:
+                    min_vals = summarize_array(np.round(obs.min, 3))
+                    max_vals = summarize_array(np.round(obs.max, 3))
+                    minmax = f"{min_vals} / {max_vals}"
+                else:
+                    minmax = "None"
+
+                groups = "None"
+                if obs.group:
+                    filtered_group = [g for g in obs.group if g is not None]
+                    groups = ", ".join(filtered_group) if filtered_group else "None"
+
+                rand = str(obs.allow_randomization)
+
+                dim = len(obs.obs_ind) if obs.obs_ind is not None else 0
+                filtered_indices = summarize_array(range(offset, offset + dim), force_range=True)
+                offset += dim
+
+                html += f"""
+                    <tr>
+                        <td>{obs_ind}</td>
+                        <td>{filtered_indices}</td>
+                        <td>{name}</td>
+                        <td>{obs_type}</td>
+                        <td>{minmax}</td>
+                        <td>{groups}</td>
+                        <td>{rand}</td>
+                    </tr>
+                """
+
+            html += "</table>"
+
+        html += "</body></html>"
+
+        # Save to file if specified
+        if filename:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(html)
+
+        # Upload HTML
+        files = {"file": ("file.html", html, "text/html")}
+        headers = {"User-Agent": "curl/7.68.0"}
+        res = requests.post("https://0x0.st", files=files, headers=headers)
+
+        if res.status_code == 200:
+            url = res.text.strip()
+            print(f"✅ Uploaded Observation summary to: {url}")
+            if open_in_browser:
+                webbrowser.open(url)
+            return url
+        else:
+            raise Exception(f"❌ Upload failed: {res.status_code} - {res.text}")
 
     @staticmethod
     def parse_observation_spec(obs_spec: List[Dict]) -> List[ObservationType]:
