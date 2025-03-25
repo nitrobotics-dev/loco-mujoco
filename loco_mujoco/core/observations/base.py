@@ -646,7 +646,6 @@ class FreeJointVel(SimpleObs):
 
     def _init_from_mj(self, env, model, data, current_obs_size):
         dim = len(data.joint(self.xml_name).qvel)
-        assert dim == self.dim
         # note: free joints do not have limits
         self.min, self.max = [-np.inf] * dim, [np.inf] * dim
         self.data_type_ind = np.array(mj_jntname2qvelid(self.xml_name, model))
@@ -665,6 +664,7 @@ class EntryFromFreeJointVel(FreeJointVel):
     See also:
         :class:`Obs` for the base observation class.
     """
+    dim = 1
 
     def __init__(self, entry_index: int, **kwargs):
         assert type(entry_index) == int, "entry_index must be an integer."
