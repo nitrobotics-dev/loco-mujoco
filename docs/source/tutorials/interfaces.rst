@@ -13,5 +13,5 @@ Gymnasium
 
 Mushroom-RL
 ---------------
-.. literalinclude:: ../../../examples/simple_mushroom_env/example_unitree_h1.py
+.. literalinclude:: ../../../examples/simple_env/example_unitree_h1.py
     :language: python
