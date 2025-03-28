@@ -15,7 +15,8 @@ import jax.numpy as jnp
 
 from loco_mujoco.core.utils import Box, MDPInfo, info_property
 from loco_mujoco.core.reward.base import Reward
-from loco_mujoco.core.observations import ObservationType, ObservationIndexContainer, ObservationContainer, Goal
+from loco_mujoco.core.observations import (Observation, ObservationType, Goal,
+                                           ObservationIndexContainer, ObservationContainer)
 from loco_mujoco.core.control_functions import ControlFunction
 from loco_mujoco.core.domain_randomizer import DomainRandomizer
 from loco_mujoco.core.terrain import Terrain
@@ -1148,10 +1149,13 @@ class Mujoco:
         """
         observation_spec = []
         for obs in obs_spec:
-            obs_type = ObservationType.get(obs["type"])
-            # all other elements in dict are params
-            obs_params = {k: v for k, v in obs.items() if k != "type"}
-            observation_spec.append(obs_type(**obs_params))
+            if isinstance(obs, Observation):
+                observation_spec.append(obs)
+            else:
+                obs_type = ObservationType.get(obs["type"])
+                # all other elements in dict are params
+                obs_params = {k: v for k, v in obs.items() if k != "type"}
+                observation_spec.append(obs_type(**obs_params))
         return observation_spec
 
     @property
