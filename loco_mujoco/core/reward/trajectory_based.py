@@ -329,7 +329,7 @@ class MimicReward(TrajectoryBasedReward):
         qvel_dist = backend.mean(backend.square(qvel - qvel_traj))
         if len(self._rel_site_ids) > 1:
             rpos_dist = backend.mean(backend.square(site_rpos - site_rpos_traj))
-            rquat_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
+            rangles_dist = backend.mean(backend.square(site_rangles - site_rangles_traj))
             rvel_rot_dist = backend.mean(backend.square(site_rvel[:,:3] - site_rvel_traj[:,:3]))
             rvel_lin_dist = backend.mean(backend.square(site_rvel[:,3:] - site_rvel_traj[:,3:]))
 
@@ -338,7 +338,7 @@ class MimicReward(TrajectoryBasedReward):
         qvel_reward = backend.exp(-self._qvel_w_exp*qvel_dist)
         if len(self._rel_site_ids) > 1:
             rpos_reward = backend.exp(-self._rpos_w_exp*rpos_dist)
-            rquat_reward = backend.exp(-self._rquat_w_exp*rquat_dist)
+            rangles_reward = backend.exp(-self._rquat_w_exp*rangles_dist)
             rvel_rot_reward = backend.exp(-self._rvel_w_exp*rvel_rot_dist)
             rvel_lin_reward = backend.exp(-self._rvel_w_exp*rvel_lin_dist)
 
@@ -384,7 +384,7 @@ class MimicReward(TrajectoryBasedReward):
         total_reward = (self._qpos_w_sum * qpos_reward + self._qvel_w_sum * qvel_reward)
         if len(self._rel_site_ids) > 1:
             total_reward = (total_reward
-                        + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rquat_reward
+                        + self._rpos_w_sum * rpos_reward + self._rquat_w_sum * rangles_reward
                         + self._rvel_w_sum * rvel_rot_reward + self._rvel_w_sum * rvel_lin_reward)
 
         total_reward = total_reward + total_penalities
