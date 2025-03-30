@@ -52,9 +52,9 @@ class LAFAN1DatasetConf:
         dataset_name (Union[str, list]): A name of a dataset or a list of dataset names to load from LAFAN1.
         dataset_group (str): A name of a predefined group of datasets to load from LAFAN1.
 
-    ..note:: This datatset is loaded from the Unitree repository:
-        https://huggingface.co/datasets/unitreerobotics/LAFAN1_Retargeting_Dataset
-        The repository provides it for the H1, H1v2 and the G1.
+    ..note:: This datatset is loaded from the LocoMuJoCo's HuggingFace repository:
+        https://huggingface.co/datasets/robfiras/loco-mujoco-datasets. It provides datasets for
+        all humanoid environments.
 
     """
 

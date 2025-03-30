@@ -49,6 +49,8 @@ Key Advantages
    :caption: Tutorials
    :hidden:
 
+   source/tutorials/replay_datasets.rst
+   source/tutorials/creating_environments.rst
    source/tutorials/interfaces.rst
    source/tutorials/imitation_learning.rst
    source/tutorials/reinforcement_learning.rst

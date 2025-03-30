@@ -19,3 +19,10 @@
     :private-members:
     :show-inheritance:
 
+
+.. automodule:: loco_mujoco.task_factories.dataset_confs
+    :members:
+    :undoc-members:
+    :private-members:
+    :show-inheritance:
+
