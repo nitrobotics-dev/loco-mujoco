@@ -38,7 +38,7 @@ Datasets
 LocoMuJoCo provides different datasets for imitation learning. For now, three different dataset sources are available:
 
 - **DefaultDataset**: Collected by the maintainers of LocoMuJoCo.
-- `Lafan1Dataset <https://huggingface.co/datasets/unitreerobotics/LAFAN1_Retargeting_Dataset>`__ : Humanoid motion capture dataset.
+- **Lafan1Dataset**: Humanoid motion capture dataset.
 - `AMASSDataset <https://amass.is.tue.mpg.de/>`__ : Humanoid motion capture dataset.
 
 All datasets will be automatically downloaded, retagerget for the respective humanoid and optionaly cached.
