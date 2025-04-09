@@ -1,6 +1,3 @@
-import numpy as np
-import jax
-
 from loco_mujoco.core import ObservationType
 from loco_mujoco import ImitationFactory
 
@@ -23,5 +20,5 @@ env = ImitationFactory.make("ToddlerBot", observation_spec=observation_spec,
 env.create_observation_summary()
 
 # run training ....
-# this works for accordinly for Mjx and Gymnasium environments!
+# this works accordingly for Mjx and Gymnasium environments!
 
