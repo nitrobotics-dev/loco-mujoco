@@ -13,16 +13,12 @@
 > LocoMuJoCo now supports MJX and comes with new Jax algorithms. We also added many new environments and +22k datasets! 🚀   
 
 
-**LocoMuJoCo** is an **imitation learning benchmark** specifically targeted torwards **whole-body control**. It
-encompasses a diverse set of environments, including **quadrupeds**, **humanoids**, and **(musculo-)skeletal human models**,
-each accompanied by comprehensive datasets (+22k dataset per humanoid). Despite the focus on imitation learning,
-LocoMuJoCo also allows to define custom reward function classes allowing to use it for pure reinforcement learning.
+**LocoMuJoCo** is an **imitation learning benchmark** specifically designed for **whole-body control**.  
+It features a diverse set of environments, including **quadrupeds**, **humanoids**, and **(musculo-)skeletal human models**,
+each provided with comprehensive datasets (over 22,000 samples per humanoid).
 
-
-**LocoMuJoCo** is an **imitation learning benchmark** specifically targeted towards **locomotion**. It encompasses a diverse set of environments, including quadrupeds, bipeds, and musculoskeletal human models, each accompanied by comprehensive datasets, such as real noisy motion capture data, ground truth expert data, and ground truth sub-optimal data,
-enabling evaluation across a spectrum of difficulty levels. 
-
-**LocoMuJoCo** also allows you to specify your own reward function to use this benchmark for **pure reinforcement learning**! Checkout the example below!
+Although primarily focused on imitation learning, LocoMuJoCo also supports custom reward function classes,  
+making it suitable for pure reinforcement learning as well.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/94e8c0c9-8fbe-47f0-904e-ab68eff4f9a7">
@@ -109,6 +105,8 @@ For instance, you could run:
 loco-mujoco-set-all-caches --path "$HOME/.loco-mujoco-caches"
 ````
 
+---
+
 ## Environments 
 You want a quick overview of all **environments** available? You can find it 
 [here](/loco_mujoco/environments) and more detailed in the [Documentation](https://loco-mujoco.readthedocs.io/).
@@ -119,7 +117,9 @@ You want a quick overview of all **environments** available? You can find it
 
 And stay tuned! There are many more to come ...
 
-### Tutorials
+---
+
+## Tutorials
 
 We provide a set of tutorials to help you get started with LocoMuJoCo. You can find them in the [tutorials folder](./examples/tutorials)
 or with more explanation in the [documentation](https://loco-mujoco.readthedocs.io/).
