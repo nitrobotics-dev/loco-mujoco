@@ -8,8 +8,16 @@
 [![PyPI](https://img.shields.io/pypi/v/loco-mujoco)](https://pypi.org/project/loco-mujoco/)
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=flat&logo=discord&logoColor=white)](https://discord.gg/gEqR3xCVdn)
 
+> 🚀 **Latest News:**
+> A **major release (v1.0)** just dropped! 🎉  
+> LocoMuJoCo now supports MJX and comes with new Jax algorithms. We also added many new environments and +22k datasets! 🚀   
 
-TODO: INTRO WILL BE UPDATED FOR RELEASE, BUT INSTALLATION IS CORRECT.
+
+**LocoMuJoCo** is an **imitation learning benchmark** specifically targeted torwards **whole-body control**. It
+encompasses a diverse set of environments, including **quadrupeds**, **humanoids**, and **(musculo-)skeletal human models**,
+each accompanied by comprehensive datasets (+22k dataset per humanoid). Despite the focus on imitation learning,
+LocoMuJoCo also allows to define custom reward function classes allowing to use it for pure reinforcement learning.
+
 
 **LocoMuJoCo** is an **imitation learning benchmark** specifically targeted towards **locomotion**. It encompasses a diverse set of environments, including quadrupeds, bipeds, and musculoskeletal human models, each accompanied by comprehensive datasets, such as real noisy motion capture data, ground truth expert data, and ground truth sub-optimal data,
 enabling evaluation across a spectrum of difficulty levels. 
@@ -17,40 +25,42 @@ enabling evaluation across a spectrum of difficulty levels.
 **LocoMuJoCo** also allows you to specify your own reward function to use this benchmark for **pure reinforcement learning**! Checkout the example below!
 
 <p align="center">
-  <img src="https://github.com/robfiras/loco-mujoco/assets/69359729/c16dfa4a-4fdb-4701-9a42-54cbf7644301">
+  <img src="https://github.com/user-attachments/assets/94e8c0c9-8fbe-47f0-904e-ab68eff4f9a7">
 </p>
 
 ### Key Advantages 
-✅ Easy to use with [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) or [Mushroom-RL](https://github.com/MushroomRL/mushroom-rl) interface \
-✅ Many environments including humanoids and quadrupeds \
-✅ Diverse set of datasets --> e.g., noisy motion capture or ground truth datasets with actions \
-✅ Wide spectrum of difficulty levels \
-✅ Built-in domain randomization \
-✅ Many baseline algorithms for quick benchmarking \
+✅ Supports **MuJoCo** (single environment) and **MJX** (parallel environments) \
+✅ Includes **12 humanoid and 4 quadruped environments**, featuring 4 **biomechanical human models** \
+✅ Clean single-file JAX algorithms for quick benchmarking (**PPO**, **GAIL**, **AMP**, **DeepMimic**)\
+✅ **Over 22,000 motion capture datasets** (AMASS, LAFAN1, native LocoMuJoCo) retargeted for each humanoid \
+✅ **Robot-to-robot retargeting** allows to retarget any existing dataset from one robot to another \
+✅ Powerful **trajectory comparison metrics** including dynamic time warping and discrete Fréchet distance, all in JAX \
+✅ Interface for Gymnasium \
+✅ Built-in **domain and terrain randomization** \
+✅ Modular design: define, swap, and reuse components like observation types, reward functions, terminal state handlers, and domain randomization \
 ✅ [Documentation](https://loco-mujoco.readthedocs.io/)
 
 ---
 
 ## Installation
 
-[//]: # ()
-[//]: # (You have the choice to install the latest release via PyPI by running )
+You have the choice to install the latest release via PyPI by running 
 
-[//]: # ()
-[//]: # (```bash)
 
-[//]: # (pip install loco-mujoco )
+```bash
 
-[//]: # (```)
+pip install loco-mujoco 
 
-Clone this repo and do an editable installation:
+```
+
+Or, clone this repo and do an editable installation:
 
 ```bash
 cd loco-mujoco
 pip install -e . 
 ```
 
-By default, this will install the CPU-version of Jax. If you want to use Jax on the GPU, you need to install the following:
+By default, both will install the CPU-version of Jax. If you want to use Jax on the GPU, you need to install the following:
 
 ```bash
 pip install jax["cuda12"]
@@ -63,7 +73,7 @@ pip install jax["cuda12"]
 
 ### Datasets
 
-LocoMuJoCo provides three sources of motion capture (mocap) data: default (provided by us), LAFAN1, and AMASS. The first two datasets
+LocoMuJoCo provides three sources of motion capture (mocap) data for humanoid environments: default (provided by us), LAFAN1, and AMASS. The first two datasets
 are available on the [LocoMujoCo HuggingFace dataset repository](https://huggingface.co/datasets/robfiras/loco-mujoco-datasets)
 and will downloaded and cached automatically for you. AMASS needs to be downloaded and installed separately due to
 their licensing. See [here](loco_mujoco/smpl) for more information about the installation.
@@ -99,6 +109,21 @@ For instance, you could run:
 loco-mujoco-set-all-caches --path "$HOME/.loco-mujoco-caches"
 ````
 
+## Environments 
+You want a quick overview of all **environments** available? You can find it 
+[here](/loco_mujoco/environments) and more detailed in the [Documentation](https://loco-mujoco.readthedocs.io/).
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/bf5eb128-eedc-49f7-a64c-cef0072d53f3">
+</p>
+
+And stay tuned! There are many more to come ...
+
+### Tutorials
+
+We provide a set of tutorials to help you get started with LocoMuJoCo. You can find them in the [tutorials folder](./examples/tutorials)
+or with more explanation in the [documentation](https://loco-mujoco.readthedocs.io/).
+
 ---
 ## Citation
 ```
@@ -110,9 +135,6 @@ year={2023}
 }
 ```
 
----
-## Credits 
-Both Unitree models were taken from the [MuJoCo menagerie](https://github.com/google-deepmind/mujoco_menagerie)
 
 
 
