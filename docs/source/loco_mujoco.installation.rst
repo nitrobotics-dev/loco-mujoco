@@ -1,153 +1,100 @@
 Getting Started
-====================
+================
 
 Installation
-----------------
-You have the choice to install the latest release via PyPI by running
+--------------
+
+Install the latest release from PyPI:
 
 .. code-block:: bash
 
-    pip install loco-mujoco
+   pip install loco-mujoco
 
-
-or you do an editable installation by cloning this repository and then running:
+Or clone the repo and install in editable mode:
 
 .. code-block:: bash
 
-    git clone --recurse-submodules git@github.com:robfiras/loco-mujoco.git
-    cd loco-mujoco
-    pip install -e .
+   cd loco-mujoco
+   pip install -e .
+
+To use **JAX with GPU**:
+
+.. code-block:: bash
+
+   pip install jax["cuda12"]
 
 .. note::
-        We fixed the version of MuJoCo to 2.3.7 during installation since we found that there are slight
-        differences in the simulation, which made testing very difficult. However, in practice, you can
-        use any newer version of MuJoCo! Just install it after installing LocoMuJoCo.
 
-.. note::
-        If you want to run the **MyoSkeleton** environment, you need to additionally run
-        ``loco-mujoco-myomodel-init`` to accept the license and download the model. Finally, you need to
-        upgrade Mujoco to 3.2.2 and dm_control to 1.0.22 *after* installing this package and downloading the datasets!
+   To run the **MyoSkeleton** environment, run:
 
-Download the Datasets
----------------------
+   ``loco-mujoco-myomodel-init`` to accept the license and download the model.
 
-After installing LocoMuJoCo, new commands for downloading the datasets will be setup for you.
-You have the choice of downloading all datasets available or only the ones you need.
-For example, run the following command to install all datasets:
+Datasets
+--------------
 
-.. code-block:: bash
+LocoMuJoCo provides three sources of mocap data: **default**, **LAFAN1**, and **AMASS**.
+The default and LAFAN1 datasets are downloaded automatically from the `HuggingFace dataset repository <https://huggingface.co/datasets/robfiras/loco-mujoco-datasets>`_.
 
-    loco-mujoco-download
+AMASS must be installed manually due to licensing—see the See :ref:`installation instructions <amass_installation>`.
 
 
-Run the following command to install only the real (motion capture, no actions) datasets:
-
-.. code-block:: bash
-
-    loco-mujoco-download-real
-
-
-Run the following command to install only the perfect (ground-truth with actions) datasets:
-
-.. code-block:: bash
-
-    loco-mujoco-download-perfect
-
-.. _install-baseline-label:
-Installing the Baselines
------------------------
-If you also want to run the baselines, you have to install our imitation learning library `imitation_lib <https://github.com/robfiras/ls-iq>`__.
-
-
-Verify Installation
--------------
-
-To verify that everything is installed correctly, run the examples such as:
-
-.. code-block:: bash
-
-    python examples/simple_mushroom_env/example_unitree_a1.py
-
-
-To replay a dataset run:
-
-.. code-block:: bash
-
-    python examples/replay_datasets/replay_Unitree.py
-
-
-Environments & Tasks
----------------------
-
-You want a quick overview of all **environments**, **tasks** and **datasets** available?
-:doc:`Here <loco_mujoco.environments>` you can find it.
-
-.. image:: https://github.com/robfiras/loco-mujoco/assets/69359729/73ca0cdd-3958-4d59-a1f7-0eba00fe373a
-    :align: center
-
-And stay tuned! There are many more to come ...
-
-
-Quick Examples
----------------------
-
-LocoMuJoCo is very easy to use. Just choose and create the environment, and generate the dataset belonging to this task and you are ready to go!
+Example usage:
 
 .. code-block:: python
 
-    import numpy as np
-    import loco_mujoco
-    import gymnasium as gym
+   from loco_mujoco.task_factories import ImitationFactory, LAFAN1DatasetConf, DefaultDatasetConf, AMASSDatasetConf
 
+   env = ImitationFactory.make(
+       "UnitreeH1",
+       default_dataset_conf=DefaultDatasetConf(["squat"]),
+       lafan1_dataset_conf=LAFAN1DatasetConf(["dance2_subject4", "walk1_subject1"]),
+       # amass_dataset_conf=AMASSDatasetConf([...])
+   )
 
-    env = gym.make("LocoMujoco", env_name="HumanoidTorque.run")
-    dataset = env.create_dataset()
+   env.play_trajectory(n_episodes=3, n_steps_per_episode=500, render=True)
 
-You want to use LocoMuJoCo for pure reinforcement learning? No problem! Just define your custom reward function and pass it to the environment!
+Speeding Up Dataset Loading
+------------------------------
 
-.. code-block:: python
+To accelerate loading, you can cache the forward kinematics results:
 
-    import numpy as np
-    import loco_mujoco
-    import gymnasium as gym
-    import numpy as np
+.. code-block:: bash
 
+   loco-mujoco-set-all-caches --path <path to cache>
 
-    def my_reward_function(state, action, next_state):
-        return -np.mean(action)
+Example:
 
+.. code-block:: bash
 
-    env = gym.make("LocoMujoco", env_name="HumanoidTorque.run", reward_type="custom",
-                   reward_params=dict(reward_callback=my_reward_function))
+   loco-mujoco-set-all-caches --path "$HOME/.loco-mujoco-caches"
 
+Environments
+--------------
 
+An overview of all environments is available `here <https://github.com/robfiras/loco-mujoco/tree/dev/loco_mujoco/environments>`_
+and in more detail in the `documentation <https://loco-mujoco.readthedocs.io/>`_.
 
-LocoMuJoCo *natively* supports `MushroomRL <https://github.com/MushroomRL/mushroom-rl>`__:
+.. image:: https://github.com/user-attachments/assets/bf5eb128-eedc-49f7-a64c-cef0072d53f3
+   :align: center
 
-.. code-block:: python
+Stay tuned — more coming soon!
 
-    import numpy as np
-    from loco_mujoco import LocoEnv
+Tutorials
+--------------
 
-    env = LocoEnv.make("HumanoidTorque.run")
-    dataset = env.create_dataset()
-
-
-You can find many more examples `here <https://github.com/robfiras/loco-mujoco/tree/master/examples>`__.
-
+Find tutorials in the `tutorials folder <https://github.com/robfiras/loco-mujoco/tree/dev/examples/tutorials>`_
+or explore the full tutorials in the `online documentation <https://loco-mujoco.readthedocs.io/>`_.
 
 Citation
----------------------
+--------------
 
-.. code-block::
+If you use LocoMuJoCo in your research, please cite:
 
-    @inproceedings{alhafez2023b,
-    title={LocoMuJoCo: A Comprehensive Imitation Learning Benchmark for Locomotion},
-    author={Firas Al-Hafez and Guoping Zhao and Jan Peters and Davide Tateo},
-    booktitle={6th Robot Learning Workshop, NeurIPS},
-    year={2023}
-    }
+.. code-block:: bibtex
 
-Credits
----------------------
-Both Unitree models were taken from the `MuJoCo menagerie <https://github.com/google-deepmind/mujoco_menagerie>`__.
+   @inproceedings{alhafez2023b,
+     title={LocoMuJoCo: A Comprehensive Imitation Learning Benchmark for Locomotion},
+     author={Firas Al-Hafez and Guoping Zhao and Jan Peters and Davide Tateo},
+     booktitle={6th Robot Learning Workshop, NeurIPS},
+     year={2023}
+   }

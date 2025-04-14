@@ -42,6 +42,7 @@ Key Advantages
    :hidden:
 
    source/loco_mujoco.installation.rst
+   source/loco_mujoco.amass_installation.rst
    source/loco_mujoco.api.rst
 
 
