@@ -6,35 +6,51 @@
 Welcome to LocoMuJoCo!
 ======================================
 
-.. image::  https://github.com/robfiras/loco-mujoco/assets/69359729/bd2a219e-ddfd-4355-8024-d9af921fb92a
+.. image:: https://github.com/robfiras/loco-mujoco/assets/69359729/bd2a219e-ddfd-4355-8024-d9af921fb92a
    :width: 70%
    :align: center
 
+.. image:: https://github.com/robfiras/loco-mujoco/actions/workflows/continuous_integration.yml/badge.svg?branch=dev
+.. image:: https://readthedocs.org/projects/loco-mujoco/badge/?version=latest
+   :target: https://loco-mujoco.readthedocs.io/en/latest/?badge=latest
+.. image:: https://img.shields.io/badge/License-MIT-yellow.svg
+   :target: https://opensource.org/licenses/MIT
+.. image:: https://img.shields.io/pypi/v/loco-mujoco
+   :target: https://pypi.org/project/loco-mujoco/
+.. image:: https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=flat&logo=discord&logoColor=white
+   :target: https://discord.gg/gEqR3xCVdn
 
-**LocoMuJoCo** is an **imitation learning benchmark** specifically targeted towards **locomotion**. It encompasses a diverse set of environments, including quadrupeds, bipeds, and musculoskeletal human models, each accompanied by comprehensive datasets, such as real noisy motion capture data, ground truth expert data, and ground truth sub-optimal data,
-enabling evaluation across a spectrum of difficulty levels.
+Latest News
+===========
 
-**LocoMuJoCo** also allows you to specify your own reward function to use this benchmark for **pure reinforcement learning**! Checkout the example below!
+🚀 **Since Release: v1.0**
 
-.. figure:: https://github.com/robfiras/loco-mujoco/assets/69359729/c16dfa4a-4fdb-4701-9a42-54cbf7644301
+LocoMuJoCo now supports MJX and includes new JAX algorithms, expanded environments, and over **22,000 datasets**!
+
+Overview
+========
+
+**LocoMuJoCo** is an **imitation learning benchmark** tailored for **whole-body control**.
+It includes a diverse range of environments—**quadrupeds**, **humanoids**, and **(musculo-)skeletal human models**—each equipped with comprehensive datasets (22k+ samples per humanoid).
+
+While designed for imitation learning, it also supports **pure reinforcement learning** with custom reward classes.
+
+.. image:: ../imgs/main_lmj.gif
    :align: center
 
-|
-
-The **core idea** behind LocoMuJoCo is to allow researcher focussing on imitation or reinforce learning to transition from simple
-toy task in locomotion to realistic and complex environments crucial for real-world applications. At the same time, we wanted to LocoMuJoCo
-to be as simple to use as possible by providing comprehensive datasets for each environment and task in a **single line of code**!
-
 Key Advantages
-----------------
+--------------
 
-| ✅ Easy to use with `Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`_ or `Mushroom-Rl <https://github.com/MushroomRL/mushroom-rl>`_ interface \
-| ✅ Many environments including humanoids and quadrupeds \
-| ✅ Diverse set of datasets --> e.g., noisy motion capture or ground truth datasets with actions \
-| ✅ Wide spectrum spectrum of difficulty levels \
-| ✅ Built-in domain randomization \
-| ✅ Many baseline algorithms for quick benchmarking
-
+- ✅ Supports **MuJoCo** (single) and **MJX** (parallel) environments
+- ✅ Includes **12 humanoid + 4 quadruped environments**, with **4 biomechanical human models**
+- ✅ Clean, single-file **JAX algorithms**: PPO, GAIL, AMP, DeepMimic
+- ✅ **22,000+ motion capture datasets** (AMASS, LAFAN1, native)
+- ✅ **Robot-to-robot retargeting**
+- ✅ Trajectory comparison metrics (e.g., DTW, Fréchet distance) implemented in **JAX**
+- ✅ **Gymnasium interface**
+- ✅ Built-in **domain and terrain randomization**
+- ✅ **Modular design**: easily swap components (observations, rewards, terminal handlers, etc.)
+- ✅ Comprehensive [documentation](https://loco-mujoco.readthedocs.io/)
 
 .. toctree::
    :caption: Documentation
