@@ -75,9 +75,9 @@ experiment:
   vmap_across_seeds: true
   validation:
     active: true
-    num_steps: 100
-    num_envs: 100
-    num: 10 # set to 0 to disable validation
+    num_steps: 100  # number of steps to run the validation --> this will create trajectories of length 100
+    num_envs: 100   # number of environments to use for validation --> this will create 100 trajectories
+    num: 10 # total number of evaluations done during training
     # if none of the following is set, only the mean reward and episode length is logged
     quantities: # quantities to be used for the distance measures below
       - JointPosition
