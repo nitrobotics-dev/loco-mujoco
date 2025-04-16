@@ -8,17 +8,15 @@ hydra:
   hydra_logging: {}
   sweeper:
     params:
-      experiment.total_timesteps: 500e6
+      experiment.total_timesteps: 100e6
       experiment.proportion_env_reward: 0.0, 0.5
-      experiment.n_disc_epochs: 20, 35, 50
       # env_params
       experiment.env_params.env_name: MjxUnitreeH1
       experiment.task_factory.params.default_dataset_conf.task: walk, run
 
 
-
 wandb:
-  project: "amp"
+  project: "amp2"
 
 experiment:
   task_factory:
@@ -35,18 +33,6 @@ experiment:
     goal_params:
       visualize_goal: true
     reward_type: TargetVelocityTrajReward
-#    reward_params:
-#      qpos_w_sum: 0.0
-#      qvel_w_sum: 0.0
-#      rpos_w_sum: 0.5
-#      rquat_w_sum: 0.3
-#      rvel_w_sum: 0.1
-#      sites_for_mimic:
-#        - upper_body_mimic
-#        - left_hand_mimic
-#        - left_foot_mimic
-#        - right_hand_mimic
-#        - right_foot_mimic
   hidden_layers: [512, 256]
   lr: 1e-4
   disc_lr: 5e-5
@@ -72,7 +58,7 @@ experiment:
   weight_decay: 0.0001
   normalize_env: true
   debug: false
-  n_seeds: 3  # while automatically take seeds from 1 to n_seeds
+  n_seeds: 1  # while automatically take seeds from 1 to n_seeds
   vmap_across_seeds: true
   validation:
     active: false
