@@ -20,7 +20,7 @@ python experiment.py
 
 This command will:
 
-- Train the PPO agent on the Unitree H1 robot for 300 million steps (approximately 36 minutes on an RTX 3080 Ti).
+- Train the PPO agent on the Unitree H1 robot for 300 million steps (approximately 36 minutes on an RTX 3080 Ti). To get even smoother policies train it for longer!
 - Save the trained agent (as `GAILJax_saved.pkl` in the `outputs` folder).
 - Perform a final rendering of the trained policy.
 - Save a video of the rendering to the `LocoMuJoCo_recordings/` directory.
