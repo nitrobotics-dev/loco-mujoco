@@ -1,12 +1,13 @@
-## DeepMimic Imitation Learning Example
+## AMP Imitation Learning Example
 
-This example demonstrates training a PPO agent on the Unitree H1 robot using a DeepMimic‑style reward
-to imitate a dataset of human walking trajectories in various directions.
+This example demonstrates training an AMP (Adversarial Motion Prior) agent on the Unitree H1 robot to mimic a dataset  
+of human running. It serves as a minimal showcase of the AMP algorithm and is **not** intended to produce 
+state-of-the-art results.
 
-The example leverages the `GoalTrajMimic` goal vector, which encodes target positions, orientations, and velocities
-of both site and joint states from the expert dataset. The reward function defined in the configuration, `MimicReward`,
-implements DeepMimic‑style reward. By the end of training, the agent can walk in multiple directions and rotate 
-around its z‑axis.
+The example uses `GoalTrajRootVelocity` as the goal vector, which specifies the robot's base velocity as the target.  
+The reward function defined in the configuration, `TargetVelocityTrajReward`, encourages the agent to match the 
+expert's base velocity. The parameter `proportion_env_reward` is set to 0.5, meaning the total reward is a
+balanced combination of the environment reward (task objective) and the discriminator reward (style imitation).
 
 ---
 
@@ -20,8 +21,8 @@ python experiment.py
 
 This command will:
 
-- Train the PPO agent on the Unitree H1 robot for 300 million steps (approximately 36 minutes on an RTX 3080 Ti).
-- Save the trained agent (as `GAILJax_saved.pkl` in the `outputs` folder).
+- Train the GAIL agent on the Unitree H1 robot for 75 million steps (approximately 7-10 minutes on an RTX 3080 Ti).
+- Save the trained agent (as `AMPJax_saved.pkl` in the `outputs` folder).
 - Perform a final rendering of the trained policy.
 - Save a video of the rendering to the `LocoMuJoCo_recordings/` directory.
 - Upload the video to Weights & Biases (WandB) for further analysis (check the command line logs for details).

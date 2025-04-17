@@ -2,28 +2,15 @@ defaults:
   - override hydra/job_logging: default
   - override hydra/launcher: basic
 
-hydra:
-  mode: MULTIRUN
-  job_logging: {}
-  hydra_logging: {}
-  sweeper:
-    params:
-      experiment.total_timesteps: 100e6
-      experiment.proportion_env_reward: 0.0, 0.5
-      # env_params
-      experiment.env_params.env_name: MjxUnitreeH1
-      experiment.task_factory.params.default_dataset_conf.task: walk, run
-
-
 wandb:
-  project: "amp2"
+  project: "amp"
 
 experiment:
   task_factory:
     name: ImitationFactory
     params:
       default_dataset_conf:
-          task: walk
+          task: run
   env_params:
     env_name: MjxUnitreeH1
     disable_arms: false
@@ -34,11 +21,11 @@ experiment:
       visualize_goal: true
     reward_type: TargetVelocityTrajReward
   hidden_layers: [512, 256]
-  lr: 1e-4
+  lr: 6e-5
   disc_lr: 5e-5
   num_envs: 2048
-  num_steps: 100
-  total_timesteps: 5e7
+  num_steps: 14
+  total_timesteps: 75e6
   update_epochs: 4
   disc_minibatch_size: 2048
   proportion_env_reward: 0.5
@@ -46,13 +33,13 @@ experiment:
   num_minibatches: 32
   gamma: 0.99
   gae_lambda: 0.95
-  clip_eps: 0.2
+  clip_eps: 0.1
   init_std: 0.2
   learnable_std: false
   ent_coef: 0.0
   disc_ent_coef: 0.0
   vf_coef: 0.5
-  max_grad_norm: 0.5
+  max_grad_norm: 0.75
   activation: tanh
   anneal_lr: false
   weight_decay: 0.0001
