@@ -48,6 +48,9 @@ class LocoEnv(Mjx):
     mjx_enabled = False
 
     def __init__(self,
+                 n_substeps: int = 10,
+                 timestep: float = 0.001,
+                 default_camera_mode: str = "follow",
                  th_params: Dict = None,
                  traj_params: Dict = None,
                  **core_params):
@@ -63,6 +66,11 @@ class LocoEnv(Mjx):
 
         if "geom_group_visualization_on_startup" not in core_params.keys():
             core_params["geom_group_visualization_on_startup"] = [0, 2]   # enable robot geom [0] and floor visual [2]
+
+        # take over default values
+        core_params["n_substeps"] = n_substeps
+        core_params["timestep"] = timestep
+        core_params["default_camera_mode"] = default_camera_mode
 
         if self.mjx_enabled:
             # call parent (Mjx) constructor
