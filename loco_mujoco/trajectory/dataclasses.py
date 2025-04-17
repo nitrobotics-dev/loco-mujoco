@@ -1210,10 +1210,10 @@ class TrajectoryTransitions:
     rewards: Union[jax.Array, np.ndarray] = struct.field(default_factory=lambda: jnp.empty(0))
 
     def to_jnp(self):
-        return jax.tree_map(lambda x: jnp.array(x), self)
+        return jax.tree.map(lambda x: jnp.array(x), self)
 
     def to_np(self):
-        return jax.tree_map(lambda x: np.array(x), self)
+        return jax.tree.map(lambda x: np.array(x), self)
 
     @classmethod
     def get_attribute_names(cls):

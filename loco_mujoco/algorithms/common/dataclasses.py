@@ -41,7 +41,7 @@ class TrainStateBuffer:
     @classmethod
     def create(cls, train_state: TrainState, size: int):
         return TrainStateBuffer(
-            train_states=jax.tree_map(lambda x: jnp.stack([x] * size), train_state),
+            train_states=jax.tree.map(lambda x: jnp.stack([x] * size), train_state),
             n=0,
             size=size
         )
@@ -50,7 +50,7 @@ class TrainStateBuffer:
     def add(cls, train_state_buffer, train_state: TrainState):
         index = train_state_buffer.n
         # Add the new train state at index n
-        train_states_updated = jax.tree_map(
+        train_states_updated = jax.tree.map(
             lambda buffer, new: buffer.at[index].set(new),
             train_state_buffer.train_states,
             train_state
@@ -74,7 +74,7 @@ class BestTrainStates:
     @classmethod
     def create(cls, train_state: TrainState, n: int):
         return BestTrainStates(
-            train_states=jax.tree_map(lambda x: jnp.stack([x] * n), train_state),
+            train_states=jax.tree.map(lambda x: jnp.stack([x] * n), train_state),
             metrics=jnp.full((n,), -jnp.inf),
             iterations=jnp.zeros((n,)),
             cur_worst_perf=-jnp.inf,
