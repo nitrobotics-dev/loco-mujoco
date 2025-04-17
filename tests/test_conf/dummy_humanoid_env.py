@@ -59,7 +59,8 @@ class DummyHumamoidEnv(LocoEnv):
 
         self.mjx_enabled = kwargs["enable_mjx"]
 
-        super(DummyHumamoidEnv, self).__init__(spec, actuation_spec, observation_spec, **kwargs)
+        super(DummyHumamoidEnv, self).__init__(spec=spec, actuation_spec=actuation_spec,
+                                               observation_spec=observation_spec, **kwargs)
 
     @classmethod
     def init_default_mujoco(cls):
