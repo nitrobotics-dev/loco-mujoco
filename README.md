@@ -20,9 +20,9 @@ each provided with comprehensive datasets (over 22,000 samples per humanoid).
 Although primarily focused on imitation learning, LocoMuJoCo also supports custom reward function classes,  
 making it suitable for pure reinforcement learning as well.
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/94e8c0c9-8fbe-47f0-904e-ab68eff4f9a7">
-</p>
+<div align="center">
+  <img src="imgs/main_lmj.gif"/>
+</div>
 
 ### Key Advantages 
 ✅ Supports **MuJoCo** (single environment) and **MJX** (parallel environments) \
@@ -111,9 +111,9 @@ loco-mujoco-set-all-caches --path "$HOME/.loco-mujoco-caches"
 You want a quick overview of all **environments** available? You can find it 
 [here](/loco_mujoco/environments) and more detailed in the [Documentation](https://loco-mujoco.readthedocs.io/).
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/bf5eb128-eedc-49f7-a64c-cef0072d53f3">
-</p>
+<div align="center">
+  <img src="imgs/lmj_envs.gif"/>
+</div>
 
 And stay tuned! There are many more to come ...
 

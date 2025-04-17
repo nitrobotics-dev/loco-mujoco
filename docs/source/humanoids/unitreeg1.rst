@@ -1,9 +1,9 @@
 Unitree G1
 =======================================================
 
-.. image:: https://github.com/user-attachments/assets/379c5edc-7a93-4f2f-bb00-368c827398c3
+.. image:: ../../../imgs/unitree_g1_1.gif
     :width: 49%
-.. image:: https://github.com/user-attachments/assets/c59a5d55-6c74-4bf7-9ecb-b7d6b15365cf
+.. image:: ../../../imgs/unitree_g1_2.gif
     :width: 49%
 
 .. automodule:: loco_mujoco.environments.humanoids.unitreeG1
