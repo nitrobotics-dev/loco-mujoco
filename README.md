@@ -28,6 +28,7 @@ making it suitable for pure reinforcement learning as well.
 ✅ Supports **MuJoCo** (single environment) and **MJX** (parallel environments) \
 ✅ Includes **12 humanoid and 4 quadruped environments**, featuring 4 **biomechanical human models** \
 ✅ Clean single-file JAX algorithms for quick benchmarking (**PPO**, **GAIL**, **AMP**, **DeepMimic**)\
+✅ Combined training and environment into one JIT‑compiled function for lightning‑fast training 🚀 \
 ✅ **Over 22,000 motion capture datasets** (AMASS, LAFAN1, native LocoMuJoCo) retargeted for each humanoid \
 ✅ **Robot-to-robot retargeting** allows to retarget any existing dataset from one robot to another \
 ✅ Powerful **trajectory comparison metrics** including dynamic time warping and discrete Fréchet distance, all in JAX \
@@ -123,6 +124,14 @@ And stay tuned! There are many more to come ...
 
 We provide a set of tutorials to help you get started with LocoMuJoCo. You can find them in the [tutorials folder](./examples/tutorials)
 or with more explanation in the [documentation](https://loco-mujoco.readthedocs.io/).
+
+If you want to check out training examples of a PPO, GAIL, AMP, or DeepMimic agent, you can find them 
+in the [training examples folder](./examples/training_examples). For instance, [here](./examples/training_examples/jax_rl_mimic) is an example of a DeepMimic agent
+you can train to achieve a human-like walking in all directions, which was trained in 36 min on an RTX 3080 Ti:
+
+<div align="center">
+  <img src="imgs/unitree_h1_walk_anydir.gif"/>
+</div>
 
 ---
 ## Citation
