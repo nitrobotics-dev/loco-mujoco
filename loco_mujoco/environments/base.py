@@ -47,35 +47,16 @@ class LocoEnv(Mjx):
 
     mjx_enabled = False
 
-    def __init__(self, spec: MjSpec,
-                 action_spec: List[str],
-                 observation_spec: List[Observation],
-                 n_envs: int = 1,
-                 gamma: float = 0.99,
-                 horizon: int = 1000,
-                 n_substeps: int = 10,
+    def __init__(self,
                  th_params: Dict = None,
                  traj_params: Dict = None,
-                 timestep: float = 0.001,
-                 default_camera_mode: str = "follow",
-                 model_option_conf: Dict = None,
                  **core_params):
         """
         Constructor.
 
         Args:
-            spec (MjSpec): MuJoCo specification.
-            action_spec (List[str]): A list specifying the names of motors which should be controllable by the agent.
-            observation_spec (List[Observation]): A list of observations that should be made available to the agent.
-            n_envs (int): Number of environments to run in parallel when using MJX.
-            gamma (float): The discounting factor of the environment.
-            horizon (int): The maximum horizon for the environment.
-            n_substeps (int): The number of substeps to use by the MuJoCo simulator.
             th_params (Dict): Dictionary of parameters for the trajectory handler.
             traj_params (Dict): Dictionary of parameters to load trajectories.
-            timestep (float): The timestep used by the MuJoCo simulator.
-            default_camera_mode (str): String defining the default camera mode.
-            model_option_conf (Dict): Dictionary of model options.
             core_params (Dict): Dictionary of other core parameters.
 
         """
@@ -85,20 +66,10 @@ class LocoEnv(Mjx):
 
         if self.mjx_enabled:
             # call parent (Mjx) constructor
-            super(LocoEnv, self).__init__(n_envs, spec=spec, actuation_spec=action_spec,
-                                          observation_spec=observation_spec, gamma=gamma,
-                                          horizon=horizon, n_substeps=n_substeps,
-                                          timestep=timestep,
-                                          default_camera_mode=default_camera_mode,
-                                          model_option_conf=model_option_conf, **core_params)
+            super(LocoEnv, self).__init__(**core_params)
         else:
             # call grandparent constructor (Mujoco (CPU) environment)
-            super(Mjx, self).__init__(spec=spec, actuation_spec=action_spec,
-                                      observation_spec=observation_spec, gamma=gamma,
-                                      horizon=horizon, n_substeps=n_substeps,
-                                      timestep=timestep,
-                                      default_camera_mode=default_camera_mode,
-                                      model_option_conf=model_option_conf, **core_params)
+            super(Mjx, self).__init__(**core_params)
 
         # dataset dummy
         self._dataset = None

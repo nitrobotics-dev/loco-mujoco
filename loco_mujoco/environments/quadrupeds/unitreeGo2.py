@@ -117,7 +117,7 @@ class UnitreeGo2(BaseRobotQuadruped):
     mjx_enabled = False
 
     def __init__(self, spec=None, camera_params=None,
-                 observation_spec=None, action_spec=None, **kwargs):
+                 observation_spec=None, actuation_spec=None, **kwargs):
         """
         Constructor.
 
@@ -126,7 +126,7 @@ class UnitreeGo2(BaseRobotQuadruped):
                 It can be a path to the xml file or a MjSpec object. If none, is provided, the default xml file is used.
             camera_params (dict): Dictionary defining some of the camera parameters for visualization.
             observation_spec (List[ObservationType]): Observation specification.
-            action_spec (List[str]): Action specification.
+            actuation_spec (List[str]): Action specification.
             **kwargs: Additional arguments
         """
 
@@ -143,8 +143,8 @@ class UnitreeGo2(BaseRobotQuadruped):
         else:
             # parse
             observation_spec = self.parse_observation_spec(observation_spec)
-        if action_spec is None:
-            action_spec = self._get_action_specification(spec)
+        if actuation_spec is None:
+            actuation_spec = self._get_action_specification(spec)
 
         # set init position
         if "init_state_handler" not in kwargs.keys():
@@ -159,7 +159,7 @@ class UnitreeGo2(BaseRobotQuadruped):
             # make the camera by default a bit higher
             camera_params = dict(follow=dict(distance=3.5, elevation=-20.0, azimuth=90.0))
 
-        super().__init__(spec, action_spec, observation_spec,
+        super().__init__(spec=spec, actuation_spec=actuation_spec, observation_spec=observation_spec,
                          camera_params=camera_params, **kwargs)
 
     @staticmethod

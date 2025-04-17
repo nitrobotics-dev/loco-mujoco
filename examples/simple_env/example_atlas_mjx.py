@@ -6,10 +6,11 @@ from loco_mujoco import LocoEnv
 
 os.environ['XLA_FLAGS'] = (
     '--xla_gpu_triton_gemm_any=True ')
-env = LocoEnv.make("MjxAtlas.walk", n_envs=4000, disable_arms=False)
+n_envs=4000
+env = LocoEnv.make("MjxAtlas.walk", disable_arms=False)
 
 key = jax.random.key(0)
-keys = jax.random.split(key, env.info.n_envs + 1)
+keys = jax.random.split(key, n_envs + 1)
 key, env_keys = keys[0], keys[1:]
 
 # jit and vmap all functions needed
@@ -26,14 +27,14 @@ LOGGING_FREQUENCY = 100000
 i = 0
 while i < 100000:
 
-    keys = jax.random.split(key, env.info.n_envs + 1)
+    keys = jax.random.split(key, n_envs + 1)
     key, action_keys = keys[0], keys[1:]
     action = rng_sample_uni_action(action_keys)
     state = rng_step(state, action)
 
     # env.mjx_render(state)
 
-    step += env.info.n_envs
+    step += n_envs
     if step % LOGGING_FREQUENCY == 0:
         current_time = time.time()
         print(f"{int(LOGGING_FREQUENCY / (current_time - previous_time))} steps per second.")

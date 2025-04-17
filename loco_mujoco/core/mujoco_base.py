@@ -54,7 +54,6 @@ class Mujoco:
         observation_spec (List[ObservationType]): Specification of the observation space.
         gamma (float): Discount factor for reinforcement learning.
         horizon (int): Maximum number of steps per episode.
-        n_environments (int, optional): Number of parallel environments. Defaults to 1.
         timestep (int, optional): Simulation timestep. If None, it's read from the model.
         n_substeps (int, optional): Number of substeps per simulation step. Defaults to 1.
         model_option_conf (Dict, optional): Changes to apply to the Mujoco option config.
@@ -82,9 +81,8 @@ class Mujoco:
                  spec: Union[MjSpec, str],
                  actuation_spec: List[str],
                  observation_spec: List[ObservationType],
-                 gamma: float,
-                 horizon: int,
-                 n_environments: int = 1,
+                 gamma: float = 0.99,
+                 horizon: int = 1000,
                  timestep: int = None,
                  n_substeps: int = 1,
                  model_option_conf: Dict = None,
@@ -156,7 +154,7 @@ class Mujoco:
         action_space = Box(*self._control_func.action_limits)
 
         # create the MDP information
-        self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, n_environments, self.dt)
+        self._mdp_info = MDPInfo(observation_space, action_space, gamma, horizon, self.dt)
 
         # setup reward function
         reward_cls = Reward.registered[reward_type]

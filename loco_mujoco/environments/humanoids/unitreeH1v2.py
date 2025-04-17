@@ -174,7 +174,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
 
     def __init__(self, disable_hands: bool = True, spec: Union[str, MjSpec] = None,
                  observation_spec: List[ObservationType] = None,
-                 action_spec: List[str] = None,
+                 actuation_spec: List[str] = None,
                  **kwargs) -> None:
         """
         Constructor.
@@ -184,7 +184,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
             spec (Union[str, MjSpec]): Specification of the environment. Can be a path to the XML file or an MjSpec object.
                 If none is provided, the default XML file is used.
             observation_spec (List[ObservationType], optional): List defining the observation space. Defaults to None.
-            action_spec (List[str], optional): List defining the action space. Defaults to None.
+            actuation_spec (List[str], optional): List defining the action space. Defaults to None.
             **kwargs: Additional parameters for the environment.
         """
 
@@ -203,8 +203,8 @@ class UnitreeH1v2(BaseRobotHumanoid):
         else:
             # parse
             observation_spec = self.parse_observation_spec(observation_spec)
-        if action_spec is None:
-            action_spec = self._get_action_specification(spec)
+        if actuation_spec is None:
+            actuation_spec = self._get_action_specification(spec)
 
         # modify the specification if needed
         if self.mjx_enabled:
@@ -213,7 +213,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
             joints_to_remove, actuators_to_remove, equ_constraints_to_remove = self._get_spec_modifications()
             obs_to_remove = ["q_" + j for j in joints_to_remove] + ["dq_" + j for j in joints_to_remove]
             observation_spec = [elem for elem in observation_spec if elem.name not in obs_to_remove]
-            action_spec = [ac for ac in action_spec if ac not in actuators_to_remove]
+            actuation_spec = [ac for ac in actuation_spec if ac not in actuators_to_remove]
             spec = self._delete_from_spec(spec, joints_to_remove,
                                           actuators_to_remove, equ_constraints_to_remove)
 
@@ -224,7 +224,7 @@ class UnitreeH1v2(BaseRobotHumanoid):
                                             d_gain=[self.d_gains[act.name] for act in spec.actuators],
                                             scale_action_to_jnt_limits=False)
 
-        super().__init__(spec, action_spec, observation_spec, **kwargs)
+        super().__init__(spec=spec, actuation_spec=actuation_spec, observation_spec=observation_spec, **kwargs)
 
     def _get_spec_modifications(self) -> Tuple[List[str], List[str], List[str]]:
         """

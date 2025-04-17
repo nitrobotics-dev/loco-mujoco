@@ -240,7 +240,7 @@ class FourierGR1T2(BaseRobotHumanoid):
 
     def __init__(self, spec: Union[str, MjSpec] = None,
                  observation_spec: List[Observation] = None,
-                 action_spec: List[str] = None, **kwargs) -> None:
+                 actuation_spec: List[str] = None, **kwargs) -> None:
         """
         Constructor.
 
@@ -248,7 +248,7 @@ class FourierGR1T2(BaseRobotHumanoid):
             spec (Union[str, MjSpec]): Specification of the environment.
                 It can be a path to the XML file or an `MjSpec` object. If none is provided, the default XML file is used.
             observation_spec (List[Observation]): Observation specification.
-            action_spec (List[str]): Action specification.
+            actuation_spec (List[str]): Action specification.
             **kwargs: Additional arguments.
         """
 
@@ -265,14 +265,14 @@ class FourierGR1T2(BaseRobotHumanoid):
         else:
             # parse
             observation_spec = self.parse_observation_spec(observation_spec)
-        if action_spec is None:
-            action_spec = self._get_action_specification(spec)
+        if actuation_spec is None:
+            actuation_spec = self._get_action_specification(spec)
 
         # modify the specification if needed
         if self.mjx_enabled:
             spec = self._modify_spec_for_mjx(spec)
 
-        super().__init__(spec, action_spec, observation_spec, **kwargs)
+        super().__init__(spec=spec, actuation_spec=actuation_spec, observation_spec=observation_spec, **kwargs)
 
     @staticmethod
     def _get_observation_specification(spec: MjSpec) -> List[Observation]:

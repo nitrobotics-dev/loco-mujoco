@@ -41,7 +41,7 @@ while i < 100000:
     # parallel render
     env.mjx_render(state)
 
-    step += env.info.n_envs
+    step += n_envs
 
     # log speed (disable rendering for accurate speed measurement)
     if step % LOGGING_FREQUENCY == 0:

@@ -58,17 +58,13 @@ class Mjx(Mujoco):
 
     """
 
-    def __init__(self, n_envs, **kwargs):
+    def __init__(self, **kwargs):
 
         # call base mujoco env
         super().__init__(**kwargs)
 
-        assert n_envs > 0, "Setting the number of environments smaller than or equal to 0 is not allowed."
-        self._n_envs = n_envs
-
         # add information to mdp_info
-        # todo: remove the n_envs attribute
-        self._mdp_info.mjx_env, self._mdp_info.n_envs = True, n_envs
+        self._mdp_info.mjx_env = True
 
         # setup mjx model and data
         mujoco.mj_resetData(self._model, self._data)
