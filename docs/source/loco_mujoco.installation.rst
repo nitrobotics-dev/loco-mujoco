@@ -4,13 +4,8 @@ Getting Started
 Installation
 --------------
 
-Install the latest release from PyPI:
 
-.. code-block:: bash
-
-   pip install loco-mujoco
-
-Or clone the repo and install in editable mode:
+Clone the repo and install in editable mode:
 
 .. code-block:: bash
 

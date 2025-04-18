@@ -5,8 +5,9 @@
 ![continous integration](https://github.com/robfiras/loco-mujoco/actions/workflows/continuous_integration.yml/badge.svg?branch=dev)
 [![Documentation Status](https://readthedocs.org/projects/loco-mujoco/badge/?version=latest)](https://loco-mujoco.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI](https://img.shields.io/pypi/v/loco-mujoco)](https://pypi.org/project/loco-mujoco/)
 [![Join our Discord](https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=flat&logo=discord&logoColor=white)](https://discord.gg/gEqR3xCVdn)
+
+[//]: # ([![PyPI]&#40;https://img.shields.io/pypi/v/loco-mujoco&#41;]&#40;https://pypi.org/project/loco-mujoco/&#41;)
 
 > 🚀 **Latest News:**
 > A **major release (v1.0)** just dropped! 🎉  
@@ -41,16 +42,19 @@ making it suitable for pure reinforcement learning as well.
 
 ## Installation
 
-You have the choice to install the latest release via PyPI by running 
+[//]: # (You have the choice to install the latest release via PyPI by running )
 
+[//]: # ()
+[//]: # ()
+[//]: # (```bash)
 
-```bash
+[//]: # ()
+[//]: # (pip install loco-mujoco )
 
-pip install loco-mujoco 
+[//]: # ()
+[//]: # (```)
 
-```
-
-Or, clone this repo and do an editable installation:
+Clone this repo and do an editable installation:
 
 ```bash
 cd loco-mujoco
