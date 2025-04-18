@@ -36,6 +36,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 
+[tool.setuptools.packages.find]
+where = ["."]
+
 [project.optional-dependencies]
 smpl = [
     "torch",

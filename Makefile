@@ -13,3 +13,4 @@ upload:
 clean:
 	rm -rf dist
 	rm -rf build
+	rm -rf loco_mujoco/models/myo_model
