@@ -2,6 +2,9 @@
 
 To use the AMASS dataset, you need to download and set up the required data and models. This includes specifying the storage paths for the AMASS dataset and SMPL-H models and ensuring the dependencies are installed. Follow the instructions below to complete the setup.
 
+> [!NOTE]
+> this currently works only with **editable installations**!
+
 ---
 
 ## Additional dependencies
