@@ -1,7 +1,6 @@
 import inspect
 import loco_mujoco
 from loco_mujoco.environments import HumanoidTorque, HumanoidMuscle, UnitreeA1, UnitreeG1, MyoSkeleton
-from mushroom_rl.utils.mujoco import *
 
 
 def make_table(grid):

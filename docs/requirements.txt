@@ -1,4 +1,7 @@
 numpy
+jax
+mujoco
+mujoco-mjx
 scipy
 gymnasium
 pyyaml
