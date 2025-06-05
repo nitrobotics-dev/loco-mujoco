@@ -25,3 +25,8 @@ data/
 loco_mujoco/LOCOMUJOCO_VARIABLES.yaml
 **/video2images.sh
 **/expert_traj.npz
+bin/
+lib/
+lib64
+*.npz
+pyvenv.cfg
