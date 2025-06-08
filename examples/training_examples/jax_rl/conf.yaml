@@ -24,7 +24,7 @@ experiment:
     name: RLFactory
     params: {}
   env_params:
-    env_name: MjxUnitreeGo2
+    env_name: MjxBerkeleyHumanoidLite
     horizon: 1000
     terminal_state_type: HeightBasedTerminalStateHandler
     goal_type: GoalRandomRootVelocity
@@ -43,8 +43,9 @@ experiment:
       joint_torque_coeff: 2.0e-07
       joint_position_limit_coeff: 2.0
       action_rate_coeff: 0.1
-      symmetry_air_coeff: 0.005
+      symmetry_air_coeff: 0.0
       energy_coeff: 5.0e-05
+      foot_contact_sites: ["left_foot_mimic", "right_foot_mimic"]
   hidden_layers: [512, 256]
   lr: 1e-4
   num_envs: 2048

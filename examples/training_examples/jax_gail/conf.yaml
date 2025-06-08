@@ -24,9 +24,9 @@ experiment:
     name: ImitationFactory
     params:
       default_dataset_conf:
-          task: run
+          task: walk
   env_params:
-    env_name: MjxUnitreeH1
+    env_name: BerkeleyHumanoidLite
     headless: true
     disable_arms: false
     horizon: 1000

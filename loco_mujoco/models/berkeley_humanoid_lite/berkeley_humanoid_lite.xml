@@ -14,6 +14,10 @@
       </default>
       <default class="collision">
         <geom group="3"/>
+        <default class="foot">
+          <geom size="0.022" pos="-0.002 0 -0.213" priority="1" solimp="0.015 1 0.022" condim="6"
+            friction="0.8 0.02 0.01"/>
+        </default>
       </default>
     </default>
   </default>
@@ -45,7 +49,7 @@
         <geom type="mesh" class="visual" pos="-0.00661228 -8.80749e-05 0.0396144" quat="0.707107 0.707107 -8.34888e-14 -8.37625e-14" mesh="arm_left_shoulder_pitch_visual" material="arm_left_shoulder_pitch_visual_material"/>
         <!-- Link arm_left_shoulder_roll -->
         <body name="arm_left_shoulder_roll" pos="0.0255 -1.44329e-15 0.043" quat="0.701057 0.092296 0.701057 0.092296">
-          <site name="left_shoulder_mimic" class="mimic" pos="-0.05 0.0 0.0"/>
+          <site name="left_shoulder_mimic" class="mimic" pos="0.0 0.0 -0.025"/>
           <!-- Joint from arm_left_shoulder_pitch to arm_left_shoulder_roll -->
           <joint axis="0 0 1" name="arm_left_shoulder_roll_joint" type="hinge" range="-0.26179938779914935 1.3089969389957472"/>
           <inertial pos="-4.00762e-05 0.0737019 -0.0277329" mass="0.443945" fullinertia="0.000698118 0.000365437 0.000568315 -4.07105e-07 -1.31045e-07 -1.56428e-05"/>
@@ -61,7 +65,7 @@
             <geom type="mesh" class="visual" pos="-0.00781722 -9.17114e-05 0.0409759" quat="0.092296 0.701057 -0.701057 -0.092296" mesh="arm_left_shoulder_yaw_visual" material="arm_left_shoulder_yaw_visual_material"/>
             <!-- Link arm_left_elbow_pitch -->
             <body name="arm_left_elbow_pitch" pos="0.0245 6.0295e-17 0.043" quat="0.5 0.5 0.5 0.5">
-              <site name="left_elbow_mimic" class="mimic"/>
+              <site name="left_elbow_mimic" class="mimic" pos="0.0 0.0 -0.025"/>
               <!-- Joint from arm_left_shoulder_yaw to arm_left_elbow_pitch -->
               <joint axis="0 0 1" name="arm_left_elbow_pitch_joint" type="hinge" range="-6.163958232718869e-13 1.5707963267942802"/>
               <inertial pos="-4.00762e-05 0.0737019 -0.0277329" mass="0.443945" fullinertia="0.000698118 0.000365437 0.000568315 -4.07105e-07 -1.31045e-07 -1.56428e-05"/>
@@ -77,7 +81,7 @@
                 <geom type="mesh" class="visual" pos="-6.0299e-19 0 0.005" quat="1.66123e-13 -3.29375e-13 -0.991445 -0.130526" mesh="arm_left_elbow_roll_visual" material="arm_left_elbow_roll_visual_material"/>
                 <!-- Link arm_left_hand_link -->
                 <body name="arm_left_hand_link" pos="-6.31089e-30 -5.55112e-17 5.55112e-17" quat="4.74826e-15 -0.707107 0.707107 4.75263e-15">
-                  <site name="left_hand_mimic" class="mimic" pos="0.0 0.0 0.1"/>
+                  <site name="left_hand_mimic" class="mimic" pos="0.0 0.0 -0.1"/>
                   <!-- Joint from arm_left_elbow_roll to arm_left_hand_link -->
                   <!-- Joint is "fixed", skipping it -->
                   <inertial pos="-0.00248666 0.0134979 -0.0541316" mass="0.291741" fullinertia="0.000556491 0.000494025 0.000161723 3.82363e-06 -2.67254e-06 -0.000102102"/>
@@ -98,7 +102,7 @@
         <geom type="mesh" class="visual" pos="0.00661228 -1.57066e-05 0.0397088" quat="7.64341e-16 -3.11047e-15 0.707107 -0.707107" mesh="arm_right_shoulder_pitch_visual" material="arm_right_shoulder_pitch_visual_material"/>
         <!-- Link arm_right_shoulder_roll -->
         <body name="arm_right_shoulder_roll" pos="-0.0255 3.21965e-15 0.043" quat="0.701057 0.092296 -0.701057 -0.092296">
-          <site name="right_shoulder_mimic" class="mimic" pos="-0.05 0.0 0.0"/>
+          <site name="right_shoulder_mimic" class="mimic" pos="0.0 0.0 -0.025"/>
           <!-- Joint from arm_right_shoulder_pitch to arm_right_shoulder_roll -->
           <joint axis="0 0 1" name="arm_right_shoulder_roll_joint" type="hinge" range="-1.308996938995624 0.2617993877992726"/>
           <inertial pos="-4.00762e-05 0.0737019 -0.0277329" mass="0.443945" fullinertia="0.000698118 0.000365437 0.000568315 -4.07105e-07 -1.31045e-07 -1.56428e-05"/>
@@ -114,7 +118,7 @@
             <geom type="mesh" class="visual" pos="-0.00781722 -1.63693e-05 0.0404875" quat="0.092296 -0.701057 -0.701057 0.092296" mesh="arm_right_shoulder_yaw_visual" material="arm_right_shoulder_yaw_visual_material"/>
             <!-- Link arm_right_elbow_pitch -->
             <body name="arm_right_elbow_pitch" pos="0.0245 6.99949e-15 0.043" quat="0.5 0.5 0.5 0.5">
-              <site name="right_elbow_mimic" class="mimic"/>
+              <site name="right_elbow_mimic" class="mimic" pos="0.0 0.0 -0.025"/>
               <!-- Joint from arm_right_shoulder_yaw to arm_right_elbow_pitch -->
               <joint axis="0 0 1" name="arm_right_elbow_pitch_joint" type="hinge" range="-1.5707963267948966 -0.0"/>
               <inertial pos="-4.00762e-05 0.0737019 -0.0277329" mass="0.443945" fullinertia="0.000698118 0.000365437 0.000568315 -4.07105e-07 -1.31045e-07 -1.56428e-05"/>
@@ -130,7 +134,7 @@
                 <geom type="mesh" class="visual" pos="-6.0299e-19 5.55112e-17 0.005" quat="5.56185e-15 -5.78053e-14 -0.991445 0.130526" mesh="arm_right_elbow_roll_visual" material="arm_right_elbow_roll_visual_material"/>
                 <!-- Link arm_right_hand_link -->
                 <body name="arm_right_hand_link" pos="-6.74047e-19 5.55112e-17 0" quat="6.63921e-17 -0.707107 0.707107 -3.54543e-15">
-                  <site name="right_hand_mimic" class="mimic" pos="0.0 0.0 0.1"/>
+                  <site name="right_hand_mimic" class="mimic" pos="0.0 0.0 -0.1"/>
                   <!-- Joint from arm_right_elbow_roll to arm_right_hand_link -->
                   <!-- Joint is "fixed", skipping it -->
                   <inertial pos="-0.00248666 0.0134979 -0.0541316" mass="0.291741" fullinertia="0.000556491 0.000494025 0.000161723 3.82363e-06 -2.67254e-06 -0.000102102"/>
@@ -158,7 +162,7 @@
           <geom type="mesh" class="visual" pos="-0.00411632 -8.63203e-05 0.0463382" quat="0.270598 0.653281 -0.653281 0.270598" mesh="leg_left_hip_yaw_visual" material="leg_left_hip_yaw_visual_material"/>
           <!-- Link leg_left_hip_pitch -->
           <body name="leg_left_hip_pitch" pos="0.027 -1.11022e-16 0.052" quat="0.653281 0.270598 -0.653281 -0.270598">
-            <site name="left_hip_mimic" class="mimic" pos="0.0 0.0 0.05"/>
+            <site name="left_hip_mimic" class="mimic" pos="0.0 0.0 0.025"/>
             <!-- Joint from leg_left_hip_yaw to leg_left_hip_pitch -->
             <joint axis="0 0 1" name="leg_left_hip_pitch_joint" type="hinge" range="-1.898045561543828 0.9817477042468157"/>
             <inertial pos="0.0030405 0.120388 0.0210924" mass="0.947974" fullinertia="0.00286449 0.00102465 0.00259958 0.00012235 -2.15676e-05 0.000265775"/>
@@ -190,6 +194,7 @@
                   <!-- Part leg_left_ankle_roll_parts -->
                   <geom class="collision" pos="1.4526e-14 0.03 0.006" quat="0.707107 0.707107 -8.02691e-14 3.1405e-14" type="box" size="0.036 0.11 0.02"/>
                   <geom type="mesh" class="visual" pos="2.29341e-05 0.0226611 0.0197836" quat="0.5 0.5 -0.5 0.5" mesh="leg_left_ankle_roll_visual" material="leg_left_ankle_roll_visual_material"/>
+                  <geom name="left_foot" class="foot"/>
                 </body>
               </body>
             </body>
@@ -212,7 +217,7 @@
           <geom type="mesh" class="visual" pos="0.00411632 -1.3851e-05 0.0463238" quat="0.270598 0.653281 -0.653281 0.270598" mesh="leg_right_hip_yaw_visual" material="leg_right_hip_yaw_visual_material"/>
           <!-- Link leg_right_hip_pitch -->
           <body name="leg_right_hip_pitch" pos="-0.027 -2.22045e-16 0.052" quat="0.653281 0.270598 -0.653281 -0.270598">
-            <site name="right_hip_mimic" class="mimic" pos="0.0 0.0 -0.05"/>
+            <site name="right_hip_mimic" class="mimic" pos="0.0 0.0 -0.025"/>
             <!-- Joint from leg_right_hip_yaw to leg_right_hip_pitch -->
             <joint axis="0 0 1" name="leg_right_hip_pitch_joint" type="hinge" range="-1.898045561543837 0.9817477042468068"/>
             <inertial pos="0.00319928 0.120388 -0.0210924" mass="0.947974" fullinertia="0.00286448 0.00102371 0.00259864 0.000117078 2.6845e-05 -0.000265774"/>
@@ -244,6 +249,7 @@
                   <!-- Part leg_right_ankle_roll_parts -->
                   <geom class="collision" pos="6.38304e-15 0.03 0.006" quat="0.707107 0.707107 8.41549e-14 -2.33354e-13" type="box" size="0.036 0.11 0.02"/>
                   <geom type="mesh" class="visual" pos="2.29341e-05 0.0226611 0.0197836" quat="0.5 0.5 -0.5 0.5" mesh="leg_right_ankle_roll_visual" material="leg_right_ankle_roll_visual_material"/>
+                  <geom name="right_foot" class="foot"/>
                 </body>
               </body>
             </body>

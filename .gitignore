@@ -30,3 +30,4 @@ lib/
 lib64
 *.npz
 pyvenv.cfg
+*.log
